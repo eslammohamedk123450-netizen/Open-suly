@@ -2,16 +2,15 @@
 
 **More Than AI. Your Intelligent Partner.**
 
-SULY is a new, standalone AI application being built from a clean slate. The retired application is not a foundation for this product; its business logic, APIs, database model, accounts, integrations, and feature systems are out of scope.
+SULY is a standalone AI application being built from a clean foundation. Its product behavior, APIs, data models, authentication, AI orchestration, and integrations are designed specifically for SULY.
 
-## What carries forward
+## Product identity
 
-Only the SULY brand identity and approved presentation direction:
-- Name, logo/monogram, and official domain.
+The product carries the SULY name, logo/monogram, official domain, and approved visual direction:
 - Midnight Gold Luxury palette and premium visual language.
 - The general look and feel of the home screen, settings, navigation, cards, and buttons.
 
-Everything behind the interface is being designed and implemented specifically for the new SULY product.
+Everything behind the interface is implemented as part of the new SULY product.
 
 ## Current stack
 
@@ -32,11 +31,10 @@ Arabic-first with correct RTL, English support, a chat-first home screen, a dedi
 
 ## Engineering rules
 
-1. SULY is the only product in scope. Do not port or repair retired application logic.
-2. HIMS is permanently out of scope.
-3. Work directly on `main`; do not create branches or pull requests.
-4. Never commit secrets or privileged keys.
-5. Enforce authorization and RLS on every user-owned data path.
-6. Do not add paid services without explicit approval.
-7. Run checks and report only verified results.
-8. Add capabilities as new, testable vertical slices.
+1. SULY is the only product in scope.
+2. Work directly on `main`; do not create branches or pull requests.
+3. Never commit secrets or privileged keys.
+4. Enforce authorization and RLS on every user-owned data path.
+5. Do not add paid services without explicit approval.
+6. Run checks and report only verified results.
+7. Add capabilities as new, testable vertical slices.
