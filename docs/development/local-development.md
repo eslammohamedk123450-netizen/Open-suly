@@ -62,3 +62,17 @@ python -m compileall services/api/app
 ```
 
 A successful liveness response does not prove Supabase connectivity. Database readiness must be verified separately when project credentials and local infrastructure are configured.
+
+
+## Existing hosted Supabase project
+
+The connected project is an existing populated database, not a blank database. Read [the verified baseline](../operations/supabase-existing-project-baseline.md) before running migrations.
+
+For a deliberate remote inspection, link the CLI to the existing project ref supplied in the baseline:
+
+```bash
+supabase link --project-ref razvryvazmqvvqkzetuo
+supabase migration list --remote
+```
+
+Supabase CLI v3 runs database commands against the local stack by default. A hosted change must explicitly target `--remote`, and unattended hosted changes require an explicit `--yes`. Never run `db reset` against the hosted project. Review SQL and confirm the migration history before any production schema change.
