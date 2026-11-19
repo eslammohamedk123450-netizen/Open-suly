@@ -14,6 +14,7 @@
 | 20261119232329 | bump_conversation_on_message |
 | 20261119232400 | tighten_message_client_insert |
 | 20261119232535 | assistant_reply_idempotency |
+| 20261119232854 | tighten_profile_column_grants |
 
 ## Public tables
 
@@ -23,7 +24,7 @@
 | conversations | enabled | 4 | Authenticated owner only |
 | messages | enabled | 2 | Authenticated owner only |
 
-Anonymous SELECT access is not granted to these tables. The authenticated client can insert only its own user messages; the database defaults the role to `user`, and the role column is not insertable by authenticated clients. Assistant, system, and tool messages are reserved for trusted server-side workers.
+Anonymous SELECT access is not granted to these tables. Profile owners can update only `display_name`, `avatar_url`, and `locale`; owner IDs and timestamps are server-managed. The authenticated client can insert only its own user messages; the database defaults the role to `user`, and the role column is not insertable by authenticated clients. Assistant, system, and tool messages are reserved for trusted server-side workers.
 
 ## Client implementation
 
