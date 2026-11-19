@@ -111,3 +111,14 @@ The chat endpoint is a non-streaming first slice. It is not considered operation
 - No provider key or paid service has been configured.
 
 The task database foundation is live, but it must not be described as autonomous execution until workers are deployed and tested.
+
+
+## Task planning implementation — 2026-11-20
+
+- Added `POST /v1/tasks/{task_id}/plan` to persist a bounded plan of 1–50 steps.
+- Step keys must be unique; dependencies must refer only to previously declared steps, enforcing a deterministic acyclic order.
+- Planning is committed atomically by the Postgres `plan_task` function; partial plans cannot be left behind if validation or insertion fails.
+- The function is SECURITY INVOKER, revoked from public/anon/authenticated, and executable only by service_role. It locks the owned task row and only accepts a task that is still queued and has no existing steps.
+- Migration: `20261119233958_atomic_task_planning`.
+- API tests cover authentication, duplicate keys, and forward/cyclic dependency rejection.
+- This phase creates and validates execution plans; it does not yet run steps. Worker claiming, leases, retries, checkpoint completion, and deployment remain the next phase.
