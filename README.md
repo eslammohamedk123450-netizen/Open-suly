@@ -2,7 +2,7 @@
 
 **More Than AI. Your Intelligent Partner.**
 
-SULY is an agentic AI platform designed to help people research, plan, create, analyze, and execute real tasks through a unified, secure, and observable system.
+SULY is an independent agentic AI application. It is developed as a standalone product and does not depend on, embed, or inherit functionality from any previous application or unrelated system.
 
 ## Product direction
 
@@ -17,7 +17,7 @@ SULY is an agentic AI platform designed to help people research, plan, create, a
 
 ## Core platform capabilities
 
-The long-term product scope includes task planning and DAG execution, research, browser workflows, coding in isolated environments, file and document generation, data analysis, image generation, integrations, projects, memory, usage accounting, administration, and operational observability.
+The SULY product scope includes task planning and DAG execution, research, browser workflows, coding in isolated environments, files and document generation, data analysis, image generation, integrations and workflows, memory and projects, usage accounting, administration, and operational observability.
 
 A capability is not considered complete merely because its interface exists. It must be connected to a working implementation and covered by appropriate tests.
 
@@ -32,24 +32,25 @@ Implementation proceeds through the milestones and exit criteria in those docume
 
 ## Non-negotiable engineering rules
 
-1. Preserve existing product capabilities and data. Do not remove, bypass, or disable HIMS.
-2. Never commit secrets, API keys, service-role keys, private certificates, or real environment files.
-3. Enforce authorization on the server and with database RLS; never rely on client-side checks alone.
-4. Validate inputs and outputs at trust boundaries.
-5. Add tests for meaningful behavior and security-sensitive changes.
-6. Do not claim a feature, deployment, test, or integration works unless it has been verified.
-7. Do not introduce paid services or material recurring costs without explicit approval.
-8. Keep the application usable across supported web and mobile targets.
-9. Document architectural decisions and breaking changes.
-10. Prefer small, reviewable, reversible changes.
+1. SULY is the only product in scope. Do not import or preserve unrelated legacy application modules.
+2. HIMS and its activation, content, and resource features are out of scope and must not be reintroduced.
+3. Never commit secrets, API keys, service-role keys, private certificates, or real environment files.
+4. Enforce authorization on the server and with database RLS; never rely on client-side checks alone.
+5. Validate inputs and outputs at trust boundaries.
+6. Add tests for meaningful behavior and security-sensitive changes.
+7. Do not claim a feature, deployment, test, or integration works unless it has been verified.
+8. Do not introduce paid services or material recurring costs without explicit approval.
+9. Keep the application usable across supported web and mobile targets.
+10. Document architectural decisions and breaking changes.
+11. Prefer small, reviewable, reversible changes.
 
 ## Development status
 
-This repository is the source of truth for the SULY implementation. Check the milestone documents and current repository state before making changes. Report blockers honestly and include verification evidence with each completed milestone.
+This repository is the source of truth for the standalone SULY implementation. Check the milestone documents and current repository state before making changes. Report blockers honestly and include verification evidence with each completed milestone.
 
 ## Supabase environment baseline
 
-The connected Supabase project already contains an established schema and live data. Read [the verified project baseline](./docs/operations/supabase-existing-project-baseline.md) before changing database objects or migrations. Do not recreate, reset, or replace that database.
+The connected Supabase project already contains an established schema and live data. Read [the verified project baseline](./docs/operations/supabase-existing-project-baseline.md) before changing database objects or migrations. Do not recreate or reset the database. Remove legacy/HIMS database objects only through reviewed forward migrations after checking dependencies and preserving SULY-owned data.
 
 ## Security
 
