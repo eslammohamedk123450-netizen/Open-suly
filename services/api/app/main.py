@@ -2,6 +2,7 @@ from fastapi import Depends, FastAPI
 
 from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.config import get_settings
+from app.routers.chat import router as chat_router
 
 settings = get_settings()
 
@@ -12,6 +13,8 @@ app = FastAPI(
     docs_url="/docs" if settings.app_env != "production" else None,
     redoc_url=None,
 )
+
+app.include_router(chat_router)
 
 
 @app.get("/health", tags=["health"])
