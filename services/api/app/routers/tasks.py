@@ -17,6 +17,18 @@ class CreateTaskRequest(BaseModel):
     idempotency_key: str = Field(min_length=8, max_length=128)
 
 
+class TaskPlanStep(BaseModel):
+    step_key: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$")
+    title: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=4000)
+    depends_on: list[str] = Field(default_factory=list, max_length=50)
+    input: dict[str, Any] = Field(default_factory=dict)
+
+
+class CreateTaskPlanRequest(BaseModel):
+    steps: list[TaskPlanStep] = Field(min_length=1, max_length=50)
+
+
 def _admin_client():
     client = get_supabase_admin_client()
     if client is None:
@@ -95,6 +107,57 @@ def create_task(
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Could not enqueue task.") from exc
     raise HTTPException(status_code=503, detail="Could not enqueue task.")
+
+
+
+@router.post("/{task_id}/plan")
+def plan_task(
+    task_id: UUID,
+    request: CreateTaskPlanRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    # Dependencies must reference earlier unique keys, guaranteeing a DAG.
+    seen: set[str] = set()
+    normalized: list[dict[str, Any]] = []
+    for step in request.steps:
+        if step.step_key in seen:
+            raise HTTPException(status_code=422, detail="Step keys must be unique.")
+        if len(set(step.depends_on)) != len(step.depends_on):
+            raise HTTPException(status_code=422, detail="A step cannot repeat a dependency.")
+        if any(dependency not in seen for dependency in step.depends_on):
+            raise HTTPException(
+                status_code=422,
+                detail="Each dependency must reference a step declared earlier in the plan.",
+            )
+        seen.add(step.step_key)
+        normalized.append(step.model_dump())
+
+    client = _admin_client()
+    try:
+        with client:
+            result = client.rpc(
+                "plan_task",
+                {"p_task_id": str(task_id), "p_user_id": user.id, "p_steps": normalized},
+            ).execute().data
+        if isinstance(result, list) and result:
+            return result[0]
+        if isinstance(result, dict):
+            return result
+        raise HTTPException(status_code=503, detail="The task planner returned an invalid result.")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        message = str(exc)
+        if "task_not_found" in message:
+            raise HTTPException(status_code=404, detail="Task not found.") from exc
+        if "task_already_planned" in message:
+            raise HTTPException(status_code=409, detail="Task has already been planned.") from exc
+        if any(code in message for code in (
+            "invalid_step_definition", "duplicate_step_key",
+            "dependency_must_reference_prior_step", "plan_step_count_out_of_range",
+        )):
+            raise HTTPException(status_code=422, detail="The task plan is invalid.") from exc
+        raise HTTPException(status_code=503, detail="Could not save task plan.") from exc
 
 
 @router.get("")
