@@ -78,7 +78,7 @@ This roadmap applies to the standalone SULY product.
 - AI provider gateway, streaming assistant responses, and durable task execution.
 - Android/iOS production builds.
 
-The app must continue to describe saved user messages as saved messages, not as completed AI responses, until the provider gateway is connected and tested.
+The app must continue to describe saved user messages as saved messages, not as completed AI responses, until the API is deployed, a provider is configured, and authenticated end-to-end tests pass.
 
 ### Chat API foundation
 - An authenticated `POST /v1/chat/respond` endpoint now validates that the requested conversation and user message belong to the signed-in user.
