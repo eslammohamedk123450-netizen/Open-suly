@@ -22,7 +22,7 @@ To start the Android development target:
 npm run android
 ```
 
-The client reads only the public API origin from `apps/client/.env`. Copy `apps/client/.env.example` to that path for local development. Never put provider credentials or Supabase service-role keys in Expo public variables.
+The client may contain only public configuration. Never put provider credentials or Supabase secret/service-role keys in Expo public variables.
 
 ## API
 
@@ -39,14 +39,23 @@ Health endpoint: `http://127.0.0.1:8000/health`.
 
 ## Supabase
 
-Install the Supabase CLI, then run:
+The connected project has been reset for the standalone SULY product. The first application migration is the identity foundation. Read [the clean-slate record](../operations/supabase-clean-slate.md) before making hosted database changes.
+
+For local development:
 
 ```bash
 supabase start
 supabase migration list
 ```
 
-Database schema and RLS migrations are introduced in the database/security milestone. Do not create production tables or policies manually outside versioned migrations.
+For deliberate remote inspection:
+
+```bash
+supabase link --project-ref razvryvazmqvvqkzetuo
+supabase migration list --remote
+```
+
+Do not import old migration files or execute old SQL. New schema changes must be committed as forward migrations. Never run destructive hosted reset operations as a routine development step.
 
 ## Verification
 
@@ -55,24 +64,11 @@ npm run typecheck
 npm run web
 ```
 
-For the API, install `services/api/requirements.txt`, then run:
+For the API:
 
 ```bash
 python -m compileall services/api/app
+pytest -q
 ```
 
-A successful liveness response does not prove Supabase connectivity. Database readiness must be verified separately when project credentials and local infrastructure are configured.
-
-
-## Existing hosted Supabase project
-
-The connected project is an existing populated database, not a blank database. Read [the verified baseline](../operations/supabase-existing-project-baseline.md) before running migrations.
-
-For a deliberate remote inspection, link the CLI to the existing project ref supplied in the baseline:
-
-```bash
-supabase link --project-ref razvryvazmqvvqkzetuo
-supabase migration list --remote
-```
-
-Supabase CLI v3 runs database commands against the local stack by default. A hosted change must explicitly target `--remote`, and unattended hosted changes require an explicit `--yes`. Never run `db reset` against the hosted project. Review SQL and confirm the migration history before any production schema change.
+A successful liveness response does not prove Supabase connectivity. Database readiness must be verified separately when credentials and infrastructure are configured.
