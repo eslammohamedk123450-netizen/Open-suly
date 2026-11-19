@@ -26,7 +26,7 @@ export default function SettingsScreen() {
   const [notifications, setNotifications] = useState(true);
   const [privacy, setPrivacy] = useState(true);
   const [authError, setAuthError] = useState("");
-  const { configured, loading, user, signOut } = useAuth();
+  const { configured, loading, user, profile, signOut } = useAuth();
 
   const handleSignOut = async () => {
     setAuthError("");
@@ -50,7 +50,7 @@ export default function SettingsScreen() {
           <View style={styles.profileCard}>
             <View style={styles.profileMark}><Text style={styles.profileMarkText}>S</Text></View>
             <View style={styles.profileCopy}>
-              <Text style={styles.profileTitle}>{user?.user_metadata?.display_name || user?.email || "حساب SULY"}</Text>
+              <Text style={styles.profileTitle}>{profile?.display_name || user?.email || "حساب SULY"}</Text>
               <Text style={styles.profileSubtitle}>{loading ? "جارٍ التحقق من الجلسة..." : user ? user.email : configured ? "سجّل الدخول لمزامنة حسابك وبياناتك" : "الاتصال بـ Supabase يحتاج إعداد مفاتيح التطبيق"}</Text>
             </View>
             <View style={styles.previewBadge}><Text style={styles.previewBadgeText}>{user ? "متصل" : configured ? "زائر" : "غير مهيأ"}</Text></View>
