@@ -159,3 +159,19 @@ The task database foundation is live, but it must not be described as autonomous
 - The conversation API and worker runtime are source-complete but still require CI confirmation and a deployed FastAPI/worker runtime for end-to-end testing.
 - The only built-in task operation is local text analysis; no web browsing, code execution, external integrations, or AI task handler is enabled.
 - No AI provider has been selected or configured. The chat response route returns a clear unavailable response while the provider remains disabled.
+
+
+## AI gateway hardening and chronological chat context — 2026-11-20
+
+### Implemented
+- AI gateway validates message count, allowed roles, non-empty content, and total prompt size before making a provider request.
+- Provider requests enforce the configured timeout even when an injected HTTP client is used by tests or internal callers.
+- Provider rate limits receive a safe retry-later error; raw provider response bodies and secrets are not exposed to clients.
+- Malformed, empty, and oversized provider replies are rejected before persistence.
+- Chat prompt construction now ends exactly at the requested user message. Later conversation turns are excluded when replying to an earlier message.
+- Added deterministic tests for input bounds, invalid roles, timeout mapping, rate limiting, malformed/oversized outputs, and chronological context boundaries.
+
+### Verification boundary
+- These changes are committed to `main`; CI for this new commit set must complete before calling the new tests passing.
+- No provider key was added, no paid provider was selected, and the AI gateway remains disabled by default.
+- No live assistant generation or API deployment is claimed.
