@@ -1,0 +1,54 @@
+name: Platform CI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  client:
+    name: Client typecheck and web export
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.13"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Export web build
+        run: npm run export:web --workspace @suly/client
+
+  api:
+    name: API syntax and import check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r services/api/requirements.txt
+
+      - name: Compile API
+        run: python -m compileall services/api/app
+
+      - name: Import FastAPI application
+        working-directory: services/api
+        run: python -c "from app.main import app; assert app.title == 'SULY API'"
