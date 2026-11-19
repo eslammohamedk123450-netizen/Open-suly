@@ -4,17 +4,18 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { colors } from "@/theme/tokens";
 import { BottomNavigation } from "@/components/BottomNavigation";
+import { useAuth } from "@/providers/AuthProvider";
 
 function SettingRow({ title, subtitle, value, onPress }: { title: string; subtitle: string; value?: string; onPress?: () => void }) {
   return (
-    <Pressable style={styles.row} onPress={onPress}>
+    <Pressable style={styles.row} onPress={onPress} disabled={!onPress}>
       <View style={styles.rowCopy}>
         <Text style={styles.rowTitle}>{title}</Text>
         <Text style={styles.rowSubtitle}>{subtitle}</Text>
       </View>
       <View style={styles.rowEnd}>
         {!!value && <Text style={styles.rowValue}>{value}</Text>}
-        <Text style={styles.chevron}>‹</Text>
+        {!!onPress && <Text style={styles.chevron}>‹</Text>}
       </View>
     </Pressable>
   );
@@ -24,6 +25,14 @@ export default function SettingsScreen() {
   const [language, setLanguage] = useState<"العربية" | "English">("العربية");
   const [notifications, setNotifications] = useState(true);
   const [privacy, setPrivacy] = useState(true);
+  const [authError, setAuthError] = useState("");
+  const { configured, loading, user, signOut } = useAuth();
+
+  const handleSignOut = async () => {
+    setAuthError("");
+    const error = await signOut();
+    if (error) setAuthError(error);
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -34,26 +43,27 @@ export default function SettingsScreen() {
             <Text style={styles.headerTitle}>الإعدادات</Text>
             <Text style={styles.headerSubtitle}>تحكم في تجربة SULY</Text>
           </View>
-          <Pressable style={styles.backButton} onPress={() => router.replace("/")}>
-            <Text style={styles.backText}>→</Text>
-          </Pressable>
+          <Pressable style={styles.backButton} onPress={() => router.replace("/")}><Text style={styles.backText}>→</Text></Pressable>
         </View>
 
         <ScrollView contentContainerStyle={styles.content}>
           <View style={styles.profileCard}>
             <View style={styles.profileMark}><Text style={styles.profileMarkText}>S</Text></View>
             <View style={styles.profileCopy}>
-              <Text style={styles.profileTitle}>حساب SULY</Text>
-              <Text style={styles.profileSubtitle}>إعدادات الحساب ستظهر بعد تفعيل نظام الدخول</Text>
+              <Text style={styles.profileTitle}>{user?.user_metadata?.display_name || user?.email || "حساب SULY"}</Text>
+              <Text style={styles.profileSubtitle}>{loading ? "جارٍ التحقق من الجلسة..." : user ? user.email : configured ? "سجّل الدخول لمزامنة حسابك وبياناتك" : "الاتصال بـ Supabase يحتاج إعداد مفاتيح التطبيق"}</Text>
             </View>
-            <View style={styles.previewBadge}><Text style={styles.previewBadgeText}>قريبًا</Text></View>
+            <View style={styles.previewBadge}><Text style={styles.previewBadgeText}>{user ? "متصل" : configured ? "زائر" : "غير مهيأ"}</Text></View>
           </View>
+          {!user && configured && <Pressable style={styles.primaryButton} onPress={() => router.push("/auth")}><Text style={styles.primaryButtonText}>تسجيل الدخول أو إنشاء حساب</Text></Pressable>}
+          {!!user && <Pressable style={styles.secondaryButton} onPress={handleSignOut}><Text style={styles.secondaryButtonText}>تسجيل الخروج</Text></Pressable>}
+          {!!authError && <Text style={styles.errorText}>{authError}</Text>}
 
           <Text style={styles.sectionTitle}>التفضيلات</Text>
           <View style={styles.group}>
             <SettingRow title="اللغة" subtitle="لغة واجهة التطبيق" value={language} onPress={() => setLanguage((v) => v === "العربية" ? "English" : "العربية")} />
             <View style={styles.separator} />
-            <SettingRow title="المظهر" subtitle="هوية Midnight Gold" value="داكن" onPress={() => {}} />
+            <SettingRow title="المظهر" subtitle="هوية Midnight Gold" value="داكن" />
             <View style={styles.separator} />
             <SettingRow title="الإشعارات" subtitle="تنبيهات المهام والتحديثات" value={notifications ? "مفعّلة" : "متوقفة"} onPress={() => setNotifications((v) => !v)} />
           </View>
@@ -73,7 +83,6 @@ export default function SettingsScreen() {
           </View>
           <Text style={styles.footer}>SULY TECHNOLOGIES · 2026</Text>
         </ScrollView>
-
         <BottomNavigation active="settings" />
       </View>
     </SafeAreaView>
@@ -85,37 +94,18 @@ const styles = StyleSheet.create({
   page: { flex: 1, direction: "rtl", width: "100%", maxWidth: 1100, alignSelf: "center", backgroundColor: colors.background },
   header: { minHeight: 72, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: colors.border },
   backButton: { width: 40, height: 40, borderRadius: 13, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border },
-  backText: { color: colors.gold, fontSize: 22 },
-  headerTitleWrap: { flex: 1, alignItems: "flex-end", marginRight: 14 },
-  headerTitle: { color: colors.text, fontSize: 18, fontWeight: "800" },
-  headerSubtitle: { color: colors.muted, fontSize: 11, marginTop: 3 },
+  backText: { color: colors.gold, fontSize: 22 }, headerTitleWrap: { flex: 1, alignItems: "flex-end", marginRight: 14 },
+  headerTitle: { color: colors.text, fontSize: 18, fontWeight: "800" }, headerSubtitle: { color: colors.muted, fontSize: 11, marginTop: 3 },
   logo: { width: 40, height: 40, borderRadius: 13, borderWidth: 1, borderColor: colors.gold, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
-  logoText: { color: colors.gold, fontSize: 23, fontWeight: "800" },
-  content: { paddingHorizontal: 20, paddingTop: 22, paddingBottom: 28, width: "100%", maxWidth: 760, alignSelf: "center" },
-  profileCard: { minHeight: 86, borderRadius: 18, padding: 15, borderWidth: 1, borderColor: colors.goldDark, backgroundColor: colors.surface, flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 26 },
-  profileMark: { width: 46, height: 46, borderRadius: 15, backgroundColor: colors.surfaceSecondary, alignItems: "center", justifyContent: "center" },
-  profileMarkText: { color: colors.gold, fontSize: 23, fontWeight: "800" },
-  profileCopy: { flex: 1 },
-  profileTitle: { color: colors.text, fontSize: 14, fontWeight: "700", textAlign: "right" },
-  profileSubtitle: { color: colors.muted, fontSize: 10, marginTop: 5, textAlign: "right" },
-  previewBadge: { borderRadius: 20, backgroundColor: colors.surfaceSecondary, paddingHorizontal: 10, paddingVertical: 6 },
-  previewBadgeText: { color: colors.gold, fontSize: 10 },
-  sectionTitle: { color: colors.gold, fontSize: 13, fontWeight: "700", textAlign: "right", marginBottom: 10, marginTop: 8 },
-  group: { borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14, marginBottom: 22 },
-  row: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 11 },
-  rowCopy: { flex: 1 },
-  rowTitle: { color: colors.text, fontSize: 13, fontWeight: "600", textAlign: "right" },
-  rowSubtitle: { color: colors.muted, fontSize: 10, lineHeight: 17, textAlign: "right", marginTop: 4 },
-  rowEnd: { flexDirection: "row", alignItems: "center", gap: 9 },
-  rowValue: { color: colors.faint, fontSize: 10 },
-  chevron: { color: colors.gold, fontSize: 21 },
-  separator: { height: 1, backgroundColor: colors.border },
+  logoText: { color: colors.gold, fontSize: 23, fontWeight: "800" }, content: { paddingHorizontal: 20, paddingTop: 22, paddingBottom: 28, width: "100%", maxWidth: 760, alignSelf: "center" },
+  profileCard: { minHeight: 86, borderRadius: 18, padding: 15, borderWidth: 1, borderColor: colors.goldDark, backgroundColor: colors.surface, flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14 },
+  profileMark: { width: 46, height: 46, borderRadius: 15, backgroundColor: colors.surfaceSecondary, alignItems: "center", justifyContent: "center" }, profileMarkText: { color: colors.gold, fontSize: 23, fontWeight: "800" },
+  profileCopy: { flex: 1 }, profileTitle: { color: colors.text, fontSize: 14, fontWeight: "700", textAlign: "right" }, profileSubtitle: { color: colors.muted, fontSize: 10, marginTop: 5, textAlign: "right" },
+  previewBadge: { borderRadius: 20, backgroundColor: colors.surfaceSecondary, paddingHorizontal: 10, paddingVertical: 6 }, previewBadgeText: { color: colors.gold, fontSize: 10 },
+  primaryButton: { minHeight: 48, borderRadius: 14, backgroundColor: colors.gold, alignItems: "center", justifyContent: "center", marginBottom: 22 }, primaryButtonText: { color: colors.background, fontSize: 13, fontWeight: "800" },
+  secondaryButton: { minHeight: 44, borderRadius: 14, borderWidth: 1, borderColor: colors.goldDark, alignItems: "center", justifyContent: "center", marginBottom: 12 }, secondaryButtonText: { color: colors.gold, fontSize: 13, fontWeight: "700" }, errorText: { color: "#F08B8B", textAlign: "right", fontSize: 11, marginBottom: 12 },
+  sectionTitle: { color: colors.gold, fontSize: 13, fontWeight: "700", textAlign: "right", marginBottom: 10, marginTop: 8 }, group: { borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14, marginBottom: 22 },
+  row: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 11 }, rowCopy: { flex: 1 }, rowTitle: { color: colors.text, fontSize: 13, fontWeight: "600", textAlign: "right" }, rowSubtitle: { color: colors.muted, fontSize: 10, lineHeight: 17, textAlign: "right", marginTop: 4 },
+  rowEnd: { flexDirection: "row", alignItems: "center", gap: 9 }, rowValue: { color: colors.faint, fontSize: 10 }, chevron: { color: colors.gold, fontSize: 21 }, separator: { height: 1, backgroundColor: colors.border },
   footer: { color: colors.faint, fontSize: 9, textAlign: "center", letterSpacing: 2, marginTop: 5 },
-  bottomNav: { minHeight: 64, borderTopWidth: 1, borderTopColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "space-around" },
-  navItem: { flex: 1, alignItems: "center", gap: 3 },
-  navItemActive: { flex: 1, alignItems: "center", gap: 3 },
-  navIcon: { color: colors.faint, fontSize: 18 },
-  navIconActive: { color: colors.gold, fontSize: 18 },
-  navLabel: { color: colors.faint, fontSize: 10 },
-  navLabelActive: { color: colors.gold, fontSize: 10, fontWeight: "700" },
 });
