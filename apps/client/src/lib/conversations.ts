@@ -63,7 +63,6 @@ export async function sendUserMessage(conversationId: string, content: string): 
   const { data, error } = await client.from("messages").insert({
     conversation_id: conversationId,
     user_id: userId,
-    role: "user",
     content: cleanContent,
   }).select("*").single();
   if (error) throw error;
