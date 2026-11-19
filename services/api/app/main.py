@@ -1,5 +1,6 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 
+from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -21,3 +22,9 @@ async def health() -> dict[str, str]:
         "service": "suly-api",
         "version": app.version,
     }
+
+
+@app.get("/v1/auth/me", tags=["auth"])
+def auth_me(user: AuthenticatedUser = Depends(get_current_user)) -> dict[str, str | None]:
+    """Return the identity validated by Supabase Auth; never expose user metadata."""
+    return {"id": user.id, "email": user.email}
