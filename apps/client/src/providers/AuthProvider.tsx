@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
+import { Linking } from "react-native";
+import * as ExpoLinking from "expo-linking";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 type AuthContextValue = {
@@ -25,6 +27,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     let alive = true;
+    const handleDeepLink = async (url: string | null) => {
+      if (!url || !url.includes("code=")) return;
+      try {
+        await supabase.auth.exchangeCodeForSession(url);
+      } catch {
+        // The normal session listener below remains the source of truth.
+      }
+    };
+
     supabase.auth.getSession().then(({ data, error }) => {
       if (!alive) return;
       if (!error) setSession(data.session);
@@ -36,10 +47,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
     });
+    Linking.getInitialURL().then(handleDeepLink).catch(() => undefined);
+    const linkSubscription = Linking.addEventListener("url", ({ url }) => { void handleDeepLink(url); });
 
     return () => {
       alive = false;
       subscription.unsubscribe();
+      linkSubscription.remove();
     };
   }, []);
 
@@ -58,7 +72,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
-        options: { data: { display_name: displayName.trim() } },
+        options: {
+          data: { display_name: displayName.trim() },
+          emailRedirectTo: ExpoLinking.createURL("/auth"),
+        },
       });
       return {
         error: error?.message ?? null,
