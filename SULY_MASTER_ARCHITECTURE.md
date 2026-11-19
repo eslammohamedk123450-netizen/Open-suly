@@ -1,13 +1,11 @@
-# SULY — Fresh Product Architecture
+# SULY — Product Architecture
 
 **Status:** New product foundation  
 **Product:** SULY — More Than AI. Your Intelligent Partner.
 
-## 1. Product boundary
+## 1. Product identity
 
-SULY is a standalone AI application designed and implemented from a clean slate. Previous applications and their internal systems are retired and must not be treated as a source of business logic or architecture.
-
-The only reusable elements are SULY's name, brand assets, official domain, and approved visual direction for the home screen, settings, navigation, cards, and buttons. HIMS is out of scope and must never be reintroduced.
+SULY is a standalone AI application built from a clean foundation. Reuse the SULY name, logo/monogram, official domain, and approved visual direction for the home screen, settings, navigation, cards, and buttons.
 
 ## 2. Product experience
 
@@ -70,8 +68,7 @@ The first release should not claim full autonomous browser or coding capabilitie
 ## 7. Repository and database policy
 
 - `main` is the only working branch.
-- The connected Supabase project has been reset for the new product. Keep Supabase-managed schemas intact.
-- Do not import old migrations or run old SQL.
+- The connected Supabase project has been reset for SULY. Keep Supabase-managed schemas intact.
 - New schema changes must be introduced as forward migrations committed to this repository.
 - Never run `db reset` or destructive hosted operations as a routine development step.
 - Document the exact state of migrations and the remote schema after each database milestone.
