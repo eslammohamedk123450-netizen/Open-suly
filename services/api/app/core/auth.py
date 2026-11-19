@@ -2,7 +2,6 @@ from dataclasses import dataclass
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from supabase import SupabaseAPIError, SupabaseError
 
 from app.core.supabase import get_supabase_client
 
@@ -40,18 +39,16 @@ def get_current_user(
         with client:
             response = client.auth.get_user(credentials.credentials)
             user = response.user
-    except SupabaseAPIError as exc:
-        if getattr(exc, "status_code", None) in (401, 403):
+    except Exception as exc:
+        # supabase-py delegates Auth errors to its GoTrue dependency and does
+        # not expose a stable SupabaseAPIError symbol across releases.
+        error_status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
+        if error_status in (401, 403):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired access token",
                 headers={"WWW-Authenticate": "Bearer"},
             ) from exc
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Authentication service is temporarily unavailable",
-        ) from exc
-    except SupabaseError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Authentication service is temporarily unavailable",
