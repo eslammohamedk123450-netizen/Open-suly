@@ -104,8 +104,8 @@ The chat endpoint is a non-streaming first slice. It is not considered operation
   - `20261119233650_tighten_task_read_permissions`
 
 ### Not yet implemented / verified
-- No continuously running worker process is deployed; queued tasks remain queued until a worker host is configured.
-- No DAG planner or model-generated plan is enabled yet.
+- An opt-in polling worker runtime and one deterministic allow-listed handler exist, but no worker process is deployed or running on a host.
+- The bounded DAG plan API is implemented; model-generated planning is not enabled yet.
 - Live multi-worker concurrency, lease-expiry, retry-timing, cancellation, and populated-task integration tests are still pending.
 - Task API requires a deployed FastAPI service with server-only Supabase secret credentials.
 - No provider key or paid service has been configured.
@@ -137,7 +137,25 @@ The task database foundation is live, but it must not be described as autonomous
 
 ### Still pending / explicitly not claimed
 - No continuously running worker is deployed or hosted.
-- No handler registry, provider key, or AI provider has been enabled.
+- Only the deterministic `text.analyze` handler is registered; no provider key or AI provider has been enabled.
 - No live multi-worker race test or populated-task end-to-end execution test has run.
 - Long-running handlers must renew their lease and stop immediately if renewal fails.
 - The worker adapter is infrastructure, not yet an autonomous agent.
+
+
+## Conversation API and first worker runtime — 2026-11-20
+
+### Implemented
+- Added authenticated conversation list/create endpoints.
+- Added authenticated message history and user-message creation endpoints.
+- Every conversation/message query is scoped by the verified user's ID; the server only accepts user-role message creation through this API.
+- Added request limits and validation for pagination, conversation titles, and message content.
+- Added an opt-in polling worker process with bounded idle backoff and graceful SIGINT/SIGTERM shutdown.
+- Worker execution is allow-listed: the first built-in operation is deterministic `text.analyze`; unknown operations fail closed and enter the bounded retry path.
+- Worker startup is disabled by default and requires server-only Supabase credentials. The API process does not silently start a worker.
+- Added tests for conversation endpoint authentication/validation and worker operation allow-list behavior.
+
+### Not yet deployed / verified
+- The conversation API and worker runtime are source-complete but still require CI confirmation and a deployed FastAPI/worker runtime for end-to-end testing.
+- The only built-in task operation is local text analysis; no web browsing, code execution, external integrations, or AI task handler is enabled.
+- No AI provider has been selected or configured. The chat response route returns a clear unavailable response while the provider remains disabled.
