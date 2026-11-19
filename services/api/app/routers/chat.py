@@ -151,3 +151,155 @@ async def respond_to_message(
         raise
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Chat storage is temporarily unavailable.") from exc
+
+
+
+class CreateConversationRequest(BaseModel):
+    title: str | None = None
+
+
+class AddUserMessageRequest(BaseModel):
+    content: str
+
+
+def _chat_admin():
+    admin = get_supabase_admin_client()
+    if admin is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Server-side Supabase secret is not configured.",
+        )
+    return admin
+
+
+@router.get("/conversations")
+def list_conversations(
+    limit: int = 30,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    if not 1 <= limit <= 100:
+        raise HTTPException(status_code=422, detail="Limit must be between 1 and 100.")
+    admin = _chat_admin()
+    try:
+        with admin:
+            rows = (
+                admin.table("conversations")
+                .select("id,user_id,title,created_at,updated_at")
+                .eq("user_id", user.id)
+                .order("updated_at", desc=True)
+                .limit(limit)
+                .execute()
+                .data
+            )
+        return {"items": rows or []}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Could not load conversations.") from exc
+
+
+@router.post("/conversations", status_code=status.HTTP_201_CREATED)
+def create_conversation(
+    request: CreateConversationRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    title = (request.title or "محادثة جديدة").strip()
+    if not title or len(title) > 200:
+        raise HTTPException(status_code=422, detail="Conversation title must be 1–200 characters.")
+    admin = _chat_admin()
+    try:
+        with admin:
+            rows = (
+                admin.table("conversations")
+                .insert({"user_id": user.id, "title": title})
+                .execute()
+                .data
+            )
+        if not rows:
+            raise HTTPException(status_code=503, detail="Conversation was not created.")
+        return rows[0]
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Could not create conversation.") from exc
+
+
+@router.get("/conversations/{conversation_id}/messages")
+def list_conversation_messages(
+    conversation_id: UUID,
+    limit: int = 100,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    if not 1 <= limit <= 200:
+        raise HTTPException(status_code=422, detail="Limit must be between 1 and 200.")
+    admin = _chat_admin()
+    try:
+        with admin:
+            owned = (
+                admin.table("conversations")
+                .select("id")
+                .eq("id", str(conversation_id))
+                .eq("user_id", user.id)
+                .limit(1)
+                .execute()
+                .data
+            )
+            if not owned:
+                raise HTTPException(status_code=404, detail="Conversation not found.")
+            rows = (
+                admin.table("messages")
+                .select("id,conversation_id,user_id,role,content,metadata,created_at")
+                .eq("conversation_id", str(conversation_id))
+                .eq("user_id", user.id)
+                .order("created_at", desc=False)
+                .limit(limit)
+                .execute()
+                .data
+            )
+        return {"items": rows or []}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Could not load messages.") from exc
+
+
+@router.post("/conversations/{conversation_id}/messages", status_code=status.HTTP_201_CREATED)
+def add_user_message(
+    conversation_id: UUID,
+    request: AddUserMessageRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    content = request.content.strip()
+    if not content or len(content) > 100000:
+        raise HTTPException(status_code=422, detail="Message content must be 1–100000 characters.")
+    admin = _chat_admin()
+    try:
+        with admin:
+            owned = (
+                admin.table("conversations")
+                .select("id,title")
+                .eq("id", str(conversation_id))
+                .eq("user_id", user.id)
+                .limit(1)
+                .execute()
+                .data
+            )
+            if not owned:
+                raise HTTPException(status_code=404, detail="Conversation not found.")
+            rows = (
+                admin.table("messages")
+                .insert({
+                    "conversation_id": str(conversation_id),
+                    "user_id": user.id,
+                    "role": "user",
+                    "content": content,
+                    "metadata": {},
+                })
+                .execute()
+                .data
+            )
+        if not rows:
+            raise HTTPException(status_code=503, detail="Message was not saved.")
+        return rows[0]
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Could not save message.") from exc
