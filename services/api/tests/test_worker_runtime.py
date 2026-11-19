@@ -54,3 +54,66 @@ def test_runtime_stops_without_claiming_work_after_stop_signal():
 def test_runtime_rejects_unsafe_poll_intervals():
     with pytest.raises(ValueError):
         WorkerRuntime(object(), poll_interval_seconds=0)
+
+
+from types import SimpleNamespace
+
+from app.services.task_worker import TaskWorker
+
+
+class _RpcSequence:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = []
+    def rpc(self, name, args):
+        self.calls.append((name, args))
+        value = self.responses.pop(0)
+        return SimpleNamespace(execute=lambda: SimpleNamespace(data=value))
+
+
+STEP_DATA = {
+    "step_id": "00000000-0000-0000-0000-000000000001",
+    "task_id": "00000000-0000-0000-0000-000000000002",
+    "user_id": "00000000-0000-0000-0000-000000000003",
+    "step_key": "analyze_text",
+    "title": "Analyze supplied text",
+    "description": "",
+    "input": {"operation": "text.analyze", "text": "SULY agent runtime"},
+    "attempt_count": 1,
+    "max_attempts": 3,
+    "lease_token": "00000000-0000-0000-0000-000000000004",
+    "lease_expires_at": "2026-11-20T12:00:00+00:00",
+}
+
+
+def test_planned_step_executes_through_claim_dispatch_and_checkpoint():
+    rpc = _RpcSequence([STEP_DATA, True, True])
+    worker = TaskWorker(rpc, "integration-test-worker")
+
+    result = worker.run_once(dispatch)
+
+    assert result == "completed"
+    assert [call[0] for call in rpc.calls] == [
+        "claim_task_step",
+        "renew_task_step_lease",
+        "complete_task_step",
+    ]
+    committed = rpc.calls[2][1]["p_output"]
+    assert committed["operation"] == "text.analyze"
+    assert committed["word_count"] == 3
+    assert committed["character_count"] == len("SULY agent runtime")
+
+
+def test_unsupported_planned_operation_is_failed_not_completed():
+    rpc = _RpcSequence([
+        {**STEP_DATA, "input": {"operation": "shell.exec", "command": "unsafe"}},
+        True,
+        {"accepted": True, "step_status": "pending"},
+    ])
+    worker = TaskWorker(rpc, "integration-test-worker")
+
+    result = worker.run_once(dispatch)
+
+    assert result == "failed_or_retry_scheduled"
+    assert rpc.calls[-1][0] == "fail_task_step"
+    assert rpc.calls[-1][1]["p_error_code"] == "ValueError"
