@@ -56,7 +56,7 @@ async def respond_to_message(
                 .eq("conversation_id", str(request.conversation_id))
                 .eq("user_id", user.id)
                 .order("created_at", desc=True)
-                .limit(40)
+                .limit(30)
                 .execute()
                 .data
             )
@@ -86,11 +86,18 @@ async def respond_to_message(
                     ),
                 }
             ]
-            prompt_messages.extend(
-                {"role": row["role"], "content": row["content"]}
-                for row in messages
-                if row["role"] in ("user", "assistant")
-            )
+            # Bound prompt size before sending user content to any provider.
+            context_messages: list[dict[str, str]] = []
+            remaining_chars = 24000
+            for row in reversed(messages[-30:]):
+                if remaining_chars <= 0:
+                    break
+                if row["role"] not in ("user", "assistant"):
+                    continue
+                content = row["content"][-min(8000, remaining_chars):]
+                context_messages.append({"role": row["role"], "content": content})
+                remaining_chars -= len(content)
+            prompt_messages.extend(reversed(context_messages))
 
             try:
                 answer = await generate_reply(prompt_messages)
