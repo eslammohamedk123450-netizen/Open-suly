@@ -17,6 +17,28 @@ class AIProviderTimeout(RuntimeError):
     """Raised when the provider exceeds the configured timeout."""
 
 
+_ALLOWED_ROLES = {"system", "user", "assistant"}
+_MAX_MESSAGES = 40
+_MAX_INPUT_CHARS = 48000
+_MAX_REPLY_CHARS = 60000
+
+
+def _validate_messages(messages: list[dict[str, str]]) -> None:
+    if not isinstance(messages, list) or not 1 <= len(messages) <= _MAX_MESSAGES:
+        raise AIProviderError("The conversation context is outside the supported limits.")
+    total_chars = 0
+    for message in messages:
+        if not isinstance(message, dict):
+            raise AIProviderError("The conversation context contains an invalid message.")
+        role = message.get("role")
+        content = message.get("content")
+        if role not in _ALLOWED_ROLES or not isinstance(content, str) or not content.strip():
+            raise AIProviderError("The conversation context contains an invalid message.")
+        total_chars += len(content)
+        if total_chars > _MAX_INPUT_CHARS:
+            raise AIProviderError("The conversation context is too large.")
+
+
 async def generate_reply(
     messages: list[dict[str, str]],
     *,
@@ -31,6 +53,7 @@ async def generate_reply(
     ):
         raise AIProviderNotConfigured("No AI provider is configured.")
 
+    _validate_messages(messages)
     url = f"{settings.ai_base_url.rstrip('/')}/chat/completions"
     payload: dict[str, Any] = {
         "model": settings.ai_model,
@@ -45,7 +68,12 @@ async def generate_reply(
     }
 
     async def send(session: httpx.AsyncClient) -> str:
-        response = await session.post(url, headers=headers, json=payload)
+        response = await session.post(
+            url,
+            headers=headers,
+            json=payload,
+            timeout=settings.ai_timeout_seconds,
+        )
         response.raise_for_status()
         try:
             body = response.json()
@@ -61,24 +89,22 @@ async def generate_reply(
             )
         if not isinstance(content, str) or not content.strip():
             raise AIProviderError("The AI provider returned an empty response.")
-        return content.strip()
-
-    if client is not None:
-        try:
-            return await send(client)
-        except httpx.TimeoutException as exc:
-            raise AIProviderTimeout("The AI provider timed out.") from exc
-        except httpx.HTTPStatusError as exc:
-            raise AIProviderError(f"The AI provider returned HTTP {exc.response.status_code}.") from exc
-        except httpx.RequestError as exc:
-            raise AIProviderError("The AI provider could not be reached.") from exc
+        content = content.strip()
+        if len(content) > _MAX_REPLY_CHARS:
+            raise AIProviderError("The AI provider response exceeded the supported limit.")
+        return content
 
     try:
+        if client is not None:
+            return await send(client)
         async with httpx.AsyncClient(timeout=settings.ai_timeout_seconds) as session:
             return await send(session)
     except httpx.TimeoutException as exc:
         raise AIProviderTimeout("The AI provider timed out.") from exc
     except httpx.HTTPStatusError as exc:
-        raise AIProviderError(f"The AI provider returned HTTP {exc.response.status_code}.") from exc
+        status_code = exc.response.status_code
+        if status_code == 429:
+            raise AIProviderError("The AI provider is rate-limiting requests. Try again shortly.") from exc
+        raise AIProviderError(f"The AI provider returned HTTP {status_code}.") from exc
     except httpx.RequestError as exc:
         raise AIProviderError("The AI provider could not be reached.") from exc
