@@ -64,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     let active = true;
+    setProfile(null);
     supabase.from("profiles").select("display_name, avatar_url, locale").eq("id", session.user.id).maybeSingle()
       .then(({ data, error }) => {
         if (active && !error) setProfile(data);
