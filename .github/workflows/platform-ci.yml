@@ -27,11 +27,14 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Check Expo dependency compatibility
+        run: npx expo install --check --workspace @suly/client
+
       - name: Export web build
         run: npm run export:web --workspace @suly/client
 
   api:
-    name: API syntax and import check
+    name: API tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -43,11 +46,11 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -r services/api/requirements.txt
+        run: pip install -r services/api/requirements-dev.txt
 
       - name: Compile API
         run: python -m compileall services/api/app
 
-      - name: Import FastAPI application
+      - name: Run API tests
         working-directory: services/api
-        run: python -c "from app.main import app; assert app.title == 'SULY API'"
+        run: pytest -q
