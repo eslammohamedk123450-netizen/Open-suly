@@ -53,16 +53,17 @@ def test_claim_parses_lease_without_exposing_it_in_task_input():
 
 
 def test_run_once_commits_output_using_the_claimed_token():
-    client = FakeRpc([STEP, True])
+    client = FakeRpc([STEP, True, True])
     worker = TaskWorker(client, "worker-a")
     result = worker.run_once(lambda step: {"answer": "done"})
     assert result == "completed"
-    assert client.calls[1][0] == "complete_task_step"
-    assert client.calls[1][1]["p_lease_token"] == STEP["lease_token"]
+    assert client.calls[1][0] == "renew_task_step_lease"
+    assert client.calls[2][0] == "complete_task_step"
+    assert client.calls[2][1]["p_lease_token"] == STEP["lease_token"]
 
 
 def test_run_once_records_handler_failure():
-    client = FakeRpc([STEP, {"accepted": True, "step_status": "pending"}])
+    client = FakeRpc([STEP, True, {"accepted": True, "step_status": "pending"}])
     worker = TaskWorker(client, "worker-a")
     def fail(_step):
         raise RuntimeError("temporary provider timeout")
@@ -72,6 +73,7 @@ def test_run_once_records_handler_failure():
 
 
 def test_run_once_reports_stale_lease_without_claiming_success():
-    client = FakeRpc([STEP, False])
+    client = FakeRpc([STEP, True, False])
     worker = TaskWorker(client, "worker-a")
     assert worker.run_once(lambda _step: {"ok": True}) == "lease_lost"
+    assert client.calls[1][0] == "renew_task_step_lease"
