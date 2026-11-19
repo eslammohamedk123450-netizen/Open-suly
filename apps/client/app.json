@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "SULY",
+    "slug": "suly",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "scheme": "suly",
+    "experiments": {
+      "typedRoutes": true
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "web": {
+      "bundler": "metro",
+      "name": "SULY",
+      "shortName": "SULY"
+    },
+    "android": {
+      "package": "com.suly.technologies"
+    },
+    "ios": {
+      "bundleIdentifier": "com.suly.technologies"
+    }
+  }
+}
