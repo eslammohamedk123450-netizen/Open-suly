@@ -68,8 +68,8 @@ def test_run_once_records_handler_failure():
     def fail(_step):
         raise RuntimeError("temporary provider timeout")
     assert worker.run_once(fail) == "failed_or_retry_scheduled"
-    assert client.calls[1][0] == "fail_task_step"
-    assert client.calls[1][1]["p_error_code"] == "RuntimeError"
+    assert client.calls[2][0] == "fail_task_step"
+    assert client.calls[2][1]["p_error_code"] == "RuntimeError"
 
 
 def test_run_once_reports_stale_lease_without_claiming_success():
