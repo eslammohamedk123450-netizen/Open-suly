@@ -131,7 +131,7 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  page: { flex: 1, backgroundColor: colors.background, width: "100%", maxWidth: 1100, alignSelf: "center" },
+  page: { flex: 1, direction: "rtl", backgroundColor: colors.background, width: "100%", maxWidth: 1100, alignSelf: "center" },
   header: { minHeight: 72, paddingHorizontal: 22, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: colors.border },
   brand: { flexDirection: "row", alignItems: "center", gap: 11 },
   logo: { width: 42, height: 42, borderRadius: 14, borderWidth: 1, borderColor: colors.gold, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
