@@ -5,6 +5,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { colors } from "@/theme/tokens";
 import { useAuth } from "@/providers/AuthProvider";
 import { listMessages, sendUserMessage, type ChatMessage } from "@/lib/conversations";
+import { requestAssistantReply } from "@/lib/chat-api";
 
 export default function ConversationScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -14,6 +15,7 @@ export default function ConversationScreen() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [engineNotice, setEngineNotice] = useState("");
 
   useEffect(() => {
     if (!user) { setMessages([]); setLoading(false); return; }
@@ -21,7 +23,20 @@ export default function ConversationScreen() {
     setMessages([]);
     setError("");
     setLoading(true);
-    listMessages(id).then((rows) => { if (active) setMessages(rows); })
+    listMessages(id).then(async (rows) => {
+      if (!active) return;
+      setMessages(rows);
+      const lastUserMessage = [...rows].reverse().find((row) => row.role === "user");
+      const hasReply = lastUserMessage && rows.some((row) => row.role === "assistant" && row.metadata?.in_reply_to === lastUserMessage.id);
+      if (lastUserMessage && !hasReply) {
+        try {
+          const reply = await requestAssistantReply(id, lastUserMessage.id);
+          if (active) setMessages((current) => current.some((row) => row.id === reply.id) ? current : [...current, reply]);
+        } catch (e) {
+          if (active) setEngineNotice(e instanceof Error ? e.message : "محرك الردود غير متاح حاليًا.");
+        }
+      }
+    })
       .catch((e) => { if (active) setError(e instanceof Error ? e.message : "تعذر تحميل المحادثة."); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -34,9 +49,16 @@ export default function ConversationScreen() {
     setDraft("");
     setSending(true);
     setError("");
+    setEngineNotice("");
     try {
       const saved = await sendUserMessage(id, content);
       setMessages((current) => [...current, saved]);
+      try {
+        const reply = await requestAssistantReply(id, saved.id);
+        setMessages((current) => current.some((row) => row.id === reply.id) ? current : [...current, reply]);
+      } catch (replyError) {
+        setEngineNotice(replyError instanceof Error ? replyError.message : "تم حفظ الرسالة، لكن الرد غير متاح حاليًا.");
+      }
     } catch (e) {
       setDraft(content);
       setError(e instanceof Error ? e.message : "تعذر حفظ الرسالة.");
@@ -61,7 +83,7 @@ export default function ConversationScreen() {
             </View>
           ))}
           {!!error && <Text style={styles.error}>{error}</Text>}
-          {messages.length > 0 && <Text style={styles.engineNotice}>تم حفظ رسائلك. محرك الردود الذكي لم يتم توصيله بعد.</Text>}
+          {!!engineNotice && <Text style={styles.engineNotice}>{engineNotice}</Text>}
         </ScrollView>
         <View style={styles.composer}>
           <TextInput value={draft} onChangeText={setDraft} placeholder="اكتب رسالتك..." placeholderTextColor={colors.faint} style={styles.input} multiline textAlign="right" textAlignVertical="center" />
