@@ -1,7 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { Linking } from "react-native";
-import * as ExpoLinking from "expo-linking";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 type AuthContextValue = {
@@ -9,6 +8,7 @@ type AuthContextValue = {
   loading: boolean;
   session: Session | null;
   user: User | null;
+  profile: { display_name: string | null; avatar_url: string | null; locale: "ar" | "en" } | null;
   signIn: (email: string, password: string) => Promise<string | null>;
   signUp: (email: string, password: string, displayName: string) => Promise<{ error: string | null; needsEmailConfirmation: boolean }>;
   signOut: () => Promise<string | null>;
@@ -19,6 +19,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<{ display_name: string | null; avatar_url: string | null; locale: "ar" | "en" } | null>(null);
 
   useEffect(() => {
     if (!supabase) {
@@ -57,11 +58,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!supabase || !session?.user.id) {
+      setProfile(null);
+      return;
+    }
+    let active = true;
+    supabase.from("profiles").select("display_name, avatar_url, locale").eq("id", session.user.id).maybeSingle()
+      .then(({ data, error }) => {
+        if (active && !error) setProfile(data);
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [session?.user.id]);
+
   const value = useMemo<AuthContextValue>(() => ({
     configured: isSupabaseConfigured,
     loading,
     session,
     user: session?.user ?? null,
+    profile,
     signIn: async (email, password) => {
       if (!supabase) return "إعدادات الاتصال بـ Supabase غير مكتملة.";
       const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
@@ -74,7 +90,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
         options: {
           data: { display_name: displayName.trim() },
-          emailRedirectTo: ExpoLinking.createURL("/auth"),
         },
       });
       return {
@@ -87,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { error } = await supabase.auth.signOut();
       return error?.message ?? null;
     },
-  }), [loading, session]);
+  }), [loading, profile, session]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
