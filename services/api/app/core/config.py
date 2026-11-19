@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     ai_timeout_seconds: float = Field(default=45.0, ge=5.0, le=180.0)
     ai_max_output_tokens: int = Field(default=1200, ge=64, le=8192)
 
+    # Worker runtime is opt-in; never starts merely because the API boots.
+    worker_enabled: bool = False
+    worker_lease_seconds: int = Field(default=90, ge=15, le=900)
+    worker_poll_interval_seconds: float = Field(default=2.0, ge=0.1, le=60.0)
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
