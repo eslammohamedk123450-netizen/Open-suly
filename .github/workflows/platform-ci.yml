@@ -28,7 +28,8 @@ jobs:
         run: npm run typecheck
 
       - name: Check Expo dependency compatibility
-        run: npx expo install --check --workspace @suly/client
+        working-directory: apps/client
+        run: npx expo install --check
 
       - name: Export web build
         run: npm run export:web --workspace @suly/client
