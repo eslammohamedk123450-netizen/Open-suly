@@ -16,8 +16,10 @@ export default function ConversationScreen() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!user) { setLoading(false); return; }
+    if (!user) { setMessages([]); setLoading(false); return; }
     let active = true;
+    setMessages([]);
+    setError("");
     setLoading(true);
     listMessages(id).then((rows) => { if (active) setMessages(rows); })
       .catch((e) => { if (active) setError(e instanceof Error ? e.message : "تعذر تحميل المحادثة."); })
