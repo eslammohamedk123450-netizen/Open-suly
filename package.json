@@ -1,0 +1,17 @@
+{
+  "name": "suly-platform",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/client"
+  ],
+  "scripts": {
+    "dev": "npm run start --workspace @suly/client",
+    "web": "npm run web --workspace @suly/client",
+    "android": "npm run android --workspace @suly/client",
+    "typecheck": "npm run typecheck --workspace @suly/client"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}
