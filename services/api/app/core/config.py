@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     # These are server-side settings. Never expose secrets through API responses.
     supabase_url: str | None = None
-    supabase_anon_key: SecretStr | None = None
+    supabase_publishable_key: SecretStr | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",
