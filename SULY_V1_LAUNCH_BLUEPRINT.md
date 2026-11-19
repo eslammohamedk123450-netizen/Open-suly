@@ -75,7 +75,7 @@ This roadmap applies to the standalone SULY product.
 - End-to-end sign-up, email confirmation, sign-in, session refresh, and sign-out with a real test account.
 - Auth redirect allow-list and email delivery configuration in Supabase.
 - Automated TypeScript/Expo CI result for the latest authentication and conversation commits.
-- AI provider gateway, streaming assistant responses, and durable task execution.
+- Provider configuration and real assistant responses, streaming, and durable task execution.
 - Android/iOS production builds.
 
 The app must continue to describe saved user messages as saved messages, not as completed AI responses, until the API is deployed, a provider is configured, and authenticated end-to-end tests pass.
