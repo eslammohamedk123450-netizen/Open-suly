@@ -47,6 +47,10 @@ Implementation proceeds through the milestones and exit criteria in those docume
 
 This repository is the source of truth for the SULY implementation. Check the milestone documents and current repository state before making changes. Report blockers honestly and include verification evidence with each completed milestone.
 
+## Supabase environment baseline
+
+The connected Supabase project already contains an established schema and live data. Read [the verified project baseline](./docs/operations/supabase-existing-project-baseline.md) before changing database objects or migrations. Do not recreate, reset, or replace that database.
+
 ## Security
 
-See [SECURITY.md](./SECURITY.md) for vulnerability reporting guidance once the security policy is published.
+See [SECURITY.md](./SECURITY.md) for vulnerability reporting guidance.
