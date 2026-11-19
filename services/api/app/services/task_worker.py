@@ -103,6 +103,10 @@ class TaskWorker:
         step = self.claim()
         if step is None:
             return "idle"
+        # Revalidate the lease immediately before invoking a handler. This also
+        # observes a cancellation or lease revocation that raced with the claim.
+        if not self.renew(step):
+            return "lease_lost"
         try:
             output = handler(step)
             if not isinstance(output, dict):
