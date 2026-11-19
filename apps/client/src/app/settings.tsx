@@ -28,14 +28,14 @@ export default function SettingsScreen() {
     <SafeAreaView style={styles.safe}>
       <View style={styles.page}>
         <View style={styles.header}>
-          <Pressable style={styles.backButton} onPress={() => router.replace("/")}>
-            <Text style={styles.backText}>→</Text>
-          </Pressable>
+          <View style={styles.logo}><Text style={styles.logoText}>S</Text></View>
           <View style={styles.headerTitleWrap}>
             <Text style={styles.headerTitle}>الإعدادات</Text>
             <Text style={styles.headerSubtitle}>تحكم في تجربة SULY</Text>
           </View>
-          <View style={styles.logo}><Text style={styles.logoText}>S</Text></View>
+          <Pressable style={styles.backButton} onPress={() => router.replace("/")}>
+            <Text style={styles.backText}>→</Text>
+          </Pressable>
         </View>
 
         <ScrollView contentContainerStyle={styles.content}>
@@ -84,7 +84,7 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  page: { flex: 1, width: "100%", maxWidth: 1100, alignSelf: "center", backgroundColor: colors.background },
+  page: { flex: 1, direction: "rtl", width: "100%", maxWidth: 1100, alignSelf: "center", backgroundColor: colors.background },
   header: { minHeight: 72, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: colors.border },
   backButton: { width: 40, height: 40, borderRadius: 13, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border },
   backText: { color: colors.gold, fontSize: 22 },
