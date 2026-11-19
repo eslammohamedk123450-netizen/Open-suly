@@ -1,31 +1,33 @@
 import { StyleSheet, Text, View } from "react-native";
+import { getDirection, getMessages, type Locale } from "@/i18n";
 import { colors } from "@/theme/tokens";
+
+const locale: Locale = "ar";
+const copy = getMessages(locale);
 
 export default function HomeScreen() {
   return (
-    <View style={styles.page}>
+    <View style={[styles.page, { direction: getDirection(locale) }]}>
       <View style={styles.content}>
         <View style={styles.mark}>
           <Text style={styles.markText}>S</Text>
         </View>
 
-        <Text style={styles.wordmark}>SULY</Text>
-        <Text style={styles.tagline}>More Than AI. Your Intelligent Partner.</Text>
+        <Text style={styles.wordmark}>{copy.wordmark}</Text>
+        <Text style={styles.tagline}>{copy.tagline}</Text>
 
         <View style={styles.divider} />
 
-        <Text style={styles.heading}>أهلاً بك في سولي</Text>
-        <Text style={styles.description}>
-          شريكك الذكي للبحث والتخطيط والإبداع وتنفيذ المهام.
-        </Text>
+        <Text style={styles.heading}>{copy.welcome}</Text>
+        <Text style={styles.description}>{copy.description}</Text>
 
         <View style={styles.status}>
           <View style={styles.statusDot} />
-          <Text style={styles.statusText}>المنصة قيد التأسيس</Text>
+          <Text style={styles.statusText}>{copy.status}</Text>
         </View>
       </View>
 
-      <Text style={styles.footer}>SULY TECHNOLOGIES</Text>
+      <Text style={styles.footer}>{copy.footer}</Text>
     </View>
   );
 }
@@ -39,7 +41,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 24,
     paddingVertical: 48,
-    direction: "rtl",
   },
   content: {
     width: "100%",
