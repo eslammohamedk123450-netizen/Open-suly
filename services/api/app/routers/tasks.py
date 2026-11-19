@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.supabase import get_supabase_admin_client
+from app.services.agent_planner import UnsupportedTaskRequest, plan_request
 
 router = APIRouter(prefix="/v1/tasks", tags=["tasks"])
 
@@ -158,6 +159,46 @@ def plan_task(
         )):
             raise HTTPException(status_code=422, detail="The task plan is invalid.") from exc
         raise HTTPException(status_code=503, detail="Could not save task plan.") from exc
+
+
+@router.post("/{task_id}/auto-plan")
+def auto_plan_task(
+    task_id: UUID,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Create a deterministic plan only for an operation the worker can run."""
+    client = _admin_client()
+    try:
+        with client:
+            task = _owned_task(client, task_id, user.id)
+            if task.get("status") != "queued":
+                raise HTTPException(status_code=409, detail="Only queued, unplanned tasks can be planned.")
+            try:
+                planned = plan_request(str(task.get("request") or ""))
+            except UnsupportedTaskRequest as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            result = client.rpc(
+                "plan_task",
+                {
+                    "p_task_id": str(task_id),
+                    "p_user_id": user.id,
+                    "p_steps": planned.steps,
+                },
+            ).execute().data
+        if isinstance(result, list) and result:
+            result = result[0]
+        if not isinstance(result, dict):
+            raise HTTPException(status_code=503, detail="The task planner returned an invalid result.")
+        return {**result, "planner": planned.planner, "steps": planned.steps}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        message = str(exc)
+        if "task_not_found" in message:
+            raise HTTPException(status_code=404, detail="Task not found.") from exc
+        if "task_already_planned" in message:
+            raise HTTPException(status_code=409, detail="Task has already been planned.") from exc
+        raise HTTPException(status_code=503, detail="Could not create task plan.") from exc
 
 
 @router.get("")
