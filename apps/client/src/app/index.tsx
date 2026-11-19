@@ -11,6 +11,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { colors } from "@/theme/tokens";
 import { BottomNavigation } from "@/components/BottomNavigation";
+import { useAuth } from "@/providers/AuthProvider";
+import { createConversation, sendUserMessage } from "@/lib/conversations";
 
 const suggestions = [
   { title: "ابحث بعمق", description: "اجمع المعلومات وقارن المصادر", prompt: "ابحث بعمق عن " },
@@ -22,11 +24,29 @@ export default function HomeScreen() {
   const [draft, setDraft] = useState("");
   const [notice, setNotice] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sending, setSending] = useState(false);
+  const { user } = useAuth();
 
-  const sendDraft = () => {
-    if (!draft.trim()) return;
-    setNotice("تم تجهيز طلبك في الواجهة. سيتم توصيل محرك SULY في مرحلة التنفيذ التالية.");
-    setDraft("");
+  const sendDraft = async () => {
+    const request = draft.trim();
+    if (!request || sending) return;
+    if (!user) {
+      setNotice("سجّل الدخول أولًا لحفظ محادثتك ومتابعتها.");
+      router.push("/auth");
+      return;
+    }
+    setSending(true);
+    setNotice("");
+    try {
+      const conversation = await createConversation(request.slice(0, 40));
+      await sendUserMessage(conversation.id, request);
+      setDraft("");
+      router.push({ pathname: "/conversation/[id]", params: { id: conversation.id } });
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "تعذر حفظ طلبك. حاول مرة أخرى.");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
