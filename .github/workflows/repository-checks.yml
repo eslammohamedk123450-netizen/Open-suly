@@ -36,7 +36,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if git ls-files | grep -E '(^|/)(\.env($|\.)|id_rsa$|id_ed25519$|.*\.(pem|p12|pfx|keystore|jks)$)'; then
+          sensitive="$(git ls-files | awk '
+            /(^|\/)\.env($|\.)/ && !/(^|\/)\.env\.example$/ { print }
+            /(^|\/)(id_rsa|id_ed25519)$/ { print }
+            /\.(pem|p12|pfx|keystore|jks)$/ { print }
+          ')"
+          if [[ -n "$sensitive" ]]; then
+            printf '%s\n' "$sensitive"
             echo "A potentially sensitive file is tracked. Remove it and rotate any exposed credentials."
             exit 1
           fi
