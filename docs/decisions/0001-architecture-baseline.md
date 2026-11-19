@@ -1,36 +1,37 @@
-# ADR 0001: SULY architecture baseline
+# ADR 0001: Standalone SULY clean-slate architecture
 
-- Status: Accepted as the implementation baseline
+- Status: Accepted
 - Date: 2026-11-20
-- Scope: Initial repository foundation
 
 ## Context
 
-SULY is intended to become a cross-platform agentic AI product. It must support a chat-first experience and real task execution while maintaining security, durable operations, and controlled operating costs.
+The prior application is retired and is not a foundation for SULY. The new product must be built independently. Only the SULY brand identity, official domain, and approved visual language may carry forward.
 
 ## Decision
 
-The initial implementation baseline is:
+- Rebuild all product behavior, APIs, data models, authentication flows, AI orchestration, and integrations from a clean slate.
+- Reuse only the SULY name/mark, Midnight Gold visual identity, and approved presentation patterns for the home screen, settings, navigation, cards, and buttons.
+- Client: Expo, React Native, TypeScript, Expo Router, and React Native Web.
+- API: Python, FastAPI, and Pydantic.
+- Platform: Supabase PostgreSQL, Auth, private Storage, Realtime, and RLS.
+- Experience: Arabic-first RTL with English/LTR support.
+- Delivery: small vertical slices with explicit tests and exit criteria.
 
-- **Clients:** Expo, React Native, TypeScript, Expo Router, and React Native Web.
-- **API:** Python, FastAPI, and Pydantic, organized as a modular monolith initially.
-- **Data and identity:** Supabase PostgreSQL, Auth, private Storage, Realtime, and Row Level Security.
-- **Long-running work:** Separate durable workers with persisted task state, checkpoints, bounded retries, leases, and safe cancellation.
-- **AI providers:** A unified server-side gateway with provider adapters, policy controls, fallback rules, and usage accounting.
-- **Experience:** Arabic-first, RTL-aware, with English support.
-- **Delivery:** Milestone-based implementation with explicit exit criteria and verification.
+## Non-goals
+
+- No HIMS system.
+- No migration of previous application business logic.
+- No reuse of previous user accounts, credits, provider records, tools, workflows, or database schema.
+- No claim that a UI placeholder is a working AI capability.
 
 ## Constraints
 
-1. Work directly on the existing `main` branch; do not create other branches.
-2. HIMS remains a core system and must not be removed, disabled, or bypassed.
-3. Privileged secrets stay server-side and must never be committed.
-4. Authorization must be enforced at trusted server and database boundaries.
-5. New paid services or recurring costs require explicit owner approval.
-6. A feature is complete only after implementation and verification, not when a placeholder UI is added.
+1. Work directly on the existing `main` branch.
+2. Keep privileged secrets server-side.
+3. Enforce authorization at trusted server and database boundaries.
+4. Do not add paid services without explicit owner approval.
+5. Verify behavior on supported platforms before marking a milestone complete.
 
 ## Consequences
 
-This baseline favors a maintainable first release while leaving room to split services when measured load or operational needs justify it. The modular monolith is not permission to place long-running work inside short-lived request handlers; durable workers remain a required platform component.
-
-Changes to this baseline require a new architecture decision record and must preserve the non-negotiable constraints above.
+SULY starts with a minimal identity schema and a new app shell. All product capabilities must be designed, implemented, and tested for this product. The architecture can evolve as measured requirements become clear.
