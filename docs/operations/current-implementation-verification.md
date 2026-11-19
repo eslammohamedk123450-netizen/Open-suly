@@ -13,6 +13,7 @@
 | 20261119232226 | conversations_messages_foundation |
 | 20261119232329 | bump_conversation_on_message |
 | 20261119232400 | tighten_message_client_insert |
+| 20261119232535 | assistant_reply_idempotency |
 
 ## Public tables
 
