@@ -22,6 +22,7 @@ export default function ConversationScreen() {
     let active = true;
     setMessages([]);
     setError("");
+    setEngineNotice("");
     setLoading(true);
     listMessages(id).then(async (rows) => {
       if (!active) return;
