@@ -45,7 +45,7 @@ def test_gateway_calls_openai_compatible_endpoint_without_leaking_key(monkeypatc
     assert seen["url"] == "https://provider.example/v1/chat/completions"
     assert seen["authorization"] == "Bearer server-test-secret"
     assert seen["model"] == "test-model"
-    assert seen["timeout"] == "7"
+    assert seen["timeout"] == "7.0"
 
 
 @pytest.mark.parametrize("messages", [
