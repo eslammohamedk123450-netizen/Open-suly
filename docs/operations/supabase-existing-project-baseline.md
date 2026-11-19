@@ -88,3 +88,14 @@ Supabase is deprecating legacy `anon` and `service_role` keys by the end of 2026
 ## Verification commands
 
 For Supabase CLI v3, hosted database inspection must explicitly use `--remote`. Hosted changes must be reviewed first and require explicit confirmation. See the [CLI v3 breaking-change notice](https://supabase.com/changelog/2026-11-04/cli-v3-local-by-default).
+
+## Repository integration status after the baseline review
+
+The API foundation now includes:
+
+- `SUPABASE_PUBLISHABLE_KEY` configuration (legacy `anon` key is no longer the default for new code).
+- A request-scoped Supabase client factory. It is deliberately not globally cached; an optional user access token is attached only to that client instance.
+- A protected `GET /v1/auth/me` endpoint. It validates the supplied bearer token by calling Supabase Auth `get_user(jwt)`; it does not trust locally decoded JWT claims.
+- Unit tests for missing bearer credentials, a mocked validated identity, missing Supabase configuration, and request-token scoping.
+
+These tests have been committed but have not yet been observed passing in a GitHub Actions run. No live user token was used for an end-to-end API authentication test. Cross-user RLS isolation and profile/project ownership tests remain part of M2.
