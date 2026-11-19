@@ -1,0 +1,47 @@
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+!.env.template
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.jks
+secrets/
+.private/
+
+# Dependencies
+node_modules/
+.pnpm-store/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Build and test output
+dist/
+build/
+.expo/
+.expo-shared/
+coverage/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.next/
+out/
+
+# Local editor and operating-system files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs and temporary files
+*.log
+tmp/
+temp/
+.cache/
