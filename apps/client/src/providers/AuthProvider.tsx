@@ -22,33 +22,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<{ display_name: string | null; avatar_url: string | null; locale: "ar" | "en" } | null>(null);
 
   useEffect(() => {
-    if (!supabase) {
+    const client = supabase;
+    if (!client) {
       setLoading(false);
       return;
     }
 
     let alive = true;
-    const handleDeepLink = async (url: string | null) => {
+    const handleDeepLink = async (url: string | null | undefined) => {
       if (!url || !url.includes("code=")) return;
       try {
-        await supabase.auth.exchangeCodeForSession(url);
+        await client.auth.exchangeCodeForSession(url);
       } catch {
         // The normal session listener below remains the source of truth.
       }
     };
 
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (!alive) return;
-      if (!error) setSession(data.session);
-      setLoading(false);
-    }).catch(() => {
-      if (alive) setLoading(false);
-    });
+    void client.auth.getSession().then(
+      ({ data, error }) => {
+        if (!alive) return;
+        if (!error) setSession(data.session);
+        setLoading(false);
+      },
+      () => {
+        if (alive) setLoading(false);
+      },
+    );
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: { subscription } } = client.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
     });
-    Linking.getInitialURL().then(handleDeepLink).catch(() => undefined);
+    void Linking.getInitialURL().then(handleDeepLink, () => undefined);
     const linkSubscription = Linking.addEventListener("url", ({ url }) => { void handleDeepLink(url); });
 
     return () => {
@@ -59,17 +63,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!supabase || !session?.user.id) {
+    const client = supabase;
+    if (!client || !session?.user.id) {
       setProfile(null);
       return;
     }
     let active = true;
     setProfile(null);
-    supabase.from("profiles").select("display_name, avatar_url, locale").eq("id", session.user.id).maybeSingle()
+    void client.from("profiles").select("display_name, avatar_url, locale").eq("id", session.user.id).maybeSingle()
       .then(({ data, error }) => {
         if (active && !error) setProfile(data);
-      })
-      .catch(() => undefined);
+      }, () => undefined);
     return () => { active = false; };
   }, [session?.user.id]);
 
@@ -80,13 +84,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user: session?.user ?? null,
     profile,
     signIn: async (email, password) => {
-      if (!supabase) return "إعدادات الاتصال بـ Supabase غير مكتملة.";
-      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      const client = supabase;
+      if (!client) return "إعدادات الاتصال بـ Supabase غير مكتملة.";
+      const { error } = await client.auth.signInWithPassword({ email: email.trim(), password });
       return error?.message ?? null;
     },
     signUp: async (email, password, displayName) => {
-      if (!supabase) return { error: "إعدادات الاتصال بـ Supabase غير مكتملة.", needsEmailConfirmation: false };
-      const { data, error } = await supabase.auth.signUp({
+      const client = supabase;
+      if (!client) return { error: "إعدادات الاتصال بـ Supabase غير مكتملة.", needsEmailConfirmation: false };
+      const { data, error } = await client.auth.signUp({
         email: email.trim(),
         password,
         options: {
@@ -99,8 +105,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
     },
     signOut: async () => {
-      if (!supabase) return "إعدادات الاتصال بـ Supabase غير مكتملة.";
-      const { error } = await supabase.auth.signOut();
+      const client = supabase;
+      if (!client) return "إعدادات الاتصال بـ Supabase غير مكتملة.";
+      const { error } = await client.auth.signOut();
       return error?.message ?? null;
     },
   }), [loading, profile, session]);
