@@ -175,3 +175,21 @@ The task database foundation is live, but it must not be described as autonomous
 - These changes are committed to `main`; CI for this new commit set must complete before calling the new tests passing.
 - No provider key was added, no paid provider was selected, and the AI gateway remains disabled by default.
 - No live assistant generation or API deployment is claimed.
+
+
+## Deterministic agent planning and execution bridge — 2026-11-20
+
+### Implemented on main
+- Added `app.services.agent_planner`, a deterministic planner with an explicit allowlist boundary.
+- Current supported request syntax is `analyze: <text>` or `حلل: <text>` (also accepts `analyse:` and `حلّل:`). It produces exactly one `text.analyze` step.
+- Added authenticated `POST /v1/tasks/{task_id}/auto-plan`. It loads the task under the authenticated owner, accepts only queued tasks, and persists the generated plan through the existing server-only atomic `plan_task` RPC.
+- Unsupported general requests fail closed with HTTP 422; no fake generic plan is generated.
+- Added worker-flow integration tests covering claim → lease renewal → allow-listed dispatch → token-checked checkpoint, plus rejection/failure of an unsupported operation.
+- Added planner and API tests for Arabic/English prefixes, empty input, oversized input, authentication, and unsupported task types.
+
+### Current execution boundary
+- The only executable operation remains `text.analyze`; it computes character/word/line counts and a bounded preview.
+- DAG dependency readiness, retries, cancellation, leases, and task terminal status are enforced by the existing database RPC protocol.
+- The new tests simulate RPC responses; they do not constitute a live Supabase task execution test.
+- No LLM-based planner, web search, browser, filesystem, code execution, or external connector tools are enabled.
+- The worker remains opt-in and is not deployed or running as a hosted service.
