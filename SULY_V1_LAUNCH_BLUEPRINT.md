@@ -59,3 +59,23 @@ This roadmap applies to the standalone SULY product.
 - No paid recurring service without explicit approval.
 - Never report a test or deployment as successful without evidence.
 - Work sequentially; record blockers and continue with independent work where safe.
+
+## Verified implementation snapshot — 2026-11-20
+
+### Implemented
+- Expo client now initializes the connected Supabase project with its public publishable key.
+- Email/password sign-up, sign-in, sign-out, session restoration, and account state are wired in the client.
+- Native sessions use Expo SecureStore; web sessions use AsyncStorage.
+- New accounts receive a profile row through the Auth trigger. The client reads the profile under owner-only RLS.
+- Conversation and message tables are live. The client can create, list, rename, and delete its own conversations and persist user messages.
+- Client inserts default to the `user` message role. Authenticated clients cannot set the role column or write assistant/system/tool messages; those are reserved for trusted server-side execution.
+- RLS and role grants were checked against the live database. All three public tables have RLS enabled; anonymous reads are not granted.
+
+### Not yet verified / still pending
+- End-to-end sign-up, email confirmation, sign-in, session refresh, and sign-out with a real test account.
+- Auth redirect allow-list and email delivery configuration in Supabase.
+- Automated TypeScript/Expo CI result for the latest authentication and conversation commits.
+- AI provider gateway, streaming assistant responses, and durable task execution.
+- Android/iOS production builds.
+
+The app must continue to describe saved user messages as saved messages, not as completed AI responses, until the provider gateway is connected and tested.
