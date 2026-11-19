@@ -88,3 +88,26 @@ The app must continue to describe saved user messages as saved messages, not as 
 - The API requires a server-only Supabase secret key to perform trusted assistant-message writes. That key is intentionally absent from the repository and client bundle.
 
 The chat endpoint is a non-streaming first slice. It is not considered operational until the API is deployed, server secrets are configured, a provider is deliberately selected, and authenticated end-to-end tests pass.
+
+
+## Verified implementation snapshot — durable task foundation (2026-11-20)
+
+### Implemented
+- Added `public.tasks` for durable task requests, lifecycle state, idempotency keys, bounded attempts, cancellation requests, result checkpoints, and timestamps.
+- Added `public.task_steps` for ordered DAG steps, dependency declarations, per-step input/output checkpoints, retry counters, and expiring worker lease fields.
+- Enforced owner-scoped RLS on both tables. Authenticated users can read only their own task records; task mutations are server-only.
+- Restricted client column privileges so worker lease owner/token/expiry fields are not readable from the public client.
+- Added authenticated API routes to enqueue tasks idempotently, list a user's tasks, inspect a task and its steps, and request cancellation.
+- Added API boundary tests for unauthenticated access, missing server credentials, and blank task requests.
+- Added forward-only migrations matching the live Supabase migration versions:
+  - `20261119233548_durable_tasks_dag_foundation`
+  - `20261119233650_tighten_task_read_permissions`
+
+### Not yet implemented / verified
+- No worker process is deployed yet; queued tasks remain queued until a worker runtime is added and deployed.
+- No DAG planner or model-generated plan is enabled yet.
+- Worker claim/lease renewal, heartbeat, retry scheduling, checkpoint commits, and cooperative cancellation still need implementation and concurrency tests.
+- Task API requires a deployed FastAPI service with server-only Supabase secret credentials.
+- No provider key or paid service has been configured.
+
+The task database foundation is live, but it must not be described as autonomous execution until workers are deployed and tested.
