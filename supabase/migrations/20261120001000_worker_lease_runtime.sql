@@ -150,8 +150,8 @@ begin
    where s.id=p_step_id and s.task_id=t.id
      and s.status='running' and s.lease_token=p_lease_token
      and s.lease_expires_at > now()
-   returning s.task_id, (t.cancel_requested_at is not null)
-        into v_task_id, v_cancel;
+   returning s.task_id into v_task_id;
+  select (cancel_requested_at is not null) into v_cancel from public.tasks where id=v_task_id;
   if not found then return false; end if;
 
   if v_cancel then
@@ -190,7 +190,7 @@ begin
          error_code=left(coalesce(nullif(btrim(p_error_code),''),'worker_error'),80),
          error_message=left(coalesce(p_error_message,'Worker step failed.'),2000),
          available_at=case when t.cancel_requested_at is null and s.attempt_count < s.max_attempts
-           then now() + pg_catalog.make_interval(secs => least(300, 5 * (2 ^ greatest(s.attempt_count - 1,0))::integer))
+           then now() + pg_catalog.make_interval(secs => least(300, 5 * pg_catalog.power(2,greatest(s.attempt_count - 1,0))::integer))
            else now() end,
          completed_at=case when t.cancel_requested_at is not null or s.attempt_count >= s.max_attempts then now() else null end,
          lease_owner=null, lease_token=null, lease_expires_at=null
