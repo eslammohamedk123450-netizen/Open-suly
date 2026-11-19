@@ -1,17 +1,17 @@
-# SULY — New Product Delivery Plan
+# SULY — Product Delivery Plan
 
-This roadmap applies only to the clean, standalone SULY product. No legacy implementation is being migrated.
+This roadmap applies to the standalone SULY product.
 
 ## Phase 1 — Brand shell and app foundation
 - Preserve the SULY name, logo/monogram, domain, and Midnight Gold design language.
-- Build the new responsive home screen, task composer, settings screen, navigation, cards, and buttons.
+- Build the responsive home screen, task composer, settings screen, navigation, cards, and buttons.
 - Establish shared theme tokens, Arabic RTL, English LTR, and web/Android/iOS routing.
 - Verify TypeScript and Expo web export.
 
-**Exit:** app shell renders and navigation works on supported targets; no legacy application code is used.
+**Exit:** app shell renders and navigation works on supported targets.
 
-## Phase 2 — New Supabase and identity foundation
-- Create the first new SULY schema with profiles and secure account lifecycle.
+## Phase 2 — Supabase and identity foundation
+- Create the first SULY schema with profiles and secure account lifecycle.
 - Configure Auth providers and redirect URLs for the official domain.
 - Apply RLS and test cross-user isolation.
 - Add private file storage policies.
@@ -19,7 +19,7 @@ This roadmap applies only to the clean, standalone SULY product. No legacy imple
 **Exit:** sign-up, sign-in, session refresh, sign-out, and profile ownership pass tests.
 
 ## Phase 3 — Conversations and direct chat
-- Create new conversation/message domain tables.
+- Create conversation/message domain tables.
 - Implement streaming-capable API contracts and message persistence.
 - Add server-side provider gateway and safe error handling.
 
@@ -56,8 +56,6 @@ This roadmap applies only to the clean, standalone SULY product. No legacy imple
 
 ## Rules
 - Work on `main` only.
-- Do not revive HIMS or any retired application modules.
-- Do not copy old database migrations or RPCs.
 - No paid recurring service without explicit approval.
 - Never report a test or deployment as successful without evidence.
 - Work sequentially; record blockers and continue with independent work where safe.
