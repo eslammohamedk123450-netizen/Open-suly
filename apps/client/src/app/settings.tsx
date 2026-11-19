@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { colors } from "@/theme/tokens";
+import { BottomNavigation } from "@/components/BottomNavigation";
 
 function SettingRow({ title, subtitle, value, onPress }: { title: string; subtitle: string; value?: string; onPress?: () => void }) {
   return (
@@ -73,10 +74,7 @@ export default function SettingsScreen() {
           <Text style={styles.footer}>SULY TECHNOLOGIES · 2026</Text>
         </ScrollView>
 
-        <View style={styles.bottomNav}>
-          <Pressable style={styles.navItem} onPress={() => router.replace("/")}><Text style={styles.navIcon}>⌂</Text><Text style={styles.navLabel}>الرئيسية</Text></Pressable>
-          <View style={styles.navItemActive}><Text style={styles.navIconActive}>⚙</Text><Text style={styles.navLabelActive}>الإعدادات</Text></View>
-        </View>
+        <BottomNavigation active="settings" />
       </View>
     </SafeAreaView>
   );
