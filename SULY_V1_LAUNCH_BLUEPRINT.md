@@ -79,3 +79,12 @@ This roadmap applies to the standalone SULY product.
 - Android/iOS production builds.
 
 The app must continue to describe saved user messages as saved messages, not as completed AI responses, until the provider gateway is connected and tested.
+
+### Chat API foundation
+- An authenticated `POST /v1/chat/respond` endpoint now validates that the requested conversation and user message belong to the signed-in user.
+- Assistant replies are written by the server only; the public client cannot assign assistant/system/tool roles.
+- A unique database index prevents duplicate persisted assistant replies for the same user message.
+- An OpenAI-compatible provider adapter is implemented, but `AI_PROVIDER` defaults to `disabled`. No provider has been selected and no provider key has been added.
+- The API requires a server-only Supabase secret key to perform trusted assistant-message writes. That key is intentionally absent from the repository and client bundle.
+
+The chat endpoint is a non-streaming first slice. It is not considered operational until the API is deployed, server secrets are configured, a provider is deliberately selected, and authenticated end-to-end tests pass.
