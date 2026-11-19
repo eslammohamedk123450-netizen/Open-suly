@@ -90,3 +90,75 @@ def test_task_plan_rejects_duplicate_step_keys_before_database(monkeypatch) -> N
         app.dependency_overrides.clear()
 
     assert response.status_code == 422
+
+
+from types import SimpleNamespace
+
+
+class _FakeQuery:
+    def __init__(self, rows):
+        self.rows = rows
+    def select(self, *_args): return self
+    def eq(self, *_args): return self
+    def limit(self, *_args): return self
+    def execute(self): return SimpleNamespace(data=self.rows)
+
+
+class _FakeAdmin:
+    def __init__(self, task):
+        self.task = task
+        self.rpc_calls = []
+    def __enter__(self): return self
+    def __exit__(self, *_args): return False
+    def table(self, _name): return _FakeQuery([self.task] if self.task else [])
+    def rpc(self, name, args):
+        self.rpc_calls.append((name, args))
+        return SimpleNamespace(execute=lambda: SimpleNamespace(data={
+            "task_id": args["p_task_id"], "status": "ready", "step_count": len(args["p_steps"])
+        }))
+
+
+def test_auto_plan_generates_supported_text_analysis_plan(monkeypatch):
+    admin = _FakeAdmin({
+        "id": "00000000-0000-0000-0000-000000000001",
+        "user_id": "test-user",
+        "status": "queued",
+        "request": "analyze: SULY is an intelligent partner",
+    })
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    try:
+        response = client.post("/v1/tasks/00000000-0000-0000-0000-000000000001/auto-plan")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["planner"] == "deterministic-v1"
+    assert body["status"] == "ready"
+    assert body["steps"][0]["input"]["operation"] == "text.analyze"
+    assert admin.rpc_calls[0][0] == "plan_task"
+
+
+def test_auto_plan_fails_closed_for_unsupported_task(monkeypatch):
+    admin = _FakeAdmin({
+        "id": "00000000-0000-0000-0000-000000000001",
+        "user_id": "test-user",
+        "status": "queued",
+        "request": "Build a full Android application",
+    })
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    try:
+        response = client.post("/v1/tasks/00000000-0000-0000-0000-000000000001/auto-plan")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422
+    assert "text analysis only" in response.json()["detail"]
+    assert admin.rpc_calls == []
+
+
+def test_auto_plan_requires_authentication():
+    response = client.post("/v1/tasks/00000000-0000-0000-0000-000000000001/auto-plan")
+    assert response.status_code == 401
