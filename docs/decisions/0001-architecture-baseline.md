@@ -1,28 +1,21 @@
-# ADR 0001: Standalone SULY clean-slate architecture
+# ADR 0001: Standalone SULY architecture
 
 - Status: Accepted
 - Date: 2026-11-20
 
 ## Context
 
-The prior application is retired and is not a foundation for SULY. The new product must be built independently. Only the SULY brand identity, official domain, and approved visual language may carry forward.
+SULY is a standalone product. Only the SULY brand identity, official domain, and approved visual language are carried into the product foundation.
 
 ## Decision
 
-- Rebuild all product behavior, APIs, data models, authentication flows, AI orchestration, and integrations from a clean slate.
-- Reuse only the SULY name/mark, Midnight Gold visual identity, and approved presentation patterns for the home screen, settings, navigation, cards, and buttons.
+- Build all product behavior, APIs, data models, authentication flows, AI orchestration, and integrations specifically for SULY.
+- Reuse the SULY name/mark, Midnight Gold visual identity, and approved presentation patterns for the home screen, settings, navigation, cards, and buttons.
 - Client: Expo, React Native, TypeScript, Expo Router, and React Native Web.
 - API: Python, FastAPI, and Pydantic.
 - Platform: Supabase PostgreSQL, Auth, private Storage, Realtime, and RLS.
 - Experience: Arabic-first RTL with English/LTR support.
 - Delivery: small vertical slices with explicit tests and exit criteria.
-
-## Non-goals
-
-- No HIMS system.
-- No migration of previous application business logic.
-- No reuse of previous user accounts, credits, provider records, tools, workflows, or database schema.
-- No claim that a UI placeholder is a working AI capability.
 
 ## Constraints
 
