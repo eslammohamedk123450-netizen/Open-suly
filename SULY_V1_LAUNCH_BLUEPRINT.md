@@ -122,3 +122,22 @@ The task database foundation is live, but it must not be described as autonomous
 - Migration: `20261119233958_atomic_task_planning`.
 - API tests cover authentication, duplicate keys, and forward/cyclic dependency rejection.
 - This phase creates and validates execution plans; it does not yet run steps. Worker claiming, leases, retries, checkpoint completion, and deployment remain the next phase.
+
+
+## Worker lease runtime — 2026-11-20
+
+### Implemented and applied
+- Applied migration version `20261119234304_worker_lease_runtime` to the connected Supabase database.
+- Added atomic dependency-aware claims using `FOR UPDATE SKIP LOCKED`; a claim increments the bounded attempt counter and returns a short-lived opaque lease token.
+- Added token-checked lease renewal and checkpoint completion. A stale or expired worker cannot commit output.
+- Added bounded exponential retry scheduling, expired-lease recovery, terminal failure handling, and cooperative cancellation cleanup.
+- All worker RPCs are SECURITY INVOKER; execution is revoked from public/anon/authenticated and granted only to service_role.
+- Security advisor returned no lints after the migration.
+- Added `services/api/app/services/task_worker.py`, a one-step trusted RPC adapter, plus unit tests for claim, completion, failure, invalid configuration, and stale leases.
+
+### Still pending / explicitly not claimed
+- No continuously running worker is deployed or hosted.
+- No handler registry, provider key, or AI provider has been enabled.
+- No live multi-worker race test or populated-task end-to-end execution test has run.
+- Long-running handlers must renew their lease and stop immediately if renewal fails.
+- The worker adapter is infrastructure, not yet an autonomous agent.
