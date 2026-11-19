@@ -104,9 +104,9 @@ The chat endpoint is a non-streaming first slice. It is not considered operation
   - `20261119233650_tighten_task_read_permissions`
 
 ### Not yet implemented / verified
-- No worker process is deployed yet; queued tasks remain queued until a worker runtime is added and deployed.
+- No continuously running worker process is deployed; queued tasks remain queued until a worker host is configured.
 - No DAG planner or model-generated plan is enabled yet.
-- Worker claim/lease renewal, heartbeat, retry scheduling, checkpoint commits, and cooperative cancellation still need implementation and concurrency tests.
+- Live multi-worker concurrency, lease-expiry, retry-timing, cancellation, and populated-task integration tests are still pending.
 - Task API requires a deployed FastAPI service with server-only Supabase secret credentials.
 - No provider key or paid service has been configured.
 
@@ -121,7 +121,7 @@ The task database foundation is live, but it must not be described as autonomous
 - The function is SECURITY INVOKER, revoked from public/anon/authenticated, and executable only by service_role. It locks the owned task row and only accepts a task that is still queued and has no existing steps.
 - Migration: `20261119233958_atomic_task_planning`.
 - API tests cover authentication, duplicate keys, and forward/cyclic dependency rejection.
-- This phase creates and validates execution plans; it does not yet run steps. Worker claiming, leases, retries, checkpoint completion, and deployment remain the next phase.
+- This phase creates and validates execution plans; the subsequent worker lease protocol is documented below.
 
 
 ## Worker lease runtime — 2026-11-20
