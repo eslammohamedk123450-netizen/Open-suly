@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { colors } from "@/theme/tokens";
+import { BottomNavigation } from "@/components/BottomNavigation";
 
 const suggestions = [
   { title: "ابحث بعمق", description: "اجمع المعلومات وقارن المصادر", prompt: "ابحث بعمق عن " },
@@ -118,12 +119,7 @@ export default function HomeScreen() {
           </View>
         </ScrollView>
 
-        <View style={styles.bottomNav}>
-          <View style={styles.navItemActive}><Text style={styles.navIconActive}>⌂</Text><Text style={styles.navLabelActive}>الرئيسية</Text></View>
-          <Pressable style={styles.navItem} onPress={() => setNotice("قسم المشاريع سيتم بناؤه ضمن مساحة العمل.")}><Text style={styles.navIcon}>▦</Text><Text style={styles.navLabel}>المشاريع</Text></Pressable>
-          <Pressable style={styles.navItem} onPress={() => setNotice("سجل النشاط سيتم توصيله عند بناء محرك المهام.")}><Text style={styles.navIcon}>◷</Text><Text style={styles.navLabel}>النشاط</Text></Pressable>
-          <Pressable style={styles.navItem} onPress={() => router.push("/settings")}><Text style={styles.navIcon}>⚙</Text><Text style={styles.navLabel}>الإعدادات</Text></Pressable>
-        </View>
+        <BottomNavigation active="home" />
       </View>
     </SafeAreaView>
   );
