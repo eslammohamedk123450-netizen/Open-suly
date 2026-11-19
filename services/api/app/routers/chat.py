@@ -17,6 +17,51 @@ from app.services.ai_gateway import (
 router = APIRouter(prefix="/v1/chat", tags=["chat"])
 
 
+def _build_prompt_messages(
+    messages: list[dict[str, Any]],
+    target_message_id: str,
+) -> list[dict[str, str]]:
+    """Build bounded context ending at the requested user message.
+
+    Messages sent after the target are intentionally excluded so a retry for
+    an older message cannot leak future conversation turns into its answer.
+    """
+    target_index = next(
+        (
+            index for index, row in enumerate(messages)
+            if row.get("id") == target_message_id and row.get("role") == "user"
+        ),
+        None,
+    )
+    if target_index is None:
+        raise HTTPException(status_code=404, detail="User message not found.")
+
+    prompt = [
+        {
+            "role": "system",
+            "content": (
+                "You are SULY, a careful and capable AI assistant. "
+                "Reply in the user's language, be clear and useful, and never claim "
+                "to have performed an external action unless it was actually performed."
+            ),
+        }
+    ]
+    context_messages: list[dict[str, str]] = []
+    remaining_chars = 24000
+    for row in reversed(messages[max(0, target_index - 29): target_index + 1]):
+        if remaining_chars <= 0:
+            break
+        role = row.get("role")
+        content = row.get("content")
+        if role not in ("user", "assistant") or not isinstance(content, str):
+            continue
+        bounded_content = content[-min(8000, remaining_chars):]
+        context_messages.append({"role": role, "content": bounded_content})
+        remaining_chars -= len(bounded_content)
+    prompt.extend(reversed(context_messages))
+    return prompt
+
+
 class ChatRespondRequest(BaseModel):
     conversation_id: UUID
     message_id: UUID
@@ -61,9 +106,7 @@ async def respond_to_message(
                 .data
             )
             messages = list(reversed(rows or []))
-            target = next((row for row in messages if row["id"] == str(request.message_id)), None)
-            if target is None or target["role"] != "user":
-                raise HTTPException(status_code=404, detail="User message not found.")
+            prompt_messages = _build_prompt_messages(messages, str(request.message_id))
 
             existing = next(
                 (
@@ -75,29 +118,6 @@ async def respond_to_message(
             )
             if existing is not None:
                 return existing
-
-            prompt_messages = [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are SULY, a careful and capable AI assistant. "
-                        "Reply in the user's language, be clear and useful, and never claim "
-                        "to have performed an external action unless it was actually performed."
-                    ),
-                }
-            ]
-            # Bound prompt size before sending user content to any provider.
-            context_messages: list[dict[str, str]] = []
-            remaining_chars = 24000
-            for row in reversed(messages[-30:]):
-                if remaining_chars <= 0:
-                    break
-                if row["role"] not in ("user", "assistant"):
-                    continue
-                content = row["content"][-min(8000, remaining_chars):]
-                context_messages.append({"role": row["role"], "content": content})
-                remaining_chars -= len(content)
-            prompt_messages.extend(reversed(context_messages))
 
             try:
                 answer = await generate_reply(prompt_messages)
