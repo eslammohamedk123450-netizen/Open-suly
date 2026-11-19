@@ -12,11 +12,11 @@
 
 ## Not deployed / not yet proven
 
-- No long-running worker process or hosting target is configured.
-- No provider/tool handlers are registered. The adapter does not execute arbitrary code or call an AI provider.
+- A long-running polling runtime now exists in `services/api/app/worker_runtime.py`; it is opt-in via `SULY_WORKER_ENABLED=true` and is not deployed or running on a host.
+- The runtime registers only the deterministic `text.analyze` operation. It does not execute arbitrary code, shell commands, browser actions, or call an AI provider.
 - No live multi-worker concurrency, lease-expiry, retry-timing, or cancellation integration test has been run against a populated test task.
 - The adapter revalidates the lease immediately before invoking a handler. A handler doing work longer than its lease must call `TaskWorker.renew(step)`; if renewal returns false, it must stop and must not publish side effects.
-- A production worker must use a stable unique worker ID, bounded concurrency, process shutdown handling, and server-only Supabase secret credentials.
+- The runtime uses one in-flight step per process, bounded polling backoff, SIGINT/SIGTERM shutdown, and server-only Supabase secret credentials. Horizontal concurrency can be added by running multiple isolated worker processes.
 
 ## Safe next step
 
@@ -27,3 +27,13 @@ Deploy a worker only after choosing a no-cost/approved runtime and defining the 
 - Migration `20261119234352_task_steps_owner_index` covers the composite task-step ownership foreign key.
 - Migration `20261119234405_messages_owner_index` covers the composite message ownership foreign key.
 - The Supabase performance advisor no longer reports unindexed foreign keys. Unused-index notices are expected before real application traffic exists; indexes are retained for the query and FK paths they support.
+
+
+## Runtime configuration
+- `SULY_WORKER_ENABLED` defaults to false; API startup does not start the worker.
+- `SULY_WORKER_LEASE_SECONDS` defaults to 90 (15–900).
+- `SULY_WORKER_POLL_INTERVAL_SECONDS` defaults to 2 seconds (0.1–60).
+- `SULY_WORKER_ID` optionally supplies a stable process identity; otherwise a process-scoped ID is generated.
+- Start command: `python -m app.worker_runtime` from `services/api`.
+- The only registered operation is `text.analyze`, requiring `input.operation = "text.analyze"` and a string `input.text`.
+- Unknown operations fail closed and are handled by the bounded retry policy.
