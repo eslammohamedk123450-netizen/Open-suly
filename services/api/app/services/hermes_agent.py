@@ -84,7 +84,11 @@ def run_agent_turn(
     base_url = _validate_base_url(settings.hermes_agent_base_url)
     token = settings.hermes_agent_api_key.get_secret_value()
     timeout = timeout_seconds if timeout_seconds is not None else settings.hermes_agent_timeout_seconds
-    if not isinstance(timeout, (int, float)) or not 1 <= timeout <= 300:
+    if (
+        isinstance(timeout, bool)
+        or not isinstance(timeout, (int, float))
+        or not 1 <= timeout <= 300
+    ):
         raise ValueError("Hermes request timeout is outside the allowed range.")
     if cancel_event is not None and cancel_event.is_set():
         raise HermesAgentCancelled("Hermes request was cancelled.")
