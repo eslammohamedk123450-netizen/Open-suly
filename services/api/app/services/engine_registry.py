@@ -42,17 +42,27 @@ class EngineRegistry:
     def register(self, definition: EngineDefinition) -> None:
         if not isinstance(definition, EngineDefinition):
             raise TypeError("engine_definition_required")
-        if not _ENGINE_ID.fullmatch(definition.engine_id):
+        if not isinstance(definition.engine_id, str) or not _ENGINE_ID.fullmatch(definition.engine_id):
             raise ValueError("invalid_engine_id")
-        if not definition.display_name.strip():
+        if not isinstance(definition.display_name, str) or not definition.display_name.strip():
             raise ValueError("engine_display_name_required")
-        if not definition.capabilities:
+        if not isinstance(definition.capabilities, frozenset) or not definition.capabilities:
             raise ValueError("engine_capabilities_required")
+        if not isinstance(definition.enabled, bool) or not isinstance(definition.requires_approval, bool):
+            raise ValueError("invalid_engine_flags")
+        if definition.adapter is not None and not callable(getattr(definition.adapter, "execute", None)):
+            raise ValueError("invalid_engine_adapter")
         if any(not _CAPABILITY.fullmatch(item) for item in definition.capabilities):
             raise ValueError("invalid_engine_capability")
         if (
-            definition.max_input_bytes < 1
+            isinstance(definition.max_input_bytes, bool)
+            or not isinstance(definition.max_input_bytes, int)
+            or definition.max_input_bytes < 1
+            or isinstance(definition.max_output_bytes, bool)
+            or not isinstance(definition.max_output_bytes, int)
             or definition.max_output_bytes < 1
+            or isinstance(definition.max_timeout_seconds, bool)
+            or not isinstance(definition.max_timeout_seconds, int)
             or not 1 <= definition.max_timeout_seconds <= 3600
         ):
             raise ValueError("invalid_engine_limits")
@@ -91,11 +101,11 @@ class EngineRegistry:
             raise RuntimeError("engine_adapter_unavailable")
         if not isinstance(request, EngineRequest):
             raise TypeError("engine_request_required")
-        if request.capability not in definition.capabilities:
+        if not isinstance(request.capability, str) or request.capability not in definition.capabilities:
             raise ValueError("engine_capability_not_supported")
         if not isinstance(request.task_id, str) or not request.task_id.strip() or len(request.task_id) > 128:
             raise ValueError("invalid_engine_task_id")
-        if not isinstance(request.timeout_seconds, int) or not 1 <= request.timeout_seconds <= definition.max_timeout_seconds:
+        if isinstance(request.timeout_seconds, bool) or not isinstance(request.timeout_seconds, int) or not 1 <= request.timeout_seconds <= definition.max_timeout_seconds:
             raise ValueError("engine_timeout_out_of_bounds")
         if not isinstance(request.input_payload, dict):
             raise ValueError("engine_input_must_be_object")
