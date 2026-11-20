@@ -207,3 +207,18 @@ The task database foundation is live, but it must not be described as autonomous
 - Automated tests cover registry metadata, duplicate registration, schema enforcement, size limits, and rejection of unsupported operations.
 - Permission-scope values are metadata only; no user-consent grant system is claimed yet.
 - No external tool, paid service, API key, deployment, or database migration was introduced.
+
+
+## Tool authorization gate and planner capability sync — 2026-11-20
+
+### Implemented on main
+- Added a trusted `ToolExecutionContext` carrying approved permission scopes. It is created by trusted server code and is never read from task input.
+- Registry tools require approval by default. A tool can bypass the approval gate only when explicitly marked safe for approval-free local execution; the existing pure `text.analyze` operation is the only such tool.
+- Sensitive registered operations fail closed unless the trusted execution context contains the exact required scope.
+- Task payloads cannot self-grant permissions: approval fields are not accepted as tool input.
+- The deterministic planner now checks the worker registry before emitting a `text.analyze` plan, reducing planner/worker capability drift.
+
+### Verification boundary
+- Unit tests cover default-deny behavior, exact-scope authorization, no handler execution before approval, and rejection of self-granted scopes.
+- This is an authorization gate interface, not yet a persisted user-consent workflow. No external tool is currently registered.
+- No Supabase schema change, provider, API key, paid service, or deployment was introduced.
