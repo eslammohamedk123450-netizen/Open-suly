@@ -19,7 +19,16 @@ from uuid import UUID
 logger = logging.getLogger("suly.runtime_broker")
 _ENGINE_ID = re.compile(r"^[a-z][a-z0-9-]{1,62}$")
 _TOKEN = re.compile(r"^[A-Za-z0-9._~+/-]{32,4096}={0,2}$")
-_DNS_HOST = re.compile(r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$")
+_DNS_HOST = re.compile(
+    r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)"
+    r"(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$"
+)
+
+
+def _normalized_origin(parsed) -> str:
+    host = parsed.hostname.lower().rstrip(".")
+    port = f":{parsed.port}" if parsed.port is not None else ""
+    return f"{parsed.scheme.lower()}://{host}{port}"
 
 
 def _valid_https_origin(value: object) -> bool:
@@ -29,12 +38,15 @@ def _valid_https_origin(value: object) -> bool:
         parsed = urlsplit(value)
         host = parsed.hostname.lower().rstrip(".") if parsed.hostname else ""
         port = parsed.port
-    except (TypeError, ValueError, AttributeError):
-        return False
-    try:
         ipaddress.ip_address(host)
-    except ValueError:
-        pass
+    except (TypeError, ValueError, AttributeError):
+        # DNS names are expected; malformed URLs and IP literals are rejected below.
+        try:
+            parsed = urlsplit(value)
+            host = parsed.hostname.lower().rstrip(".") if parsed.hostname else ""
+            port = parsed.port
+        except (TypeError, ValueError, AttributeError):
+            return False
     else:
         return False
     if (
@@ -51,14 +63,6 @@ def _valid_https_origin(value: object) -> bool:
     ):
         return False
     return value == _normalized_origin(parsed)
-
-
-def _normalized_origin(parsed) -> str:
-    host = parsed.hostname.lower().rstrip(".")
-    if ":" in host and not host.startswith("["):
-        host = f"[{host}]"
-    port = f":{parsed.port}" if parsed.port is not None else ""
-    return f"{parsed.scheme.lower()}://{host}{port}"
 
 
 @dataclass(frozen=True)
@@ -82,7 +86,7 @@ class RuntimeLease:
         allowed_origins: frozenset[str],
         now: float | None = None,
     ) -> None:
-        """Validate canonical identity, endpoint origin, secret shape, and expiry."""
+        """Validate canonical identity, exact HTTPS origin, secret shape, and expiry."""
         try:
             runtime_uuid = UUID(self.runtime_id)
             task_uuid = UUID(self.task_id)
@@ -140,7 +144,7 @@ class RuntimeLease:
 
 
 class RuntimeLeaseProvider(Protocol):
-    """Provider must provision a fresh runtime globally for every task attempt."""
+    """Provider must enforce fresh runtime identity globally across workers."""
 
     def acquire(self, task_id: str, engine_run_id: str, engine_id: str) -> RuntimeLease:
         ...
@@ -150,15 +154,30 @@ class RuntimeLeaseProvider(Protocol):
 
 
 class TaskScopedRuntimeBroker:
-    """Validate leases and prevent reuse within this broker process."""
+    """Validate task-attempt leases and guard runtime reuse within this process.
 
-    def __init__(self, provider: RuntimeLeaseProvider, *, allowed_origins: frozenset[str]) -> None:
-        if not callable(getattr(provider, "acquire", None)) or not callable(getattr(provider, "release", None)):
+    The external provider remains responsible for global uniqueness, process-tree
+    teardown, credential revocation, and cleanup after worker/process crashes.
+    """
+
+    def __init__(
+        self,
+        provider: RuntimeLeaseProvider,
+        *,
+        allowed_origins: frozenset[str],
+    ) -> None:
+        if (
+            not callable(getattr(provider, "acquire", None))
+            or not callable(getattr(provider, "release", None))
+        ):
             raise TypeError("runtime_lease_provider_required")
-        if not isinstance(allowed_origins, frozenset) or not allowed_origins or any(
-            not _valid_https_origin(origin) for origin in allowed_origins
+        if (
+            not isinstance(allowed_origins, frozenset)
+            or not allowed_origins
+            or any(not _valid_https_origin(origin) for origin in allowed_origins)
         ):
             raise ValueError("runtime_broker_allowed_origins_required")
+
         self._provider = provider
         self._allowed_origins = allowed_origins
         self._lock = RLock()
@@ -175,6 +194,7 @@ class TaskScopedRuntimeBroker:
             if attempt in self._seen_attempts or attempt in self._pending_attempts:
                 raise RuntimeError("runtime_attempt_already_leased")
             self._pending_attempts.add(attempt)
+
         try:
             lease = self._provider.acquire(task_id, engine_run_id, engine_id)
             if not isinstance(lease, RuntimeLease):
@@ -187,11 +207,19 @@ class TaskScopedRuntimeBroker:
                     allowed_origins=self._allowed_origins,
                 )
             except Exception:
-                try:
-                    self._provider.release(lease)
-                except Exception:
-                    logger.warning("Failed to release invalid runtime lease %s", getattr(lease, "runtime_id", "unknown"))
+                runtime_id = getattr(lease, "runtime_id", None)
+                with self._lock:
+                    runtime_was_seen = isinstance(runtime_id, str) and runtime_id in self._seen_runtime_ids
+                if not runtime_was_seen:
+                    try:
+                        self._provider.release(lease)
+                    except Exception:
+                        logger.warning(
+                            "Failed to release invalid runtime lease %s",
+                            runtime_id if isinstance(runtime_id, str) else "unknown",
+                        )
                 raise
+
             with self._lock:
                 runtime_reused = lease.runtime_id in self._seen_runtime_ids
                 attempt_reused = attempt in self._seen_attempts
@@ -201,22 +229,31 @@ class TaskScopedRuntimeBroker:
                     self._active_by_attempt[attempt] = lease.runtime_id
                     self._seen_runtime_ids.add(lease.runtime_id)
                     self._seen_attempts.add(attempt)
-                self._pending_attempts.discard(attempt)
+
             if reused:
                 if not runtime_reused:
                     try:
                         if not self._provider.release(lease):
-                            logger.warning("Could not release duplicate-attempt runtime %s", lease.runtime_id)
+                            logger.warning(
+                                "Could not release duplicate-attempt runtime %s",
+                                lease.runtime_id,
+                            )
                     except Exception:
-                        logger.warning("Failed to release duplicate-attempt runtime %s", lease.runtime_id)
+                        logger.warning(
+                            "Failed to release duplicate-attempt runtime %s",
+                            lease.runtime_id,
+                        )
                 else:
-                    logger.error("Runtime provider reused runtime identity %s; refusing unsafe teardown", lease.runtime_id)
+                    # Never tear down an ID that may still belong to another task.
+                    logger.error(
+                        "Runtime provider reused runtime identity %s; refusing unsafe teardown",
+                        lease.runtime_id,
+                    )
                 raise RuntimeError("runtime_instance_reuse_rejected")
             return lease
-        except Exception:
+        finally:
             with self._lock:
                 self._pending_attempts.discard(attempt)
-            raise
 
     def release(self, lease: RuntimeLease) -> bool:
         if not isinstance(lease, RuntimeLease):
@@ -224,9 +261,15 @@ class TaskScopedRuntimeBroker:
         attempt = (lease.task_id, lease.engine_run_id, lease.engine_id)
         with self._lock:
             active = self._active_by_runtime.get(lease.runtime_id)
-            if active is None or active[0] != attempt or active[1] is not lease or lease.runtime_id in self._releasing_runtime_ids:
+            if (
+                active is None
+                or active[0] != attempt
+                or active[1] is not lease
+                or lease.runtime_id in self._releasing_runtime_ids
+            ):
                 return False
             self._releasing_runtime_ids.add(lease.runtime_id)
+
         try:
             released = self._provider.release(lease)
             if not isinstance(released, bool):
@@ -243,14 +286,23 @@ class TaskScopedRuntimeBroker:
                 self._releasing_runtime_ids.discard(lease.runtime_id)
 
     @contextmanager
-    def session(self, task_id: str, engine_run_id: str, engine_id: str) -> Iterator[RuntimeLease]:
+    def session(
+        self,
+        task_id: str,
+        engine_run_id: str,
+        engine_id: str,
+    ) -> Iterator[RuntimeLease]:
+        """Acquire one runtime lease and always attempt teardown after engine use."""
         lease = self.acquire(task_id, engine_run_id, engine_id)
         try:
             yield lease
         finally:
             try:
                 if not self.release(lease):
-                    logger.warning("Runtime teardown was not confirmed for runtime %s", lease.runtime_id)
+                    logger.warning(
+                        "Runtime teardown was not confirmed for runtime %s",
+                        lease.runtime_id,
+                    )
             except Exception:
                 logger.warning("Runtime teardown failed for runtime %s", lease.runtime_id)
 
