@@ -100,11 +100,23 @@ def safe_event_metadata(payload: object, expected_session_id: str) -> dict[str, 
     elif event_type == "permission.replied":
         request_id = data.get("requestID")
         decision = data.get("reply")
-        if not _valid_identifier(request_id, _PERMISSION_ID) or decision not in _SAFE_DECISIONS:
+        if (
+            not _valid_identifier(request_id, _PERMISSION_ID)
+            or not isinstance(decision, str)
+            or decision not in _SAFE_DECISIONS
+        ):
             return None
         result["permission_request_id"] = request_id
         result["decision"] = decision
     created = payload.get("created")
-    if isinstance(created, (int, float)) and not isinstance(created, bool) and math.isfinite(created) and created >= 0:
-        result["created"] = float(created)
+    if (
+        isinstance(created, (int, float))
+        and not isinstance(created, bool)
+        and 0 <= created <= 4_102_444_800
+    ):
+        try:
+            if math.isfinite(created):
+                result["created"] = float(created)
+        except (OverflowError, TypeError, ValueError):
+            pass
     return result
