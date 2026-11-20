@@ -52,14 +52,6 @@ def test_browser_policy_rejects_unsafe_url_forms(url):
         policy().validate(url)
 
 
-@pytest.mark.parametrize('url', [
-    'http://127.0.0.1/',
-    'https://169.254.169.254/latest/meta-data/',
-    'http://[::1]/',
-    'https://localhost/',
-    'https://service.internal/',
-    'https://printer.local/',
-])
 @pytest.mark.parametrize("url", [
     "https://example.com/path\n.evil",
     "https://example.com/\tpath",
@@ -71,6 +63,14 @@ def test_browser_policy_rejects_unicode_controls_and_bidi_characters(url):
         policy().validate(url)
 
 
+@pytest.mark.parametrize('url', [
+    'http://127.0.0.1/',
+    'https://169.254.169.254/latest/meta-data/',
+    'http://[::1]/',
+    'https://localhost/',
+    'https://service.internal/',
+    'https://printer.local/',
+])
 def test_browser_policy_rejects_private_or_ip_literal_hosts(url):
     with pytest.raises(ValueError):
         policy(allowed_hosts=frozenset({'example.com', 'localhost', '169.254.169.254', '127.0.0.1', '::1'})).validate(url)
