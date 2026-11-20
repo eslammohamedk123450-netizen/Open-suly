@@ -51,3 +51,36 @@ def test_project_update_requires_at_least_one_field():
 def test_project_delete_requires_authentication():
     response = client.delete("/v1/projects/00000000-0000-0000-0000-000000000001")
     assert response.status_code == 401
+
+class _ProjectQuery:
+    def __init__(self, rows):
+        self.rows = rows
+    def select(self, *_args): return self
+    def eq(self, *_args): return self
+    def order(self, *_args, **_kwargs): return self
+    def limit(self, *_args): return self
+    def execute(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(data=self.rows)
+
+
+class _ProjectAdmin:
+    def __init__(self):
+        self.inserted = None
+    def __enter__(self): return self
+    def __exit__(self, *_args): return False
+    def table(self, name):
+        return _ProjectQuery([])
+
+
+def test_project_list_is_owner_scoped(monkeypatch):
+    from types import SimpleNamespace
+    admin = _ProjectAdmin()
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="user-a", email=None)
+    monkeypatch.setattr(projects_module, "get_supabase_admin_client", lambda: admin)
+    try:
+        response = client.get("/v1/projects")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200
+    assert response.json() == {"items": []}
