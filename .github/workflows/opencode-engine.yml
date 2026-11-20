@@ -15,6 +15,7 @@ on:
       - "services/api/tests/test_opencode_*.py"
       - "services/api/tests/test_runtime_provisioner_http.py"
       - "services/api/tests/test_project_workspace_store.py"
+      - "services/runtime-provisioner/**"
       - ".github/workflows/opencode-engine.yml"
   pull_request:
     paths:
@@ -81,3 +82,18 @@ jobs:
 
       - name: Build isolated OpenCode runtime image
         run: docker build --pull=false -f engines/opencode/Dockerfile -t suly-opencode:ci .
+
+  verify-docker-runtime:
+    name: Verify isolated Docker runtime primitives
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install runtime dependencies
+        run: pip install -r services/runtime-provisioner/requirements.txt pytest
+      - name: Test Docker runtime security and lifecycle
+        working-directory: services/runtime-provisioner
+        run: PYTHONPATH=. pytest -q tests/test_docker_runtime.py
