@@ -95,3 +95,12 @@ This is only a preflight policy helper. It does not make network requests, pin D
 - BrowserNetworkPolicy now validates the configured allowlist itself, not only incoming URLs: entries must be lowercase ASCII DNS names in canonical form, with no wildcard, trailing dot, malformed labels, localhost, .local, or .internal suffixes.
 - Literal and legacy numeric IPv4 forms are rejected from configuration as well as from navigation URLs.
 - Added tests for malformed/case-variant/trailing-dot/local/private/IP allowlist entries. This reduces configuration mistakes but does not replace runtime network enforcement.
+
+
+## Canonical allowlist and numeric-host hardening — 2026-11-20
+
+- BrowserNetworkPolicy now validates configured allowlist entries as canonical lowercase ASCII DNS names; it rejects Unicode, IP literals, localhost, and private/internal suffixes at policy construction.
+- URL preflight rejects control/format/surrogate characters, non-HTTP(S) schemes, credentials, IP literals, legacy IPv4 forms, numeric-only host forms, explicit zero/unapproved ports, private DNS answers, and non-canonical destinations.
+- The allowlist uses exact host matching by default. Optional subdomain matching is suffix-bound to a dot boundary.
+- Added tests for shorthand/integer/hexadecimal IPv4, oversized numeric and hexadecimal host forms, Unicode/bidi controls, zero ports, canonical host allowlists, and DNS answers.
+- This is still preflight validation only. The actual browser runtime must enforce redirect-by-redirect checks, DNS pinning at connection time, IPv4/IPv6 egress filtering, and a default-deny network proxy. Browser Use remains disabled.
