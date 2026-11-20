@@ -160,3 +160,35 @@ def test_catalog_does_not_advertise_hermes_when_worker_or_isolation_is_off(monke
     assert by_name["text.analyze"]["available"] is False
     assert by_name["ai.respond"]["available"] is False
     assert by_name["hermes.agent.turn"]["available"] is False
+
+def test_catalog_reports_local_ollama_available_without_api_key(monkeypatch):
+    class FakeStore:
+        def active_scopes(self, _user_id):
+            return frozenset()
+
+    class FakeSettings:
+        ai_provider = "ollama"
+        ai_base_url = "http://ollama.internal:11434"
+        ai_api_key = None
+        ai_model = "qwen2.5:3b"
+        worker_enabled = True
+        hermes_agent_enabled = False
+        hermes_agent_isolation_confirmed = False
+        hermes_agent_base_url = None
+        hermes_agent_api_key = None
+
+    monkeypatch.setattr(approvals_router, "_store", lambda: FakeStore())
+    monkeypatch.setattr(approvals_router, "get_settings", lambda: FakeSettings())
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+        id="ollama-ready-user", email=None
+    )
+    try:
+        response = client.get("/v1/tools/approvals/catalog")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    ai_tool = next(item for item in response.json()["items"] if item["name"] == "ai.respond")
+    assert ai_tool["available"] is True
+    assert ai_tool["approved"] is False
+
