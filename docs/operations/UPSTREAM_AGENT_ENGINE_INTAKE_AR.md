@@ -16,7 +16,7 @@
 | النظام | المستودع / SHA المثبت للمراجعة | الترخيص الظاهر | القرار الأولي |
 |---|---|---|---|
 | Hermes Agent | `NousResearch/hermes-agent` — `2de9f51b8008a7d49a49221c184f2f11cbfc4af1` | MIT | المحرك العام الأساسي؛ موجود له adapter في SULY، لكن runtime غير مفعّل ولا يوجد إثبات عزل حي. |
-| OpenHands Agent Canvas | `OpenHands/OpenHands` — `3df9648874a901dd91c4d8a4fdb49401297a27a5` | MIT | المرشح الأول للـcoding backend بعد sandbox review. توثيق المشروع يحذر أن التشغيل دون sandbox يمنح الوكيل وصول filesystem/shell/network على المضيف. لا تشغيل host mode. |
+| OpenHands Agent Canvas | `OpenHands/OpenHands` — `3df9648874a901dd91c4d8a4fdb49401297a27a5` | MIT | هذا الـSHA يعرض Agent Canvas/control plane يدعم backends عبر ACP؛ لا نعتبره coding engine مستقلًا قبل تحديد backend الفعلي. توثيقه يحذر من host filesystem/shell/network access؛ لا تشغيل host mode. |
 | OpenCode | `anomalyco/opencode` (branch `dev`) — `8e1c6a43a2840380650fad0ec5b3ba41ac388d27` | MIT | مرشح coding adapter منفصل؛ لا نثبت branch متحرك، بل SHA فقط. يلزم فحص API/runtime والتبعيات قبل الاختيار النهائي. |
 | Aider | `Aider-AI/aider` — `5dc9490bb35f9729ef2c95d00a19ccd30c26339c` | Apache-2.0 (metadata) | مرشح coding CLI بديل؛ يحتاج workspace مؤقت وقيود أوامر وGit، ولا يُشغّل على مستودع المستخدم مباشرة قبل موافقته. |
 | Browser Use | `browser-use/browser-use` — `ccbdb8095fbaf903c748880a600054a34c7b6191` | MIT | مرشح Browser Agent محلي. المصدر يصف persistent Python REPL وChrome CDP؛ لذلك يجب عزل browser profile وREPL والشبكة والـdownloads. لا حاجة إلى Browser Use Cloud. |
@@ -44,8 +44,9 @@
 
 ## خطة الاختيار والتنفيذ
 
-- أول coding backend مرشح: OpenHands، بشرط Docker sandbox مستقل لكل task مع عدم مشاركة Docker socket أو host filesystem، user غير root، CPU/RAM/PID/disk/time quotas، network default-deny، workspace مؤقت محدود، وcleanup موثوق.
-- OpenCode وAider بدائل مقارنة؛ نختار backend واحدًا أولًا بعد benchmark موحد (نجاح task، زمن، استهلاك، patch quality، cancellation، recovery).
+- أول coding runtime للتجربة: Aider CLI داخل sandbox لكل task؛ نقارنه بـOpenCode server بعد مراجعة API والـpermissions. OpenHands Agent Canvas يُقيّم كطبقة control plane/ACP، وليس كبديل تلقائي للمحرك.
+- لا نبدأ Aider أو OpenCode قبل Docker runner فعلي، image digest ثابت، workspace مؤقت، non-root، CPU/RAM/PID/disk/time quotas، network default-deny مع egress proxy محدود، وcleanup موثوق.
+- نختار backend واحدًا بعد benchmark موحد (نجاح task، زمن، استهلاك، patch quality، cancellation، recovery).
 - أول Browser backend مرشح: Browser Use المحلي، بعد بناء browser sandbox؛ لا تستخدم hosted cloud.
 - لا نعتمد Dify أو n8n أو Skyvern قبل إغلاق مراجعة الترخيص.
 - لا يتم نسخ upstream source حتى تُراجع dependencies وlicense notices وCVE/source provenance وتثبت نسخة قابلة لإعادة البناء.
@@ -57,3 +58,11 @@
 - لم يتم استكمال transitive dependency/license/SBOM/CVE audit.
 - لم يُبنَ بعد per-task container manager أو default-deny egress policy.
 - لا توجد نتيجة benchmark مقارنة، ولا موافقة لتفعيل providers أو خدمات مدفوعة.
+
+
+## مصادر وردت ضمن قائمة التقييم ولم يثبت عنوانها/نسختها بعد
+
+| النظام | الحالة |
+|---|---|
+| Open Interpreter | لم يتم تثبيت repository canonical/revision موثوق في هذه المراجعة؛ لا pin ولا دمج حتى تأكيد الرابط الأصلي الذي قصده المستخدم. |
+| Screenpipe | لم يتم تأكيد المستودع المقصود أو إجراء license/source audit؛ مؤجل ولا يوجد pin. |
