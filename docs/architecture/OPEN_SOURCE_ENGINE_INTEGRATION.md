@@ -123,10 +123,13 @@ Hermes is the primary agent harness for planning, tool selection, skills, memory
 
 At the time this document is added:
 - SULY has durable task/DAG, worker lease/heartbeat, retry/cancellation/checkpoint, tool registry, persisted approval/audit infrastructure.
-- Only deterministic `text.analyze` is registered for task execution.
+- `text.analyze`, `ai.respond`, and `hermes.agent.turn` are present in the allow-listed tool registry; AI/Hermes operations require persisted approval and server configuration. Hermes remains disabled by default and additionally requires explicit per-task isolation attestation.
+- Hermes is the only pinned upstream engine with a task adapter wired into the worker registry. This is a code path, not evidence of a running or verified Hermes service.
+- OpenCode and Browser Use are catalogued but have no runtime adapter yet; their roles remain unavailable.
 - The worker is opt-in and not deployed as an always-on service.
-- No model provider is selected; `AI_PROVIDER=disabled`.
-- No upstream engine listed above is yet claimed as running inside SULY.
+- No model provider is selected by default; `AI_PROVIDER=disabled`.
+- Hermes SSE now has a lease-guarded metadata-only persistence path and owner-scoped task-detail response. The additive `engine_run_events` migration must be applied before deploying the API version that reads it.
+- No upstream engine is claimed as live or production-operational inside SULY.
 - This document establishes architecture and integration gates; it is not evidence that engines have already been installed or that autonomous tasks work.
 
 ## Completion report requirements
@@ -173,3 +176,12 @@ Every integration batch must list:
 - The worker's agent manager now consumes the canonical SULY role catalogue: general, coding, research, browser, and workflow agents.
 - Role availability is derived from registered enabled engine capabilities; persisted tool approval remains an independent requirement.
 - This is registry/role integration, not yet a complete OpenCode or Browser Use runtime integration.
+
+
+### Durable Hermes event trail — 2026-11-20
+
+- The optional Hermes SSE consumer is connected through the adapter to `EngineRunStore.append_event`.
+- The event migration stores only an allow-listed event name, upstream sequence, and timestamp. It intentionally excludes event payloads, message text, reasoning, tool arguments, previews, and outputs.
+- The append RPC validates the current task-step lease and running engine attempt; stale workers cannot append events after losing ownership. Upstream sequence numbers are idempotent.
+- `GET /v1/tasks/{task_id}` returns at most 500 owner-filtered events alongside engine-run history. The task owner is derived from the authenticated user, never request payload.
+- The migration is additive and has not been applied to any Supabase environment. Apply it in a disposable/staging database and verify RLS/RPC behavior before deploying code that reads the new table.
