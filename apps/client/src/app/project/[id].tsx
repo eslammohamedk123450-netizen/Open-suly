@@ -67,6 +67,9 @@ export default function ProjectDetailScreen() {
               <Pressable style={styles.primary} onPress={() => router.push({ pathname: "/agent", params: { projectId: project.id } })}>
                 <Text style={styles.primaryText}>＋ إنشاء مهمة في المشروع</Text>
               </Pressable>
+              <Pressable style={styles.filesButton} onPress={() => router.push({ pathname: "/project/[id]/files", params: { id: project.id } })}>
+                <Text style={styles.filesButtonText}>⌘ ملفات المشروع ومحرر الأكواد</Text>
+              </Pressable>
               <View style={styles.listHeader}><Text style={styles.heading}>مهام المشروع</Text><Text style={styles.muted}>{tasks.length} مهمة</Text></View>
               {tasks.length === 0 ? (
                 <View style={styles.empty}><Text style={styles.heading}>لا توجد مهام بعد</Text><Text style={styles.muted}>ابدأ بمهمة وسيتم حفظها داخل مساحة المشروع.</Text></View>
@@ -110,6 +113,8 @@ const styles = StyleSheet.create({
   muted: { color: colors.muted, fontSize: 10, textAlign: "center", marginTop: 4 },
   primary: { minHeight: 48, borderRadius: 13, backgroundColor: colors.gold, alignItems: "center", justifyContent: "center" },
   primaryText: { color: colors.background, fontSize: 13, fontWeight: "800" },
+  filesButton: { minHeight: 46, borderRadius: 13, borderWidth: 1, borderColor: colors.goldDark, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
+  filesButtonText: { color: colors.gold, fontSize: 12, fontWeight: "700" },
   listHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   heading: { color: colors.text, fontSize: 14, fontWeight: "800", textAlign: "right" },
   list: { gap: 10 },
