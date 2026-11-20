@@ -136,3 +136,30 @@ def test_registry_validates_handler_output_type_and_size():
     ))
     with pytest.raises(ValueError, match="invalid_tool_output"):
         invalid.execute(step)
+
+
+def test_registry_rejects_non_object_input_before_lookup():
+    registry = ToolRegistry()
+    with pytest.raises(ValueError, match="input must be an object"):
+        registry.execute(replace(make_step({}), input=["not", "an", "object"]))
+
+
+@pytest.mark.parametrize("bad_output", [
+    {"value": float("nan")},
+    {"value": float("inf")},
+    {1: "non-string key"},
+])
+def test_registry_rejects_non_strict_json_outputs(bad_output):
+    registry = ToolRegistry()
+    registry.register(ToolDefinition(
+        name="strict.output",
+        description="Strict JSON output validation",
+        permission_scope="strict.output",
+        allowed_input_fields=frozenset({"value"}),
+        required_input_fields=frozenset({"value"}),
+        max_input_bytes=100,
+        handler=lambda _step: bad_output,
+        requires_approval=False,
+    ))
+    with pytest.raises(ValueError, match="invalid_tool_output"):
+        registry.execute(make_step({"operation": "strict.output", "value": "ok"}))
