@@ -1,204 +1,302 @@
 import { useState } from "react";
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { colors } from "@/theme/tokens";
-import { BottomNavigation } from "@/components/BottomNavigation";
+import { useTheme } from "@/providers/ThemeProvider";
 import { useAuth } from "@/providers/AuthProvider";
-import { createConversation, sendUserMessage } from "@/lib/conversations";
+import { BottomSheet } from "@/components/BottomSheet";
+import { Drawer } from "@/components/Drawer";
 
-const suggestions = [
-  { title: "ابحث بعمق", description: "اجمع المعلومات وقارن المصادر", prompt: "ابحث بعمق عن " },
-  { title: "اكتب محتوى", description: "مقال أو خطة أو رسالة", prompt: "اكتب لي " },
-  { title: "حلّل ملفًا", description: "استخرج النتائج والأفكار", prompt: "حلّل هذا الملف: " },
+/** Home strip cards in the fixed order from the spec. */
+const stripCards = [
+  { key: "upgrade", label: "ترقية", icon: "✦", action: "upgrade" },
+  { key: "computers", label: "أجهزة الحاسوب", icon: "▣", action: "none" },
+  { key: "projects", label: "المشاريع", icon: "▤", action: "projects" },
+  { key: "library", label: "المكتبة", icon: "❑", action: "none" },
+  { key: "notifications", label: "الإشعارات", icon: "◉", action: "notifications" },
+  { key: "explore", label: "الاستكشاف", icon: "⌖", action: "none" },
+  { key: "skills", label: "المهارات", icon: "✧", action: "none" },
+  { key: "tasks", label: "المهام", icon: "✓", action: "none" },
+];
+
+const upgradeFeatures = [
+  "مهام غير محدودة في يوم واحد",
+  "أولوية في الوصول إلى أقوى النماذج",
+  "مساحة تخزين أكبر لملفاتك ومشاريعك",
+  "دعم فني مباشر وأسرع",
+];
+
+type DrawerRow = { label: string; icon: string; page?: string };
+type DrawerSection = { title: string; rows: DrawerRow[] };
+
+const drawerSections: DrawerSection[] = [
+  {
+    title: "work",
+    rows: [
+      { label: "المهام المجدولة", icon: "⏱" },
+      { label: "معرفة", icon: "✦" },
+      { label: "Mail Suly", icon: "✉" },
+      { label: "ضوابط البيانات", icon: "◈" },
+      { label: "منتصف السحابة", icon: "☁" },
+      { label: "المهارات", icon: "✧" },
+      { label: "الموصلات", icon: "Ⓞ" },
+      { label: "التكاملات", icon: "⇄" },
+    ],
+  },
+  {
+    title: "channels",
+    rows: [
+      { label: "البريد الإلكتروني", icon: "✉" },
+      { label: "الهاتف", icon: "☎" },
+      { label: "جهازي", icon: "▤" },
+      { label: "المحفظة", icon: "❑" },
+    ],
+  },
+  {
+    title: "account",
+    rows: [
+      { label: "الحساب", icon: "◉", page: "/account" },
+      { label: "اللغة · العربية", icon: "🌐", page: "/language" },
+      { label: "المظهر", icon: "◐", page: "/appearance" },
+      { label: "مسح ذاكرة التخزين المؤقت · MB 1007", icon: "⌫", page: "/cache" },
+    ],
+  },
+  {
+    title: "about",
+    rows: [
+      { label: "قيّم هذا التطبيق", icon: "★" },
+      { label: "الحصول على مساعدة", icon: "?" },
+      { label: "الإصدار v26.19.8", icon: "ⓘ" },
+      { label: "تسجيل الخروج", icon: "→", page: "/logout" },
+    ],
+  },
 ];
 
 export default function HomeScreen() {
-  const [draft, setDraft] = useState("");
-  const [notice, setNotice] = useState("");
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [sending, setSending] = useState(false);
-  const { user } = useAuth();
+  const { palette } = useTheme();
+  const { user, profile } = useAuth();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
-  const sendDraft = async () => {
-    const request = draft.trim();
-    if (!request || sending) return;
-    if (!user) {
-      setNotice("سجّل الدخول أولًا لحفظ محادثتك ومتابعتها.");
-      router.push("/auth");
-      return;
-    }
-    setSending(true);
-    setNotice("");
-    try {
-      const conversation = await createConversation(request.slice(0, 40));
-      await sendUserMessage(conversation.id, request);
-      setDraft("");
-      router.push({ pathname: "/conversation/[id]", params: { id: conversation.id } });
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "تعذر حفظ طلبك. حاول مرة أخرى.");
-    } finally {
-      setSending(false);
-    }
+  const displayName = profile?.display_name?.trim() || user?.email?.split("@")[0] || "Suly User";
+
+  const openCard = (action: string) => {
+    if (action === "upgrade") setUpgradeOpen(true);
+    else if (action === "projects") router.push("/projects");
+    else if (action === "notifications") router.push("/notifications");
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.page}>
-        <View style={styles.header}>
-          <View style={styles.brand}>
-            <View style={styles.logo}><Text style={styles.logoText}>S</Text></View>
-            <View>
-              <Text style={styles.brandName}>SULY</Text>
-              <Text style={styles.brandCaption}>INTELLIGENT PARTNER</Text>
-            </View>
-          </View>
-          <View style={styles.headerActions}>
-            <Pressable style={styles.iconButton} onPress={() => setMenuOpen((v) => !v)} accessibilityLabel="فتح القائمة">
-              <Text style={styles.iconText}>☰</Text>
-            </Pressable>
-            <Pressable style={styles.avatar} onPress={() => router.push("/settings")} accessibilityLabel="الإعدادات">
+    <SafeAreaView style={[styles.safe, { backgroundColor: palette.background }]}>
+      <View style={[styles.page, { backgroundColor: palette.background }]}>
+        {/* Header: profile avatar left, centered wordmark, search right. */}
+        <View style={[styles.header, { borderBottomColor: palette.border }]}>
+          <Pressable onPress={() => setDrawerOpen(true)} accessibilityLabel="فتح القائمة الجانبية">
+            <View style={[styles.avatar, { backgroundColor: palette.success }]}>
               <Text style={styles.avatarText}>S</Text>
-            </Pressable>
-          </View>
+            </View>
+          </Pressable>
+          <Text style={[styles.wordmark, { color: palette.text }]} numberOfLines={1}>Suly</Text>
+          <Pressable accessibilityLabel="البحث" onPress={() => undefined}>
+            <Text style={[styles.headerIcon, { color: palette.text }]}>⌕</Text>
+          </Pressable>
         </View>
 
-        {menuOpen && (
-          <View style={styles.menu}>
-            <Pressable style={styles.menuItem} onPress={() => { setMenuOpen(false); router.push("/settings"); }}>
-              <Text style={styles.menuText}>الإعدادات</Text>
+        {/* Horizontal scrolling strip of dark cards. */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.stripContent}
+          style={styles.strip}
+          nestedScrollEnabled
+        >
+          {stripCards.map((card) => (
+            <Pressable
+              key={card.key}
+              style={({ pressed }) => [
+                styles.stripCard,
+                {
+                  backgroundColor: pressed ? palette.surfaceSecondary : palette.surface,
+                  borderColor: palette.border,
+                },
+              ]}
+              onPress={() => openCard(card.action)}
+            >
+              <Text style={[styles.stripIcon, { color: palette.muted }]}>{card.icon}</Text>
+              <Text style={[styles.stripLabel, { color: palette.text }]}>{card.label}</Text>
             </Pressable>
-            <Pressable style={styles.menuItem} onPress={() => setMenuOpen(false)}>
-              <Text style={styles.menuText}>إغلاق القائمة</Text>
-            </Pressable>
-          </View>
-        )}
+          ))}
+        </ScrollView>
 
-        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-          <View style={styles.hero}>
-            <View style={styles.eyebrow}><View style={styles.onlineDot} /><Text style={styles.eyebrowText}>مساحة عملك الذكية</Text></View>
-            <Text style={styles.greeting}>أهلاً بك في <Text style={styles.gold}>SULY</Text></Text>
-            <Text style={styles.subtitle}>فكرتك تبدأ هنا. اكتب ما تريد إنجازه، ودعنا نحوله إلى خطوات واضحة.</Text>
+        {/* Empty state: dotted chat icon, caption, centered white task button. */}
+        <View style={styles.emptyState}>
+          <View style={[styles.emptyIcon, { borderColor: palette.faint }]}>
+            <Text style={[styles.emptyIconText, { color: palette.faint }]}>◌</Text>
           </View>
+          <Text style={[styles.emptyTitle, { color: palette.muted }]}>لا توجد مهام</Text>
+          <Pressable
+            style={({ pressed }) => [styles.newTaskButton, { opacity: pressed ? 0.85 : 1 }]}
+            onPress={() => router.push("/conversation/new")}
+          >
+            <Text style={styles.newTaskText}>+ مهمة جديدة</Text>
+          </Pressable>
+        </View>
+      </View>
 
-          <View style={styles.composer}>
-            <TextInput
-              value={draft}
-              onChangeText={(value) => { setDraft(value); setNotice(""); }}
-              placeholder="اكتب مهمتك أو اسأل SULY عن أي شيء..."
-              placeholderTextColor={colors.faint}
-              multiline
-              textAlignVertical="top"
-              style={styles.input}
-              selectionColor={colors.gold}
-            />
-            <View style={styles.composerFooter}>
-              <View style={styles.tools}>
-                <Pressable style={styles.toolButton} onPress={() => setNotice("إرفاق الملفات سيتم تفعيله ضمن مرحلة الملفات.")}>
-                  <Text style={styles.toolText}>＋ ملف</Text>
-                </Pressable>
-                <Pressable style={styles.toolButton} onPress={() => router.push({ pathname: "/agent", params: draft.trim() ? { prompt: draft.trim() } : {} })}>
-                  <Text style={styles.toolText}>◈ تنفيذ كمهمة</Text>
-                </Pressable>
-              </View>
-              <Pressable style={[styles.sendButton, !draft.trim() && styles.sendDisabled]} onPress={sendDraft} accessibilityLabel="إرسال الطلب">
-                <Text style={styles.sendText}>↑</Text>
-              </Pressable>
+      {/* Upgrade bottom sheet. */}
+      <BottomSheet visible={upgradeOpen} onClose={() => setUpgradeOpen(false)} heightRatio={0.78}>
+        <View style={[styles.sheetHeader, { borderBottomColor: palette.border }]}>
+          <Text style={[styles.sheetTitle, { color: palette.text }]}>قم بالترقية إلى Suly Pro</Text>
+          <Pressable onPress={() => setUpgradeOpen(false)} accessibilityLabel="إغلاق">
+            <Text style={[styles.sheetClose, { color: palette.muted }]}>✕</Text>
+          </Pressable>
+        </View>
+        <ScrollView contentContainerStyle={styles.upgradeBody} showsVerticalScrollIndicator={false}>
+          {upgradeFeatures.map((feature) => (
+            <View key={feature} style={styles.upgradeRow}>
+              <Text style={[styles.checkIcon, { color: palette.success }]}>✓</Text>
+              <Text style={[styles.upgradeText, { color: palette.muted }]}>{feature}</Text>
+            </View>
+          ))}
+          <View
+            style={[
+              styles.priceCard,
+              { backgroundColor: palette.surfaceSecondary, borderColor: palette.border },
+            ]}
+          >
+            <Text style={[styles.priceLabel, { color: palette.text }]}>سنوياً 12,999 ج.م / سنة</Text>
+          </View>
+          <Pressable
+            style={({ pressed }) => [styles.upgradeButton, { opacity: pressed ? 0.85 : 1 }]}
+            onPress={() => undefined}
+          >
+            <Text style={styles.upgradeButtonText}>قم بالترقية الآن</Text>
+          </Pressable>
+        </ScrollView>
+      </BottomSheet>
+
+      {/* Right drawer: profile summary and four sections of list cards. */}
+      <Drawer visible={drawerOpen} onClose={() => setDrawerOpen(false)}>
+        <ScrollView contentContainerStyle={styles.drawerContent} showsVerticalScrollIndicator={false}>
+          <View style={[styles.drawerProfileCard, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+            <View style={[styles.drawerAvatar, { backgroundColor: palette.success }]}>
+              <Text style={styles.drawerAvatarText}>S</Text>
+            </View>
+            <View style={styles.drawerProfileMeta}>
+              <Text style={[styles.drawerName, { color: palette.text }]} numberOfLines={1}>{displayName}</Text>
+              <Text style={[styles.drawerPlan, { color: palette.muted }]}>Free · رصيد 300</Text>
             </View>
           </View>
 
-          {!!notice && <Text style={styles.notice}>{notice}</Text>}
-
-          <View style={styles.sectionHeading}>
-            <Text style={styles.sectionTitle}>ابدأ من هنا</Text>
-            <Text style={styles.sectionHint}>اختر نقطة بداية لمهمتك</Text>
-          </View>
-          <View style={styles.suggestionList}>
-            {suggestions.map((item) => (
-              <Pressable key={item.title} style={styles.suggestionCard} onPress={() => { setDraft(item.prompt); setNotice(""); }}>
-                <View style={styles.suggestionIcon}><Text style={styles.suggestionIconText}>{item.title === "ابحث بعمق" ? "⌕" : item.title === "اكتب محتوى" ? "✎" : "▤"}</Text></View>
-                <View style={styles.suggestionCopy}>
-                  <Text style={styles.suggestionTitle}>{item.title}</Text>
-                  <Text style={styles.suggestionDescription}>{item.description}</Text>
-                </View>
-                <Text style={styles.chevron}>‹</Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <View style={styles.bottomNote}>
-            <Text style={styles.bottomNoteTitle}>أكثر من مجرد ذكاء اصطناعي</Text>
-            <Text style={styles.bottomNoteText}>SULY منصة مستقلة قيد البناء، مصممة لتساعدك على التخطيط والعمل والإنجاز.</Text>
-          </View>
+          {drawerSections.map((section) => (
+            <View
+              key={section.title}
+              style={[styles.drawerSection, { backgroundColor: palette.surface, borderColor: palette.border }]}
+            >
+              {section.rows.map((row) => (
+                <Pressable
+                  key={row.label}
+                  style={({ pressed }) => [
+                    styles.drawerRow,
+                    { backgroundColor: pressed ? palette.surfaceSecondary : "transparent" },
+                  ]}
+                  onPress={() => {
+                    setDrawerOpen(false);
+                    if (row.page) router.push(row.page as never);
+                  }}
+                >
+                  <Text style={[styles.drawerRowIcon, { color: palette.muted }]}>{row.icon}</Text>
+                  <Text style={[styles.drawerRowLabel, { color: palette.text }]} numberOfLines={1}>{row.label}</Text>
+                  <Text style={[styles.drawerRowChevron, { color: palette.faint }]}>‹</Text>
+                </Pressable>
+              ))}
+            </View>
+          ))}
         </ScrollView>
-
-        <BottomNavigation active="home" />
-      </View>
+      </Drawer>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  page: { flex: 1, direction: "rtl", backgroundColor: colors.background, width: "100%", maxWidth: 1100, alignSelf: "center" },
-  header: { minHeight: 72, paddingHorizontal: 22, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: colors.border },
-  brand: { flexDirection: "row", alignItems: "center", gap: 11 },
-  logo: { width: 42, height: 42, borderRadius: 14, borderWidth: 1, borderColor: colors.gold, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
-  logoText: { color: colors.gold, fontSize: 25, fontWeight: "800" },
-  brandName: { color: colors.text, fontSize: 17, fontWeight: "800", letterSpacing: 3 },
-  brandCaption: { color: colors.faint, fontSize: 8, letterSpacing: 1.6, marginTop: 2 },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: 10 },
-  iconButton: { width: 40, height: 40, borderRadius: 13, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border },
-  iconText: { color: colors.text, fontSize: 18 },
-  avatar: { width: 40, height: 40, borderRadius: 14, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.goldDark, alignItems: "center", justifyContent: "center" },
-  avatarText: { color: colors.gold, fontWeight: "800", fontSize: 17 },
-  menu: { position: "absolute", top: 66, right: 20, zIndex: 5, width: 180, padding: 8, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  menuItem: { paddingVertical: 12, paddingHorizontal: 10 },
-  menuText: { color: colors.text, textAlign: "right", fontSize: 14 },
-  scrollContent: { paddingHorizontal: 22, paddingTop: 34, paddingBottom: 30, width: "100%", maxWidth: 760, alignSelf: "center" },
-  hero: { marginBottom: 25 },
-  eyebrow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 16 },
-  onlineDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.gold },
-  eyebrowText: { color: colors.gold, fontSize: 12 },
-  greeting: { color: colors.text, fontSize: 29, fontWeight: "800", textAlign: "right", lineHeight: 42 },
-  gold: { color: colors.gold },
-  subtitle: { color: colors.muted, fontSize: 14, lineHeight: 25, textAlign: "right", marginTop: 8 },
-  composer: { borderRadius: 22, borderWidth: 1, borderColor: colors.goldDark, backgroundColor: colors.surface, padding: 15, minHeight: 170 },
-  input: { minHeight: 94, color: colors.text, fontSize: 15, textAlign: "right", writingDirection: "rtl", lineHeight: 25, outlineStyle: "none" as never },
-  composerFooter: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 10 },
-  tools: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
-  toolButton: { paddingVertical: 8, paddingHorizontal: 11, borderRadius: 10, backgroundColor: colors.surfaceSecondary },
-  toolText: { color: colors.muted, fontSize: 11 },
-  sendButton: { width: 42, height: 42, borderRadius: 14, backgroundColor: colors.gold, alignItems: "center", justifyContent: "center" },
-  sendDisabled: { opacity: 0.45 },
-  sendText: { color: colors.background, fontSize: 24, fontWeight: "800" },
-  notice: { color: colors.gold, fontSize: 12, textAlign: "right", lineHeight: 20, marginTop: 12 },
-  sectionHeading: { marginTop: 34, marginBottom: 14, flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" },
-  sectionTitle: { color: colors.text, fontSize: 17, fontWeight: "700" },
-  sectionHint: { color: colors.faint, fontSize: 11 },
-  suggestionList: { gap: 10 },
-  suggestionCard: { minHeight: 76, padding: 13, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, flexDirection: "row", alignItems: "center", gap: 12 },
-  suggestionIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: colors.surfaceSecondary, alignItems: "center", justifyContent: "center" },
-  suggestionIconText: { color: colors.gold, fontSize: 22 },
-  suggestionCopy: { flex: 1 },
-  suggestionTitle: { color: colors.text, fontSize: 14, fontWeight: "700", textAlign: "right" },
-  suggestionDescription: { color: colors.muted, fontSize: 11, marginTop: 5, textAlign: "right" },
-  chevron: { color: colors.faint, fontSize: 23 },
-  bottomNote: { marginTop: 26, padding: 17, borderRadius: 16, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  bottomNoteTitle: { color: colors.gold, fontSize: 13, fontWeight: "700", textAlign: "right" },
-  bottomNoteText: { color: colors.muted, fontSize: 11, lineHeight: 20, textAlign: "right", marginTop: 7 },
-  bottomNav: { minHeight: 66, paddingHorizontal: 8, paddingTop: 8, paddingBottom: 5, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.background, flexDirection: "row", justifyContent: "space-around", alignItems: "center" },
-  navItem: { flex: 1, alignItems: "center", justifyContent: "center", gap: 3, paddingVertical: 4 },
-  navItemActive: { flex: 1, alignItems: "center", justifyContent: "center", gap: 3, paddingVertical: 4 },
-  navIcon: { color: colors.faint, fontSize: 18 },
-  navIconActive: { color: colors.gold, fontSize: 18 },
-  navLabel: { color: colors.faint, fontSize: 10 },
-  navLabelActive: { color: colors.gold, fontSize: 10, fontWeight: "700" },
+  safe: { flex: 1 },
+  page: { flex: 1, direction: "rtl" },
+  header: {
+    minHeight: 64,
+    paddingHorizontal: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderBottomWidth: 1,
+  },
+  avatar: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
+  avatarText: { color: "#FFFFFF", fontWeight: "800", fontSize: 14 },
+  wordmark: { fontSize: 24, fontWeight: "300", letterSpacing: 1 },
+  headerIcon: { fontSize: 22 },
+  strip: { flexGrow: 0 },
+  stripContent: { paddingHorizontal: 16, paddingVertical: 14, gap: 10, direction: "ltr" },
+  stripCard: {
+    minWidth: 96,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+  },
+  stripIcon: { fontSize: 16 },
+  stripLabel: { fontSize: 12 },
+  emptyState: { flex: 1, alignItems: "center", justifyContent: "center", gap: 14, paddingBottom: 40 },
+  emptyIcon: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    borderWidth: 2,
+    borderStyle: "dashed",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyIconText: { fontSize: 22 },
+  emptyTitle: { fontSize: 14 },
+  newTaskButton: { backgroundColor: "#FFFFFF", borderRadius: 12, paddingVertical: 12, paddingHorizontal: 28, borderWidth: 1, borderColor: "#E3E3E3" },
+  newTaskText: { color: "#000000", fontWeight: "700", fontSize: 14 },
+  sheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+  },
+  sheetTitle: { fontSize: 17, fontWeight: "700" },
+  sheetClose: { fontSize: 17 },
+  upgradeBody: { padding: 20, gap: 12 },
+  upgradeRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  checkIcon: { fontSize: 15, fontWeight: "800" },
+  upgradeText: { fontSize: 13, flex: 1 },
+  priceCard: { marginTop: 6, borderRadius: 14, borderWidth: 1, paddingVertical: 16, alignItems: "center" },
+  priceLabel: { fontSize: 15, fontWeight: "700" },
+  upgradeButton: { backgroundColor: "#FFFFFF", borderRadius: 12, paddingVertical: 14, alignItems: "center", marginTop: 4 },
+  upgradeButtonText: { color: "#000000", fontWeight: "700", fontSize: 15 },
+  drawerContent: { padding: 16, gap: 12 },
+  drawerProfileCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  drawerAvatar: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  drawerAvatarText: { color: "#FFFFFF", fontWeight: "800", fontSize: 18 },
+  drawerProfileMeta: { flex: 1 },
+  drawerName: { fontSize: 15, fontWeight: "700" },
+  drawerPlan: { fontSize: 11, marginTop: 3 },
+  drawerSection: { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
+  drawerRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14, paddingHorizontal: 14 },
+  drawerRowIcon: { fontSize: 16, width: 22, textAlign: "center" },
+  drawerRowLabel: { flex: 1, fontSize: 13 },
+  drawerRowChevron: { fontSize: 20 },
 });
