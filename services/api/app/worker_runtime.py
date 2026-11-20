@@ -106,10 +106,15 @@ def build_engine_registry(
 
 
 def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = None) -> dict[str, Any]:
+    # نتحقق من المدخلات قبل إنشاء أي سجل تشغيل خارجي.
     prompt = step.input.get("prompt")
     if not isinstance(prompt, str):
         raise ValueError("hermes.agent.turn requires a string input.prompt")
     settings = get_settings()
+    if not settings.hermes_agent_enabled:
+        raise RuntimeError("engine_disabled")
+
+    # نجهز طلب المحرك بحد أقصى زمني معروف من إعدادات الخادم.
     request = EngineRequest(
         task_id=str(step.task_id),
         capability="agent.general",
@@ -118,16 +123,27 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
     )
     cancel_event = context.cancel_event if context is not None else None
     run_store = context.engine_run_store if context is not None else None
-    if cancel_event is not None and cancel_event.is_set():
-        raise RuntimeError("task_execution_cancelled")
-    registry = build_engine_registry(\n        cancel_event,\n        idempotency_key=f"suly-{run_id}",\n        on_run_started=lambda upstream_id: run_store.attach_upstream_run_id(\n            run_id, step, upstream_id\n        ),\n    )
-    definition = registry.get("hermes-agent")
-    if definition is None or not definition.enabled:
-        raise RuntimeError("engine_disabled")
     if run_store is None:
         raise RuntimeError("engine_run_store_unavailable")
+    if cancel_event is not None and cancel_event.is_set():
+        raise RuntimeError("task_execution_cancelled")
+
+    # ننشئ سجل المحاولة أولًا ليصبح UUID الخاص به مفتاح idempotency ثابتًا لدى Hermes.
     run_id = run_store.start(step, "hermes-agent")
+    registry = build_engine_registry(
+        cancel_event,
+        idempotency_key=f"suly-{run_id}",
+        on_run_started=lambda upstream_id: run_store.attach_upstream_run_id(
+            run_id, step, upstream_id
+        ),
+    )
+    definition = registry.get("hermes-agent")
+    if definition is None or not definition.enabled:
+        run_store.finish(run_id, step, "failed", "engine_disabled")
+        raise RuntimeError("engine_disabled")
+
     try:
+        # لا نعتبر بدء Hermes ناجحًا حتى نحفظ معرفه الخارجي تحت lease الحالي.
         result = registry.execute("hermes-agent", request)
     except HermesAgentCancelled:
         run_store.finish(run_id, step, "cancelled")
@@ -142,7 +158,6 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
         "engine": result.output["engine"],
         "content": result.output["content"],
     }
-
 
 def dispatch_cancel_aware(
     step: ClaimedStep,
