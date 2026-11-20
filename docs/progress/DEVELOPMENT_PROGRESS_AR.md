@@ -482,3 +482,14 @@ undefined
 - لا ننسب اكتمال Platform CI حتى يكتمل Web export.
 
 - تحديث نهائي: Platform CI على commit 61c194f8 اكتمل بنجاح؛ 456 API tests passed، TypeScript typecheck، Expo compatibility، وWeb export كلها نجحت. Repository baseline نجح أيضًا. هذه النتيجة تخص commit 61c194f8، بينما commits التوثيق اللاحقة لم تغير كود التطبيق.
+
+
+## تحقق أمني وCI — 2026-11-20 (OpenCode permission metadata)
+
+- تم تشديد `opencode_contract.py`: أسماء الإجراءات تقبل ASCII محددًا فقط، وتُرفض محارف Unicode من فئات control/format/surrogate في أسماء الموارد، بما فيها محارف اتجاه النص المخفية.
+- أضيفت اختبارات ترفض محارف bidi والمسافات غير المسموحة في action، وترفض bidi في resource.
+- Platform CI على commit `db9e5ba6109f073f81f93694fff86b9d2c81bef8` اكتمل بنجاح: 456 اختبار API، وPython compile، وTypeScript typecheck، وExpo dependency compatibility، وWeb export.
+- Repository baseline checks على نفس commit نجحت.
+- ظهرت محاولات CI سابقة فاشلة على commits وسيطة أثناء تعديل نص الاختبارات؛ تم تصحيح الاختبارات، والمرجع النهائي المعتمد هنا هو نجاح CI على db9e5ba.
+- التحذيران في API tests ما زالا متعلقين بواجهات Starlette deprecated، ولا يمثلان فشلًا. يلزم تنظيفهما في دفعة مستقلة مع الحفاظ على توافق الإصدارات.
+- هذا التعديل لا يضيف OpenCode runtime ولا يفعّله؛ يظل المحرك disabled حتى اكتمال provisioner والعزل واختبارات الاتصال الفعلية.
