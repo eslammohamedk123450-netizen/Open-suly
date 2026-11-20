@@ -140,7 +140,8 @@ def test_runtime_broker_rejects_reused_runtime_identity_across_attempts():
         broker.acquire(second_lease.task_id, second_lease.engine_run_id, ENGINE_ID)
 
     assert broker.release(first) is True
-    assert provider.released == [second_lease.runtime_id, first_lease.runtime_id]
+    # The duplicate runtime ID may still belong to the first task; never tear it down twice.
+    assert provider.released == [first_lease.runtime_id]
 
 
 def test_runtime_broker_releases_invalid_provider_lease():
@@ -157,3 +158,24 @@ def test_runtime_broker_releases_invalid_provider_lease():
 def test_runtime_broker_requires_explicit_exact_origin_allowlist():
     with pytest.raises(ValueError, match="allowed_origins"):
         TaskScopedRuntimeBroker(FakeProvider([make_lease()]), allowed_origins=frozenset())
+
+
+
+def test_runtime_broker_rejects_forged_lease_object_on_release():
+    from dataclasses import replace
+
+    lease = make_lease()
+    provider = FakeProvider([lease])
+    broker = TaskScopedRuntimeBroker(provider, allowed_origins=ORIGINS)
+    active = broker.acquire(TASK_ID, RUN_ID, ENGINE_ID)
+    forged = replace(active)
+
+    assert forged == active
+    assert forged is not active
+    assert broker.release(forged) is False
+    assert broker.active_count == 1
+    assert provider.released == []
+
+    assert broker.release(active) is True
+    assert broker.active_count == 0
+    assert provider.released == [lease.runtime_id]
