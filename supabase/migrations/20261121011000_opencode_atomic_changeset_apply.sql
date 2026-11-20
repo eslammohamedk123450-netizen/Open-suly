@@ -83,7 +83,7 @@ begin
 
     if v_path is null or length(v_path) < 1 or length(v_path) > 512
        or left(v_path, 1) = '/'
-       or v_path like '%\%'
+       or position(chr(92) in v_path) > 0
        or v_path ~ '(^|/)\.\.?(/|$)'
        or v_path ~* '(^|/)(\.git|node_modules|\.suly|__pycache__)(/|$)'
        or v_path ~* '(^|/)\.env'
