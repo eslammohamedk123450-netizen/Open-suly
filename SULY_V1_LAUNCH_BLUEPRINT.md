@@ -236,3 +236,28 @@ The task database foundation is live, but it must not be described as autonomous
 - Worker claim responses are validated before execution: object shape, JSON-object input, attempt bounds, and bounded step metadata are checked; malformed claims fail closed.
 
 
+
+
+## Persisted tool consent and audit — 2026-11-20
+
+### Implemented and applied to Supabase
+- Added `public.tool_approvals` with owner-scoped active grants, revocation timestamps, and one active grant per user/scope.
+- Added `public.tool_approval_events` for grant/revoke history. Events are protected by an immutable update/delete trigger.
+- Both tables have RLS enabled. Authenticated users can read only their own records; clients cannot insert, update, or delete approvals or audit events.
+- Grant/revoke RPCs are SECURITY INVOKER, validate that the actor matches the target user, and are executable only by `service_role`.
+- Added indexes for owner history and the audit-to-approval foreign key.
+- Added authenticated API endpoints to list approvals/history and grant/revoke a registered approval-required scope. The API derives the actor from the verified bearer identity; it does not accept a user ID from the request.
+- Worker dispatch now loads the user's active scopes from Supabase immediately before execution and passes them through a trusted `ToolExecutionContext`. Task input cannot create or change grants.
+- Added unit tests for owner-scoped grant loading, revoked-scope exclusion, actor binding, and revoke outcomes.
+
+### Applied migrations
+- `20261120003441_persisted_tool_approvals_audit`
+- `20261120003603_tool_approval_audit_immutability`
+- `20261120003623_index_tool_approval_audit_fk`
+
+### Verification and limits
+- Live SQL permission check: both tables have RLS; authenticated can SELECT but cannot INSERT approvals or UPDATE audit events; authenticated cannot execute grant RPC; `service_role` can; grant RPC is not SECURITY DEFINER; immutable audit trigger exists.
+- Supabase security advisor: zero findings after these migrations.
+- Performance advisor's foreign-key index finding was fixed and indexed in the final migration. Existing unused-index notices remain informational and are expected before production traffic.
+- The current registry still contains only local `text.analyze`, which does not require approval. No sensitive external tool is registered yet, so the new API correctly refuses grants for unknown/unavailable scopes. This is the consent infrastructure, not a claim that web, browser, files, shell, or integrations are already available.
+- API/worker code changes require CI confirmation; no live authenticated consent round-trip or deployed worker execution is claimed.
