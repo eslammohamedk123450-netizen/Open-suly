@@ -4,6 +4,12 @@
 
 SULY is a standalone AI application being built from a clean foundation. Its product behavior, APIs, data models, authentication, AI orchestration, and integrations are designed specifically for SULY.
 
+## Scope boundary
+
+- This repository contains the new, standalone SULY product only.
+- HIMS belongs to a discontinued legacy application and is explicitly out of scope: do not preserve, port, integrate, expose, or treat HIMS as a SULY subsystem or requirement.
+- Reuse is limited to the approved SULY identity and visual direction described below; legacy application behavior and data are not part of this product.
+
 ## Product identity
 
 The product carries the SULY name, logo/monogram, official domain, and approved visual direction:
