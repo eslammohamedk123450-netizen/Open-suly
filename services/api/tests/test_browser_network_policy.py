@@ -83,7 +83,7 @@ def test_browser_policy_rejects_private_or_ip_literal_hosts(url):
 ])
 def test_browser_policy_rejects_legacy_numeric_ipv4_host_encodings(host):
     with pytest.raises(ValueError, match="ip_literal"):
-        policy(allowed_hosts=frozenset({host})).validate(f"https://{host}/")
+        policy().validate(f"https://{host}/")
 
 
 def test_browser_policy_rejects_private_dns_answers_even_for_allowlisted_host():
@@ -101,6 +101,21 @@ def test_browser_policy_rejects_empty_or_invalid_dns_answers():
         policy(resolver=lambda *_args: ()).validate('https://example.com/')
     with pytest.raises(ValueError, match='dns_address_invalid'):
         policy(resolver=lambda *_args: ('not-an-ip',)).validate('https://example.com/')
+
+
+@pytest.mark.parametrize("host", [
+    "Example.com",
+    ".example.com",
+    "example.com.",
+    "bad..example.com",
+    "localhost",
+    "service.internal",
+    "127.0.0.1",
+    "2130706433",
+])
+def test_browser_policy_rejects_noncanonical_or_nonpublic_allowlist_hosts(host):
+    with pytest.raises(ValueError):
+        BrowserNetworkPolicy(allowed_hosts=frozenset({host}))
 
 
 def test_browser_policy_requires_nonempty_host_and_port_allowlists():
