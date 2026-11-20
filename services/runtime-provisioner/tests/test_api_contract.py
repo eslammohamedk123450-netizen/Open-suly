@@ -168,3 +168,52 @@ def test_event_gateway_forwards_sse_without_buffering(monkeypatch):
     assert "session.execution.started" in response.text
     assert getattr(upstream, "closed", False)
     assert clients and clients[0].closed
+
+
+def test_runtime_recovery_rotates_token_only_for_exact_task_owner(tmp_path, monkeypatch):
+    import hashlib
+    import time
+    from uuid import uuid4
+
+    runtime_id, task_id, run_id = map(str, (uuid4(), uuid4(), uuid4()))
+    database = tmp_path / "runtime-recovery.sqlite3"
+    monkeypatch.setattr(runtime_api, "DATABASE", str(database))
+    old_token = "o" * 48
+    db = runtime_api._db()
+    try:
+        db.execute(
+            "INSERT INTO runtimes (runtime_id,task_id,engine_run_id,engine_id,container_id,host_port,token_hash,expires_at,created_at,baseline_json) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (
+                runtime_id, task_id, run_id, "opencode", "container-id", 4096,
+                hashlib.sha256(old_token.encode()).hexdigest(),
+                time.time() + 600, time.time(), "{}",
+            ),
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    headers = {"Authorization": "Bearer " + "t" * 48}
+    wrong_owner = client.post(
+        f"/v1/runtimes/{runtime_id}/recover",
+        headers=headers,
+        json={"task_id": str(uuid4()), "engine_run_id": run_id},
+    )
+    assert wrong_owner.status_code == 404
+
+    response = client.post(
+        f"/v1/runtimes/{runtime_id}/recover",
+        headers=headers,
+        json={"task_id": task_id, "engine_run_id": run_id},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["runtime_id"] == runtime_id
+    assert payload["task_id"] == task_id
+    assert payload["engine_run_id"] == run_id
+    assert payload["access_token"] != old_token
+
+    new_row = runtime_api._runtime(runtime_id, payload["access_token"])
+    assert new_row["token_hash"] == hashlib.sha256(payload["access_token"].encode()).hexdigest()
+    with pytest.raises(HTTPException):
+        runtime_api._runtime(runtime_id, old_token)
