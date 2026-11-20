@@ -11,7 +11,6 @@ import hmac
 import json
 import os
 import re
-import secrets
 import sqlite3
 import tarfile
 import tempfile
@@ -157,6 +156,14 @@ def _identity(value: str) -> str:
     return value
 
 
+def _derive_runtime_access_token(runtime_id: str, task_id: str, run_id: str) -> str:
+    """Derive a stable per-runtime credential without storing plaintext secrets."""
+    if not SULY_TOKEN:
+        raise RuntimeError("runtime_credential_derivation_unavailable")
+    message = f"suly-runtime-v1:{runtime_id}:{task_id}:{run_id}".encode("utf-8")
+    return hmac.new(SULY_TOKEN.encode("utf-8"), message, hashlib.sha256).hexdigest()
+
+
 def _runtime(runtime_id: str, token: str | None):
     if not _ID.fullmatch(runtime_id) or not token or len(token) > 256:
         raise HTTPException(404, "runtime_not_found")
@@ -226,6 +233,7 @@ def create_runtime(body: CreateRuntime, authorization: str | None = Header(defau
         result = _get_manager().create(
             task_id=task_id, engine_run_id=run_id, engine_id=body.engine_id,
             files=[item.model_dump(exclude_none=True) for item in body.files],
+            access_token_factory=_derive_runtime_access_token,
         )
     except (ValueError, RuntimeErrorSafe) as exc:
         raise HTTPException(422, str(exc)) from exc
@@ -281,51 +289,31 @@ def recover_runtime(
     body: RecoverRuntime,
     authorization: str | None = Header(default=None),
 ):
-    """Rotate the runtime credential after API/worker process recovery.
+    """Reconstruct the same task-bound credential after an API/worker restart.
 
-    The raw credential is never persisted: only its SHA-256 digest is stored.
+    The token is derived with HMAC from the service secret and canonical
+    runtime identity; only its SHA-256 digest is persisted in SQLite.
     """
     _require_suly(authorization)
     runtime_id = _identity(runtime_id)
     task_id = _identity(body.task_id)
     run_id = _identity(body.engine_run_id)
-    now = time.time()
-    token = secrets.token_urlsafe(48)
-    digest = hashlib.sha256(token.encode()).hexdigest()
-    try:
-        with _db() as db:
-            db.execute("BEGIN IMMEDIATE")
-            row = db.execute(
-                "SELECT task_id,engine_run_id,expires_at FROM runtimes WHERE runtime_id=?",
-                (runtime_id,),
-            ).fetchone()
-            if (
-                row is None
-                or row["task_id"] != task_id
-                or row["engine_run_id"] != run_id
-                or row["expires_at"] <= now
-            ):
-                db.rollback()
-                raise HTTPException(404, "runtime_not_found")
-            updated = db.execute(
-                "UPDATE runtimes SET token_hash=? WHERE runtime_id=? AND task_id=? AND engine_run_id=? AND expires_at>?",
-                (digest, runtime_id, task_id, run_id, now),
-            ).rowcount
-            if updated != 1:
-                db.rollback()
-                raise HTTPException(409, "runtime_recovery_conflict")
-            db.commit()
-    except HTTPException:
-        raise
-    except sqlite3.Error as exc:
-        raise HTTPException(503, "runtime_recovery_unavailable") from exc
     with _db() as db:
         row = db.execute(
-            "SELECT expires_at FROM runtimes WHERE runtime_id=? AND task_id=? AND engine_run_id=?",
-            (runtime_id, task_id, run_id),
+            "SELECT task_id,engine_run_id,expires_at,token_hash FROM runtimes WHERE runtime_id=?",
+            (runtime_id,),
         ).fetchone()
-    if row is None:
+    if (
+        row is None
+        or row["task_id"] != task_id
+        or row["engine_run_id"] != run_id
+        or row["expires_at"] <= time.time()
+    ):
         raise HTTPException(404, "runtime_not_found")
+    token = _derive_runtime_access_token(runtime_id, task_id, run_id)
+    digest = hashlib.sha256(token.encode()).hexdigest()
+    if not hmac.compare_digest(digest, row["token_hash"]):
+        raise HTTPException(409, "runtime_recovery_credential_mismatch")
     return {
         "runtime_id": runtime_id,
         "task_id": task_id,
