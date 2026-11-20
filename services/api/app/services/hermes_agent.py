@@ -474,3 +474,73 @@ def resolve_agent_approval(
                 raise HermesAgentError("Hermes approval request failed.") from exc
 
     return asyncio.run(resolve())
+
+
+
+def get_agent_approval_details(
+    upstream_run_id: str,
+    request_id: str,
+    *,
+    timeout_seconds: float = 10.0,
+) -> dict[str, str]:
+    """Fetch redacted display-only approval details without persisting their text in SULY."""
+    settings = get_settings()
+    if not settings.hermes_agent_enabled or not settings.hermes_agent_isolation_confirmed:
+        raise HermesAgentUnavailable("Hermes approvals are disabled or isolation is not confirmed.")
+    if not settings.hermes_agent_base_url or not settings.hermes_agent_api_key:
+        raise HermesAgentUnavailable("Hermes agent runtime is not configured.")
+    if not isinstance(upstream_run_id, str) or not _RUN_ID_PATTERN.fullmatch(upstream_run_id):
+        raise ValueError("Hermes upstream run identifier is invalid.")
+    if (
+        not isinstance(request_id, str)
+        or not 1 <= len(request_id) <= 256
+        or not request_id.isascii()
+        or any(not (ch.isalnum() or ch in "_-.:@") for ch in request_id)
+    ):
+        raise ValueError("Hermes approval request identifier is invalid.")
+    if (
+        isinstance(timeout_seconds, bool)
+        or not isinstance(timeout_seconds, (int, float))
+        or not 1 <= timeout_seconds <= 20
+    ):
+        raise ValueError("Hermes approval details timeout is outside the allowed range.")
+
+    base_url = _validate_base_url(settings.hermes_agent_base_url)
+    token = settings.hermes_agent_api_key.get_secret_value()
+
+    async def fetch_details() -> dict[str, str]:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds, connect=5.0)) as client:
+            try:
+                response = await client.get(
+                    f"{base_url}/v1/runs/{upstream_run_id}",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                response.raise_for_status()
+                payload = response.json()
+                approval = payload.get("approval") if isinstance(payload, dict) else None
+                if (
+                    not isinstance(payload, dict)
+                    or payload.get("run_id") != upstream_run_id
+                    or payload.get("status") != "waiting_for_approval"
+                    or not isinstance(approval, dict)
+                    or approval.get("request_id") != request_id
+                ):
+                    raise HermesAgentError("Hermes approval is no longer pending.")
+                safe: dict[str, str] = {"request_id": request_id}
+                for field, limit in (("command", 2000), ("description", 1000)):
+                    value = approval.get(field)
+                    if isinstance(value, str) and value.strip():
+                        # Hermes redacts approval display text before placing it in the Runs API status.
+                        safe[field] = "".join(
+                            char if char in "\\n\\t" or ord(char) >= 32 else " "
+                            for char in value
+                        )[:limit]
+                if len(safe) == 1:
+                    raise HermesAgentError("Hermes approval has no safe display details.")
+                return safe
+            except HermesAgentError:
+                raise
+            except (httpx.HTTPError, ValueError, TypeError) as exc:
+                raise HermesAgentError("Hermes approval details request failed.") from exc
+
+    return asyncio.run(fetch_details())
