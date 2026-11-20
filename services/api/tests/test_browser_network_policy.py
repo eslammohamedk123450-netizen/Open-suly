@@ -60,6 +60,17 @@ def test_browser_policy_rejects_unsafe_url_forms(url):
     'https://service.internal/',
     'https://printer.local/',
 ])
+@pytest.mark.parametrize("url", [
+    "https://example.com/path\n.evil",
+    "https://example.com/\tpath",
+    "https://example.com/\u202e/path",
+    "https://example.com/\u200f/path",
+])
+def test_browser_policy_rejects_unicode_controls_and_bidi_characters(url):
+    with pytest.raises(ValueError, match="url_invalid"):
+        policy().validate(url)
+
+
 def test_browser_policy_rejects_private_or_ip_literal_hosts(url):
     with pytest.raises(ValueError):
         policy(allowed_hosts=frozenset({'example.com', 'localhost', '169.254.169.254', '127.0.0.1', '::1'})).validate(url)
