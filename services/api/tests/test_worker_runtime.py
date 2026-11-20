@@ -385,3 +385,24 @@ def test_hermes_run_records_failure_without_raw_error(monkeypatch):
         )
     assert store.events[1][3] == "failed"
     assert store.events[1][4] == "engine_execution_failed"
+
+
+def test_hermes_run_records_cooperative_cancellation(monkeypatch):
+    import app.worker_runtime as runtime_module
+    from types import SimpleNamespace
+    from app.services.hermes_agent import HermesAgentCancelled
+    from app.services.tool_registry import ToolExecutionContext
+
+    store = FakeEngineRunStore()
+    monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        hermes_agent_enabled=True, hermes_agent_timeout_seconds=90.0,
+    ))
+    monkeypatch.setattr(runtime_module, "run_agent_turn", lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        HermesAgentCancelled("cancelled")
+    ))
+    with pytest.raises(HermesAgentCancelled):
+        runtime_module.hermes_agent_turn(
+            make_step({"operation": "hermes.agent.turn", "prompt": "safe"}),
+            ToolExecutionContext(engine_run_store=store),
+        )
+    assert store.events[1][3] == "cancelled"
