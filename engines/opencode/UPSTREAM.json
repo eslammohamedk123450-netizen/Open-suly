@@ -1,0 +1,17 @@
+{
+  "engine_id": "opencode",
+  "upstream_repository": "https://github.com/anomalyco/opencode",
+  "submodule_path": "engines/opencode/upstream",
+  "pinned_commit": "4cca18d80450a3dd6a9a4142028bde84ccb3116e",
+  "upstream_default_branch_observed": "dev",
+  "upstream_package_version": "2.3.0",
+  "license": "MIT",
+  "license_file": "engines/opencode/upstream/LICENSE",
+  "source_import": "complete-upstream-monorepo",
+  "import_method": "git-submodule-pinned-gitlink",
+  "commit_signature_verified_by_github": true,
+  "runtime_status": "source-pinned-not-enabled",
+  "sandbox_required": true,
+  "runtime_notes": "Dedicated per-task-attempt sandbox and SULY broker required before execution.",
+  "audited_revision": "4cca18d80450a3dd6a9a4142028bde84ccb3116e"
+}

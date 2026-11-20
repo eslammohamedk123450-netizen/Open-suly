@@ -1,0 +1,3 @@
+[submodule "engines/opencode/upstream"]
+	path = engines/opencode/upstream
+	url = https://github.com/anomalyco/opencode.git
