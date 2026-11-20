@@ -194,3 +194,14 @@ For every engine:
 - CI: على `8080478aa8bb` نجح Platform CI؛ إصلاح اختبار async sleep بعد فشل واحد سابق. Baseline checks لآخر commit `3c90a41f` كانت queued وقت التوثيق، وPlatform CI قيد التنفيذ.
 - لا تزال migration غير مطبقة على أي DB. تفعيل `ENGINE_RECONCILER_ENABLED` قبل تطبيق migration واختبارها في بيئة disposable ممنوع.
 - حد أمان: المحرك غير المدعوم لا يُعتبر متوقفًا؛ يتم تحرير claim مع backoff. يجب إضافة stopper خاص به قبل تسجيله كمدعوم.
+
+
+## Session checkpoint — 2026-11-20 (Sandbox policy foundation)
+
+- أضيف `sandbox_policy.py` لبناء argv لـDocker دون تشغيله، مع صورة مثبتة بـSHA-256 digest فقط.
+- السياسة تفرض network=none، root filesystem read-only، إسقاط كل Linux capabilities، no-new-privileges، حدود CPU/RAM/PIDs/ulimits، مستخدم غير root، وmount واحد لمساحة عمل خاصة ومملوكة لهوية worker.
+- نرفض مسارات خارج workspace root والروابط الرمزية والصلاحيات المفتوحة وأسماء الصور mutable tags وأوامر غير صالحة.
+- أضيفت اختبارات لقيود الموارد، الصور، المسارات، symlinks، صلاحيات المجلد، وعدم تمرير Docker socket.
+- Commits: `2cec8a1e4151` (policy), `5fef4002f0ba` (initial tests), `1c3800fd8596` (type validation), `85da8cb183b2` (private workspace), `336a11140915` (tests).
+- هذه policy builder فقط؛ لا يوجد Docker runner أو image build أو container فعلي حتى الآن. كما أن network=none يعني أن أي coding agent لن يستطيع الوصول لمزود LLM قبل بناء egress proxy مقيد ومختبر.
+- لا تفعيل للمحركات ولا mounts لملفات المستخدمين؛ لا يوجد Docker socket أو host networking.
