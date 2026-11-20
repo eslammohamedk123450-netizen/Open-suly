@@ -17,6 +17,7 @@ import {
   createAgentTask,
   getAgentTask,
   getAgentToolCatalog,
+  grantAIApproval,
   grantHermesApproval,
   type AgentOperation,
   type AgentTaskSnapshot,
@@ -47,6 +48,8 @@ export default function AgentScreen() {
   const [prompt, setPrompt] = useState("");
   const [snapshot, setSnapshot] = useState<AgentTaskSnapshot | null>(null);
   const [approved, setApproved] = useState(false);
+  const [aiApproved, setAiApproved] = useState(false);
+  const [aiAvailable, setAiAvailable] = useState(false);
   const [hermesAvailable, setHermesAvailable] = useState(false);
   const [busy, setBusy] = useState(false);
   const [approving, setApproving] = useState(false);
@@ -57,8 +60,11 @@ export default function AgentScreen() {
     try {
       const items = await getAgentToolCatalog();
       const hermes = items.find((item) => item.name === "hermes.agent.turn");
+      const ai = items.find((item) => item.name === "ai.respond");
       setApproved(Boolean(hermes?.approved));
       setHermesAvailable(Boolean(hermes?.available));
+      setAiApproved(Boolean(ai?.approved));
+      setAiAvailable(Boolean(ai?.available));
       setNotice("");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "تعذر تحميل أدوات الوكيل.");
@@ -89,14 +95,20 @@ export default function AgentScreen() {
     return () => { active = false; clearInterval(timer); };
   }, [snapshot?.task.id, snapshot?.task.status]);
 
-  const enableHermes = async () => {
+  const enableSelectedApproval = async () => {
     if (!user) { router.push("/auth"); return; }
     setApproving(true);
     setNotice("");
     try {
-      await grantHermesApproval();
-      setApproved(true);
-      setNotice("تم حفظ موافقتك على نطاق تشغيل Hermes. يمكنك إلغاء هذه الموافقة من إعدادات الصلاحيات لاحقًا.");
+      if (operation === "ai.respond") {
+        await grantAIApproval();
+        setAiApproved(true);
+        setNotice("تم حفظ موافقتك على استخدام مزود الذكاء الاصطناعي. يمكنك إلغاء الموافقة لاحقًا.");
+      } else {
+        await grantHermesApproval();
+        setApproved(true);
+        setNotice("تم حفظ موافقتك على نطاق تشغيل Hermes. يمكنك إلغاء هذه الموافقة من إعدادات الصلاحيات لاحقًا.");
+      }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "تعذر حفظ الموافقة.");
     } finally {
@@ -107,6 +119,14 @@ export default function AgentScreen() {
   const submit = async () => {
     if (!user) { router.push("/auth"); return; }
     if (!prompt.trim() || busy) return;
+    if (operation === "ai.respond" && !aiAvailable) {
+      setNotice("مزود الذكاء الاصطناعي غير مضبوط على الخادم بعد. يلزم إعداد AI_PROVIDER وAI_BASE_URL وAI_API_KEY وAI_MODEL.");
+      return;
+    }
+    if (operation === "ai.respond" && !aiApproved) {
+      setNotice("يجب منح موافقة صريحة على استخدام مزود الذكاء الاصطناعي أولًا.");
+      return;
+    }
     if (operation === "hermes.agent.turn" && !hermesAvailable) {
       setNotice("خدمة Hermes نفسها غير مهيأة أو متوقفة على الخادم. يمكنك اختبار محرك المهام الآن، أما Hermes فيحتاج تجهيز بيئته الآمنة ومزود النموذج.");
       return;
@@ -181,11 +201,31 @@ export default function AgentScreen() {
                 <Text style={[styles.modeTitle, operation === "text.analyze" && styles.gold]}>اختبار محرك المهام</Text>
                 <Text style={styles.modeHint}>تحليل نص بدون مزود ذكاء اصطناعي</Text>
               </Pressable>
+              <Pressable style={[styles.mode, operation === "ai.respond" && styles.modeActive]} onPress={() => setOperation("ai.respond")}>
+                <Text style={[styles.modeTitle, operation === "ai.respond" && styles.gold]}>SULY AI</Text>
+                <Text style={styles.modeHint}>رد ذكي عبر مزود النموذج</Text>
+              </Pressable>
               <Pressable style={[styles.mode, operation === "hermes.agent.turn" && styles.modeActive]} onPress={() => setOperation("hermes.agent.turn")}>
                 <Text style={[styles.modeTitle, operation === "hermes.agent.turn" && styles.gold]}>Hermes Agent</Text>
                 <Text style={styles.modeHint}>يتطلب Runtime ومزود نموذج</Text>
               </Pressable>
             </View>
+
+            {operation === "ai.respond" && (
+              <View style={styles.approvalBox}>
+                <View style={styles.approvalHeader}>
+                  <Text style={styles.label}>موافقة استخدام مزود AI</Text>
+                  <Text style={[styles.approvalState, aiApproved ? styles.good : styles.warn]}>{aiApproved ? "مفعّلة" : "غير مفعّلة"}</Text>
+                </View>
+                <Text style={styles.modeHint}>كل طلب قد يستهلك رصيدًا لدى مزود النموذج. الموافقة تخص نطاق ai.provider.run فقط.</Text>
+                <Text style={[styles.modeHint, aiAvailable ? styles.good : styles.warn]}>{aiAvailable ? "مزود AI مضبوط على الخادم." : "مزود AI غير مضبوط أو متوقف حاليًا."}</Text>
+                {!aiApproved && (
+                  <Pressable style={styles.secondaryButton} onPress={enableSelectedApproval} disabled={approving || loadingCatalog}>
+                    {approving ? <ActivityIndicator color={colors.gold} /> : <Text style={styles.secondaryText}>أوافق على استخدام AI</Text>}
+                  </Pressable>
+                )}
+              </View>
+            )}
 
             {operation === "hermes.agent.turn" && (
               <View style={styles.approvalBox}>
@@ -198,7 +238,7 @@ export default function AgentScreen() {
                   {hermesAvailable ? "خدمة Hermes مهيأة على الخادم." : "الخادم لا يعلن جاهزية Hermes حاليًا."}
                 </Text>
                 {!approved && (
-                  <Pressable style={styles.secondaryButton} onPress={enableHermes} disabled={approving || loadingCatalog}>
+                  <Pressable style={styles.secondaryButton} onPress={enableSelectedApproval} disabled={approving || loadingCatalog}>
                     {approving ? <ActivityIndicator color={colors.gold} /> : <Text style={styles.secondaryText}>أوافق على تشغيل Hermes</Text>}
                   </Pressable>
                 )}
@@ -218,7 +258,7 @@ export default function AgentScreen() {
               maxLength={20000}
             />
             <Text style={styles.counter}>{prompt.length.toLocaleString("en-US")} / 20,000</Text>
-            <Pressable style={[styles.primaryButton, (!prompt.trim() || busy || (operation === "hermes.agent.turn" && !approved)) && styles.disabled]} onPress={submit} disabled={!prompt.trim() || busy || (operation === "hermes.agent.turn" && !approved)}>
+            <Pressable style={[styles.primaryButton, (!prompt.trim() || busy || (operation === "hermes.agent.turn" && !approved) || (operation === "ai.respond" && !aiApproved)) && styles.disabled]} onPress={submit} disabled={!prompt.trim() || busy || (operation === "hermes.agent.turn" && !approved) || (operation === "ai.respond" && !aiApproved)}>
               {busy ? <ActivityIndicator color={colors.background} /> : <Text style={styles.primaryText}>إنشاء المهمة وتشغيلها</Text>}
             </Pressable>
           </View>
