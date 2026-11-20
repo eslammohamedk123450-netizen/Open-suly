@@ -1,3 +1,4 @@
+from threading import Event, Thread
 from types import SimpleNamespace
 
 import pytest
@@ -61,12 +62,19 @@ def test_hermes_bridge_sends_only_bounded_user_prompt(monkeypatch):
         def json(self):
             return {"choices": [{"message": {"content": "Task completed."}}]}
 
-    def fake_post(url, **kwargs):
-        captured["url"] = url
-        captured.update(kwargs)
-        return Response()
+    class FakeAsyncClient:
+        def __init__(self, timeout):
+            captured["timeout"] = timeout
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+        async def post(self, url, **kwargs):
+            captured["url"] = url
+            captured.update(kwargs)
+            return Response()
 
-    monkeypatch.setattr(hermes_agent.httpx, "post", fake_post)
+    monkeypatch.setattr(hermes_agent.httpx, "AsyncClient", FakeAsyncClient)
     result = hermes_agent.run_agent_turn("Do a safe task")
 
     assert result == {"engine": "hermes-agent", "content": "Task completed."}
@@ -97,7 +105,17 @@ def test_hermes_bridge_rejects_oversized_response(monkeypatch):
         def json(self):
             return {"choices": [{"message": {"content": "x" * 257}}]}
 
-    monkeypatch.setattr(hermes_agent.httpx, "post", lambda *_args, **_kwargs: Response())
+    class FakeAsyncClient:
+        def __init__(self, timeout):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+        async def post(self, *_args, **_kwargs):
+            return Response()
+
+    monkeypatch.setattr(hermes_agent.httpx, "AsyncClient", FakeAsyncClient)
     with pytest.raises(hermes_agent.HermesAgentError, match="exceeded"):
         hermes_agent.run_agent_turn("hello")
 
@@ -108,7 +126,84 @@ def test_hermes_bridge_redacts_upstream_http_error(monkeypatch):
     def fail(*_args, **_kwargs):
         raise hermes_agent.httpx.ConnectError("sensitive upstream response body")
 
-    monkeypatch.setattr(hermes_agent.httpx, "post", fail)
+    class FakeAsyncClient:
+        def __init__(self, timeout):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+        async def post(self, *_args, **_kwargs):
+            fail()
+
+    monkeypatch.setattr(hermes_agent.httpx, "AsyncClient", FakeAsyncClient)
     with pytest.raises(hermes_agent.HermesAgentError, match="request failed") as error:
         hermes_agent.run_agent_turn("hello")
     assert "sensitive upstream response body" not in str(error.value)
+
+
+def test_hermes_bridge_cancels_inflight_http_request(monkeypatch):
+    monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
+    cancel_event = Event()
+    started = Event()
+    request_cancelled = Event()
+    errors = []
+
+    class FakeAsyncClient:
+        def __init__(self, timeout):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+        async def post(self, *_args, **_kwargs):
+            started.set()
+            try:
+                while True:
+                    await hermes_agent.asyncio.sleep(0.01)
+            finally:
+                request_cancelled.set()
+
+    monkeypatch.setattr(hermes_agent.httpx, "AsyncClient", FakeAsyncClient)
+
+    def invoke():
+        try:
+            hermes_agent.run_agent_turn("long task", cancel_event=cancel_event)
+        except Exception as exc:
+            errors.append(exc)
+
+    thread = Thread(target=invoke)
+    thread.start()
+    assert started.wait(1)
+    cancel_event.set()
+    thread.join(2)
+
+    assert not thread.is_alive()
+    assert request_cancelled.is_set()
+    assert len(errors) == 1
+    assert isinstance(errors[0], hermes_agent.HermesAgentCancelled)
+
+
+def test_hermes_bridge_uses_engine_timeout_override(monkeypatch):
+    monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
+    captured = {}
+
+    class Response:
+        def raise_for_status(self):
+            return None
+        def json(self):
+            return {"choices": [{"message": {"content": "done"}}]}
+
+    class FakeAsyncClient:
+        def __init__(self, timeout):
+            captured["timeout"] = timeout
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+        async def post(self, *_args, **_kwargs):
+            return Response()
+
+    monkeypatch.setattr(hermes_agent.httpx, "AsyncClient", FakeAsyncClient)
+    hermes_agent.run_agent_turn("hello", timeout_seconds=12)
+    assert captured["timeout"] == 12
