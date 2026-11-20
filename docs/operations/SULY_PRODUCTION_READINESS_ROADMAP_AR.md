@@ -373,3 +373,14 @@ For every engine:
 - [ ] Enforce DNS pinning and redirect-by-redirect URL checks at connection time through a default-deny egress proxy.
 - [ ] Add browser side-effect approval and credential isolation tests.
 - Browser Use remains disabled. No browser runtime has been started.
+
+## OpenCode protocol readiness checkpoint — 2026-11-20
+
+- [x] Review pinned server authentication, session, permission, and global event APIs.
+- [x] Add pure session permission/event reducers with exact session binding and once/reject-only decisions.
+- [ ] Implement a per-attempt process provisioner and unique OpenCode password.
+- [ ] Add lease-guarded durable OpenCode session ID persistence.
+- [ ] Implement the HTTPS Basic-auth client using the broker's exact-origin runtime lease.
+- [ ] Add bounded assistant-message/output reducer and session-scoped permission UI.
+- [ ] Run two-runtime isolation and end-to-end permission tests before enabling OpenCode.
+- OpenCode remains disabled; protocol contract tests do not establish a usable live engine.
