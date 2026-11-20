@@ -275,3 +275,17 @@ undefined
 - التحذيران في API tests من Starlette/httpx واسم HTTP 422 deprecated؛ لم يؤثرا على نجاح الاختبارات.
 - لا يوجد نشر أو تطبيق migrations أو تشغيل Hermes. فشل Free Test Worker المجدول كان قبل runtime بسبب عدم وجود أسرار Supabase المطلوبة، ولم يبدأ تنفيذ المهام.
 - تحديث هذا السجل نفسه ينتج commit جديدًا، لذلك يجب إعادة التحقق من CI على HEAD النهائي بعده قبل اعتباره آخر checkpoint معتمد.
+
+
+## دفعة تطوير — تكامل موافقات Hermes الدقيقة — 2026-11-20
+
+- تمت مراجعة كود Hermes upstream المثبت عند commit 2de9f51b8008a7d49a49221c184f2f11cbfc4af1، وتأكدنا من endpoint الأصلي POST /v1/runs/{run_id}/approval ومن دعم request_id والاختيارات once/session/always/deny.
+- نفذنا في SULY سياسة أضيق: يسمح فقط بـ once أو deny، ولا توجد موافقات session أو always أو resolve-all.
+- أضيف resolve_agent_approval في Hermes bridge؛ يتحقق من هوية run وrequest في الاستجابة ومن أن resolved يساوي 1، ولا يمرر جسم الخطأ الخارجي.
+- أضيف اختزال آمن لحدث approval.request: يحتفظ فقط بمعرف الطلب المعتم ASCII، ولا يحتفظ بالأمر أو الوصف أو نصوص النموذج.
+- أضيفت أعمدة approval_request_id وapproval_choice إلى سجل الأحداث عبر migration جديدة، مع قيود تمنع البيانات غير المتوقعة. جعلنا القيود NOT VALID عند الإنشاء للتوافق مع أحداث الموافقات التاريخية القديمة، مع استمرار تطبيقها على الكتابات الجديدة.
+- أضيف endpoint محمي لصاحب المهمة فقط، يطلب معرف الموافقة المسجل لنفس engine run، ويرفض المعرفات غير الموجودة أو التي تمت الإجابة عنها، ويتحقق من task/run/lease/config قبل استدعاء Hermes. بعد الاستجابة يسجل once/deny فقط.
+- أضيفت أنواع وعميل التطبيق وشاشة تعرض بطاقة موافقة فيها زران: موافقة لمرة واحدة أو رفض. لا يظهر payload الخام ولا أي نص أمر حساس.
+- أضيفت اختبارات لوحدة Hermes وEngineRunStore وAPI تشمل رفض session/always، والطلب غير المسجل، والطلب المجاب عنه، والعزل بين engine runs، والتحقق من رد Hermes.
+- آخر CI مؤكد قبل هذه الدفعة: Platform CI وRepository baseline على commit 74311d9a نجحا (API tests + TypeScript + Expo compatibility + Web export). تغييرات موافقات Hermes الجديدة على commits 6daf7c1 إلى dd988dd9 قيد الفحص؛ لا ننسب نجاح الفحص السابق لها.
+- Migration 20261121010000_engine_run_approval_metadata.sql غير مطبقة. يجب تطبيقها على قاعدة اختبار مؤقتة والتحقق من توقيع RPC الجديد قبل نشر API. لا يوجد Hermes runtime حي أو provider أو worker مفعّل.
