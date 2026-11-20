@@ -113,7 +113,6 @@ begin
     join public.tasks t on t.id = s.task_id
    where r.id = p_run_id
      and s.id = r.step_id
-     and s.id = r.step_id
      and s.status = 'running'
      and s.lease_token = p_lease_token
      and s.lease_expires_at > now()
