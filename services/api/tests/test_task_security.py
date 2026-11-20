@@ -29,6 +29,9 @@ class Query:
     def order(self, *_args, **_kwargs):
         return self
 
+    def limit(self, *_args):
+        return self
+
     def update(self, payload):
         self.update_payload = payload
         return self
