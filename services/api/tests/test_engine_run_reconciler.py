@@ -123,4 +123,6 @@ def test_reconciler_logs_count_of_runs_missing_upstream_identity(caplog):
     store.missing_identity_count = 2
     reconciler = EngineRunReconciler(store, stop_handlers={})
     assert reconciler.run_once() == 0
+    assert reconciler.run_once() == 0
     assert "stop_pending without an upstream identity: 2" in caplog.text
+    assert len([record for record in caplog.records if "without an upstream identity" in record.message]) == 1
