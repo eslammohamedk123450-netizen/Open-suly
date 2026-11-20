@@ -267,6 +267,7 @@ def test_append_engine_run_event_persists_only_allowlisted_metadata():
 
 @pytest.mark.parametrize("event", [
     {"event": "message.delta", "text": "private"},
+    {"event": "tool.started", "seq": 1, "command": "must not persist"},
     {"event": "tool.started", "seq": True},
     {"event": "tool.started", "seq": -1},
     {"event": "tool.started", "timestamp": True},
