@@ -98,7 +98,7 @@ def _wait_for_opencode(host_port: int, token: str, timeout_seconds: float = 30.0
     deadline = time.monotonic() + timeout_seconds
     with httpx.Client(
         base_url=f"http://127.0.0.1:{host_port}",
-        auth=("suly", token),
+        auth=("opencode", token),
         timeout=httpx.Timeout(2.0, connect=1.0),
         follow_redirects=False,
         trust_env=False,
@@ -288,7 +288,7 @@ async def runtime_gateway(runtime_id: str, path: str, request: Request, authoriz
     try:
         async with httpx.AsyncClient(
             base_url=f"http://127.0.0.1:{row['host_port']}",
-            auth=("suly", _runtime_token_from_request(authorization)),
+            auth=("opencode", _runtime_token_from_request(authorization)),
             timeout=httpx.Timeout(60, connect=3, read=55),
             follow_redirects=False, trust_env=False,
         ) as client:
