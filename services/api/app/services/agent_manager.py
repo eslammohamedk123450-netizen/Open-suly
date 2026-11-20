@@ -13,6 +13,7 @@ from app.services.engine_registry import EngineDefinition, EngineRegistry
 
 
 _AGENT_ID = re.compile(r"^[a-z][a-z0-9-]{1,62}$")
+_ENGINE_ID = re.compile(r"^[a-z][a-z0-9-]{1,62}$")
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,8 @@ class AgentManager:
         engines: EngineRegistry,
         agents: Iterable[AgentDefinition] = (),
     ) -> None:
+        if not isinstance(engines, EngineRegistry):
+            raise TypeError("engine_registry_required")
         self._engines = engines
         self._agents: dict[str, AgentDefinition] = {}
         for agent in agents:
@@ -55,8 +58,12 @@ class AgentManager:
             raise ValueError("invalid_agent_id")
         if not isinstance(agent.display_name, str) or not agent.display_name.strip():
             raise ValueError("agent_display_name_required")
-        if not agent.capabilities:
+        if not isinstance(agent.capabilities, frozenset) or not agent.capabilities:
             raise ValueError("agent_capabilities_required")
+        if not isinstance(agent.preferred_engines, tuple):
+            raise ValueError("preferred_engines_must_be_tuple")
+        if not isinstance(agent.enabled, bool) or not isinstance(agent.requires_approval, bool):
+            raise ValueError("invalid_agent_flags")
         if any(
             not isinstance(capability, str)
             or not re.fullmatch(r"[a-z][a-z0-9_.-]{1,95}", capability)
@@ -65,7 +72,7 @@ class AgentManager:
             raise ValueError("invalid_agent_capability")
         if len(set(agent.preferred_engines)) != len(agent.preferred_engines):
             raise ValueError("duplicate_preferred_engine")
-        if any(not isinstance(engine_id, str) or not engine_id.strip() for engine_id in agent.preferred_engines):
+        if any(not isinstance(engine_id, str) or not _ENGINE_ID.fullmatch(engine_id) for engine_id in agent.preferred_engines):
             raise ValueError("invalid_preferred_engine")
         if agent.agent_id in self._agents:
             raise ValueError("duplicate_agent")
@@ -79,6 +86,8 @@ class AgentManager:
 
     def route(self, agent_id: str, capability: str) -> AgentRoute:
         """يرفض الوكيل/القدرة غير المفعّلين ويعيد المحركات المؤهلة فقط."""
+        if not isinstance(agent_id, str) or not isinstance(capability, str):
+            raise ValueError("invalid_agent_route")
         agent = self.get(agent_id)
         if agent is None:
             raise ValueError("agent_not_registered")
