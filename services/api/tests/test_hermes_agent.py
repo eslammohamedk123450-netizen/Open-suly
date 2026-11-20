@@ -588,6 +588,28 @@ def test_hermes_approval_details_returns_only_upstream_redacted_display_fields(m
     assert calls[0][0].endswith("/v1/runs/run_approval_123")
 
 
+def test_hermes_approval_details_normalizes_control_characters(monkeypatch):
+    class Client:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+        async def get(self, *_args, **_kwargs):
+            return Response({
+                "run_id": "run_approval_123",
+                "status": "waiting_for_approval",
+                "approval": {
+                    "request_id": "approval-req_123",
+                    "command": "line1\\nline2\\x00tail",
+                },
+            })
+
+    monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
+    monkeypatch.setattr(hermes_agent.httpx, "AsyncClient", lambda **_kw: Client())
+    result = hermes_agent.get_agent_approval_details("run_approval_123", "approval-req_123")
+    assert result["command"] == "line1 line2 tail"
+
+
 def test_hermes_approval_details_rejects_wrong_run_state_or_request(monkeypatch):
     class Client:
         async def __aenter__(self):
