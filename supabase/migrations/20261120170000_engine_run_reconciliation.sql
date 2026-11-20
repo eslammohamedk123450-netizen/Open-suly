@@ -74,6 +74,9 @@ execute function public.reconcile_engine_run_on_step_transition();
 -- دالة الـtrigger ليست واجهة API ولا يجب استدعاؤها مباشرة من أدوار التطبيق.
 revoke all on function public.reconcile_engine_run_on_step_transition()
   from public, anon, authenticated;
+-- نمنح دور الخادم فقط صلاحية الدالة؛ المستخدمون لا يستدعونها عبر Data API.
+grant execute on function public.reconcile_engine_run_on_step_transition()
+  to service_role;
 
 -- نثبت سبب المصالحة في وصف الدالة ليسهل على فريق التطوير فهمها.
 comment on function public.reconcile_engine_run_on_step_transition() is
