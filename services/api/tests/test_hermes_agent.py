@@ -363,3 +363,50 @@ def test_hermes_stop_reconciliation_still_works_after_new_runs_are_disabled(monk
     )
     monkeypatch.setattr(hermes_agent.httpx, "AsyncClient", lambda **_kw: Client())
     assert hermes_agent.stop_agent_run("run_orphan_123", timeout_seconds=5) is True
+
+
+def test_hermes_bridge_retries_transient_run_id_persistence_failure(monkeypatch):
+    class Client:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+        async def post(self, *_args, **_kwargs):
+            return Response({"run_id": "run_retry_123"}, 202)
+        async def get(self, *_args, **_kwargs):
+            return Response({"status": "completed", "output": "done"})
+
+    attempts = []
+    def persist(_run_id):
+        attempts.append(_run_id)
+        if len(attempts) == 1:
+            raise RuntimeError("temporary database timeout")
+        return True
+
+    result = invoke(monkeypatch, Client(), on_run_started=persist)
+    assert result["content"] == "done"
+    assert attempts == ["run_retry_123", "run_retry_123"]
+
+
+def test_hermes_bridge_stops_run_when_run_id_persistence_raises(monkeypatch):
+    calls = []
+    class Client:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+        async def post(self, url, **_kwargs):
+            calls.append(url)
+            return Response({"run_id": "run_db_error_123"}, 202)
+
+    monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
+    monkeypatch.setattr(hermes_agent.httpx, "AsyncClient", lambda **_kw: Client())
+    def fail(_run_id):
+        raise RuntimeError("secret database detail")
+    with pytest.raises(hermes_agent.HermesAgentError, match="could not persist"):
+        hermes_agent.run_agent_turn(
+            "hello",
+            idempotency_key="test-db-error",
+            on_run_started=fail,
+        )
+    assert calls[-1].endswith("/run_db_error_123/stop")
