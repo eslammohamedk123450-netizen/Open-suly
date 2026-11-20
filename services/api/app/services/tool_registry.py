@@ -67,6 +67,7 @@ class ToolRegistry:
                 "required_input_fields": sorted(tool.required_input_fields),
                 "max_input_bytes": tool.max_input_bytes,
                 "max_output_bytes": tool.max_output_bytes,
+                "supports_cancellation": tool.supports_cancellation,
             }
             for tool in sorted(self._tools.values(), key=lambda item: item.name)
         ]
