@@ -134,3 +134,13 @@ For every engine:
 - Added parameterized tests for invalid upstream IDs and malformed status payloads. CI pending until runs for the resulting commit finish.
 - Safety boundary unchanged: Hermes runtime and provider remain disabled; no DB migrations applied or deployments performed.
 - Next: verify CI; then implement bounded SSE event handling or orphan-run reconciliation (choose after reviewing worker lease/recovery design). Sandbox manager remains prerequisite for any activation.
+
+
+## Checkpoint مباشر — API readiness configuration
+
+- أضيف `GET /ready` لتمييز حالة إعداد Supabase عن endpoint liveness `/health`.
+- الفحص configuration-only ويعيد 503 عند نقص URL أو publishable key، و200 عند وجودهما؛ لا يفحص الاتصال الفعلي أو صحة DB.
+- اختبارات الحالة الناقصة والمكتملة وعدم تسريب key placeholder أضيفت.
+- Commits: `12f0aa5367fc` endpoint، `e341a1e6f869` tests.
+- CI runs الخاصة بهذه التغييرات كانت ما تزال قيد التنفيذ عند آخر تحقق.
+- لا نشر أو اتصال حي بقاعدة البيانات، ولا تشغيل workers أو engines.
