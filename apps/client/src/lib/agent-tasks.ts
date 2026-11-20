@@ -112,37 +112,29 @@ export async function createAgentTask(
     method: "POST",
     body: JSON.stringify({
       title: operation === "hermes.agent.turn" ? "مهمة Hermes Agent" : operation === "ai.respond" ? "مهمة SULY AI" : "تحليل نص",
-      request: cleanPrompt,
+      request: operation === "text.analyze" ? "analyze: " + cleanPrompt : operation === "hermes.agent.turn" ? "agent: " + cleanPrompt : cleanPrompt,
       idempotency_key: "agent-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 14),
     }),
   });
-  const step = operation === "text.analyze"
-    ? {
-        step_key: "analyze_text",
-        title: "تحليل النص",
-        description: "تحليل محلي حتمي للنص وإرجاع عدد الكلمات والحروف والأسطر.",
-        depends_on: [],
-        input: { operation, text: cleanPrompt },
-      }
-    : operation === "ai.respond"
-      ? {
-          step_key: "ai_response",
-          title: "إنشاء رد عبر نموذج SULY AI",
-          description: "إرسال طلب المستخدم إلى مزود الذكاء الاصطناعي المضبوط على الخادم بعد الموافقة الصريحة.",
-          depends_on: [],
-          input: { operation, prompt: cleanPrompt },
-        }
-      : {
-        step_key: "hermes_turn",
-        title: "تنفيذ مهمة Hermes Agent",
-        description: "تشغيل طلب المستخدم عبر Hermes بعد التحقق من موافقته وحدود التنفيذ.",
-        depends_on: [],
-        input: { operation, prompt: cleanPrompt },
-      };
-  await request("/v1/tasks/" + encodeURIComponent(task.id) + "/plan", {
-    method: "POST",
-    body: JSON.stringify({ steps: [step] }),
-  });
+  if (operation === "text.analyze" || operation === "hermes.agent.turn") {
+    // يترك العميل اختيار العملية للخادم؛ auto-plan يتحقق من توفر الوكيل والعزل والـallow-list.
+    await request("/v1/tasks/" + encodeURIComponent(task.id) + "/auto-plan", {
+      method: "POST",
+      body: "{}",
+    });
+  } else {
+    const step = {
+      step_key: "ai_response",
+      title: "إنشاء رد عبر نموذج SULY AI",
+      description: "إرسال طلب المستخدم إلى مزود الذكاء الاصطناعي المضبوط على الخادم بعد الموافقة الصريحة.",
+      depends_on: [],
+      input: { operation, prompt: cleanPrompt },
+    };
+    await request("/v1/tasks/" + encodeURIComponent(task.id) + "/plan", {
+      method: "POST",
+      body: JSON.stringify({ steps: [step] }),
+    });
+  }
   return task;
 }
 
