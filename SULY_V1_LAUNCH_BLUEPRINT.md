@@ -316,3 +316,13 @@ The task database foundation is live, but it must not be described as autonomous
 - Migration: `20261120201500_projects_workspace.sql`.
 - The migration is committed but has not been applied to the connected Supabase database. Apply it through the approved staging migration workflow before deploying this API/client revision.
 - Existing tasks remain valid because `project_id` is nullable. Deleting a project detaches its tasks rather than deleting the task history.
+
+## Project source workspace editor
+
+- Added a private `project_files` table and authenticated API for listing, reading, saving, and deleting UTF-8 text files inside an owned project.
+- Added an Expo editor screen at `/project/[id]/files`, linked from project details, with file navigation, new-file creation, and save.
+- Limits: 200 files per project, 256 KiB per file, 512-character relative paths. Rejects traversal, absolute paths, backslashes, NUL/binary content, `.env*`, `.git`, `node_modules`, and the internal `.suly` directory.
+- The API checks project ownership before every file operation. Client access uses the authenticated SULY API; direct client table access is revoked.
+- This is persistent text-file editing, not yet a sandboxed code execution environment, Git synchronization, binary asset manager, or autonomous coding-agent runtime.
+- Migration `20261120213000_project_files.sql` is committed for review and has not been applied to the live database.
+
