@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from difflib import unified_diff
 from pathlib import PurePosixPath
 from typing import Any
 from uuid import UUID
@@ -27,6 +28,11 @@ class SaveProjectFileRequest(BaseModel):
 
 class RestoreProjectFileRequest(BaseModel):
     expected_updated_at: str = Field(min_length=1, max_length=64)
+
+
+class PreviewProjectFileRequest(BaseModel):
+    content: str = Field(max_length=MAX_FILE_BYTES)
+    expected_updated_at: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 def _admin():
@@ -190,6 +196,54 @@ def restore_project_file_revision(
         raise
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Could not restore file revision.") from exc
+
+
+@router.post("/{project_id}/file/preview")
+def preview_project_file(
+    project_id: UUID,
+    request: PreviewProjectFileRequest,
+    path: str = Query(min_length=1, max_length=512),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Return an owner-scoped unified diff without persisting proposed content."""
+    safe_path = _safe_path(path)
+    if "\x00" in request.content:
+        raise HTTPException(status_code=422, detail="Binary content is not supported.")
+    client = _admin()
+    try:
+        with client:
+            _owned_project(client, project_id, user.id)
+            rows = (client.table("project_files").select("id,content,updated_at")
+                .eq("project_id", str(project_id)).eq("user_id", user.id)
+                .eq("path", safe_path).limit(1).execute().data)
+        if rows:
+            current = rows[0]
+            if request.expected_updated_at is None:
+                raise HTTPException(status_code=428, detail="Reload this file before previewing changes.")
+            if current["updated_at"] != request.expected_updated_at:
+                raise HTTPException(status_code=409, detail="This file changed elsewhere. Reload it before reviewing the diff.")
+            original = current["content"]
+            base_updated_at = current["updated_at"]
+        else:
+            if request.expected_updated_at is not None:
+                raise HTTPException(status_code=409, detail="This file no longer exists. Reload the project before reviewing changes.")
+            original = ""
+            base_updated_at = None
+        diff = "\n".join(unified_diff(
+            original.splitlines(), request.content.splitlines(),
+            fromfile="a/" + safe_path, tofile="b/" + safe_path,
+            lineterm="",
+        ))
+        return {
+            "path": safe_path,
+            "has_changes": original != request.content,
+            "base_updated_at": base_updated_at,
+            "diff": diff,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Could not preview project file changes.") from exc
 
 
 @router.put("/{project_id}/file")
