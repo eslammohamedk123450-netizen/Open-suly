@@ -299,3 +299,15 @@ undefined
 - Platform CI وRepository baseline على commit c79ee7f2 نجحا. Platform CI على commit 8762451a نجح: 355 API tests passed، TypeScript typecheck، Expo compatibility، وWeb export كلها ناجحة. التحذيران الموجودان في API tests من تبعيات Starlette/FastAPI ولا يمثلان فشلًا.
 - بعد مراجعة migration الجديدة، شددنا شرط قاعدة البيانات ليرفض NULL صراحة في قرار الموافقة؛ commit 206e55df هو آخر HEAD، وCI الخاص به queued وقت التوثيق.
 - لا تزال migrations غير مطبقة، ولا يوجد runtime حي أو worker أو provider مفعّل. لا نعلن نجاح CI للـHEAD الأحدث حتى تنتهي فحوصاته.
+
+## دفعة مراجعة OpenCode وعزل المستأجرين — 2026-11-20
+
+- راجعت المصدر المثبت OpenCode عند commit `4cca18d80450a3dd6a9a4142028bde84ccb3116e`، وتحققت من ترخيص MIT وحزمة `@opencode/server` 2.3.0.
+- اتضح أن مصادقة OpenCode مبنية على كلمة مرور واحدة للخادم وsession cookie مشتقة منها بعمر 30 يومًا؛ ليست هوية SULY ولا صلاحيات مستخدم/مهمة مستقلة.
+- راجعت Session handler وSessionLocation middleware وLocation middleware: session/location داخليان لخادم OpenCode ولا يثبتان ملكية SULY، كما أن اختيار directory من query/header لا يجوز تمريره من العميل كمسار مضيف.
+- أضفت `docs/architecture/OPENCODE_INTEGRATION_AUDIT.md` وفيه متطلبات التشغيل الصحيح: حاوية مؤقتة لكل task attempt، سر مستقل لكل runtime، broker يتحقق من المالك والـlease، منع shared process/session store/PTY، egress default-deny، وإزالة الموارد عند الإلغاء وفقد lease.
+- القرار: OpenCode يظل disabled بلا adapter ولا server مشترك. هذا تدقيق upstream وتصميم عزل، وليس إعلان دمج المحرك أو تشغيله.
+- تم إصلاح migration `20261121010000_engine_run_approval_metadata.sql` بالكامل بعد اكتشاف أن نسخة سابقة كانت مبتورة ومكررة. النسخة الحالية تحتوي القيود كاملة، RPC الجديد، grants المقيدة لـservice_role، وقيود NOT VALID للتوافق مع السجلات التاريخية. لم يتم تطبيقها على أي قاعدة.
+- شددنا عرض موافقات Hermes بإزالة Unicode control/format/bidi characters من command/description قبل عرضهما، مع اختبارات.
+- CI: Platform CI وRepository baseline على commit `01e8e88b9e267b138bbfc0fbd24599be36294441` نجحا بالكامل: 364 API tests passed، TypeScript typecheck، Expo compatibility، Web export. Commit `b1666a9c` فشل بسبب fixture اختبار كتب newline/NUL كنص حرفي؛ تم إصلاح fixture في `01e8e88b` ثم نجح CI. أحدث HEAD عند كتابة هذا السطر هو `7232a4d886714bf70d10359dbef7f0726f6d9142` وفحوصاته queued؛ لا ننسب إليه نجاح commit السابق حتى تكتمل.
+- لا worker أو Hermes/OpenCode runtime أو provider مفعّل، ولا migrations مطبقة، ولا deployment.
