@@ -52,20 +52,43 @@ class OpenCodeTaskExecutor:
                 user_id=user_id, run_id=lifecycle_run["id"], sequence=1,
                 event_type="task.started", payload={"task_id": task_id},
             )
-        try:
-            lease_callback = None
+        session_holder: dict[str, Any] = {}
+
+        def persist_runtime_lease(lease) -> None:
+            if lifecycle_run is None:
+                return
+            persisted = self._lifecycle.set_runtime(
+                user_id=user_id,
+                run_id=lifecycle_run["id"],
+                runtime_id=lease.runtime_id,
+                session_id=None,
+                status="provisioning",
+            )
+            if not persisted:
+                raise RuntimeError("opencode_runtime_persistence_failed")
+
+        def persist_upstream_session(lease, session_id: str) -> None:
             if lifecycle_run is not None:
-                def persist_runtime_lease(lease) -> None:
-                    persisted = self._lifecycle.set_runtime(
-                        user_id=user_id,
-                        run_id=lifecycle_run["id"],
-                        runtime_id=lease.runtime_id,
-                        session_id=None,
-                        status="provisioning",
-                    )
-                    if not persisted:
-                        raise RuntimeError("opencode_runtime_persistence_failed")
-                lease_callback = persist_runtime_lease
+                persisted = self._lifecycle.set_runtime(
+                    user_id=user_id,
+                    run_id=lifecycle_run["id"],
+                    runtime_id=lease.runtime_id,
+                    session_id=session_id,
+                    status="running",
+                )
+                if not persisted:
+                    raise RuntimeError("opencode_session_persistence_failed")
+            session_holder["session"] = self._sessions.register(
+                user_id=user_id,
+                project_id=project_id,
+                upstream_session_id=session_id,
+                title=title,
+                task_id=task_id,
+                engine_run_id=engine_run_id,
+                workspace_revision=snapshot["revision"],
+            )
+
+        try:
             result = self._broker.run_task(
                 task_id,
                 engine_run_id,
@@ -73,7 +96,8 @@ class OpenCodeTaskExecutor:
                 files=snapshot["files"],
                 prompt=prompt,
                 title=title,
-                on_lease_acquired=lease_callback,
+                on_lease_acquired=persist_runtime_lease,
+                on_session_created=persist_upstream_session,
             )
             execution = result.get("execution")
             results = result.get("results")
@@ -81,14 +105,26 @@ class OpenCodeTaskExecutor:
                 raise RuntimeError("opencode_execution_result_invalid")
             if not isinstance(results, dict) or not isinstance(results.get("changed_files"), list):
                 raise RuntimeError("opencode_workspace_result_invalid")
-            if lifecycle_run is not None and isinstance(execution.get("runtime_id"), str):
-                persisted = self._lifecycle.set_runtime(
-                    user_id=user_id, run_id=lifecycle_run["id"],
-                    runtime_id=execution["runtime_id"], session_id=execution["session_id"],
-                    status="running",
+            if session_holder and session_holder["session"].get("upstream_session_id") != execution["session_id"]:
+                raise RuntimeError("opencode_session_identity_mismatch")
+            if not session_holder:
+                if lifecycle_run is not None and isinstance(execution.get("runtime_id"), str):
+                    persisted = self._lifecycle.set_runtime(
+                        user_id=user_id, run_id=lifecycle_run["id"],
+                        runtime_id=execution["runtime_id"], session_id=execution["session_id"],
+                        status="running",
+                    )
+                    if not persisted:
+                        raise RuntimeError("opencode_session_persistence_failed")
+                session_holder["session"] = self._sessions.register(
+                    user_id=user_id,
+                    project_id=project_id,
+                    upstream_session_id=execution["session_id"],
+                    title=title,
+                    task_id=task_id,
+                    engine_run_id=engine_run_id,
+                    workspace_revision=snapshot["revision"],
                 )
-                if not persisted:
-                    raise RuntimeError("opencode_session_persistence_failed")
         except Exception:
             self._broker.release_attempt(task_id, engine_run_id, "opencode")
             if lifecycle_run is not None:
@@ -103,15 +139,7 @@ class OpenCodeTaskExecutor:
             raise
 
         try:
-            session = self._sessions.register(
-                user_id=user_id,
-                project_id=project_id,
-                upstream_session_id=execution["session_id"],
-                title=title,
-                task_id=task_id,
-                engine_run_id=engine_run_id,
-                workspace_revision=snapshot["revision"],
-            )
+            session = session_holder["session"]
             change_set = None
             if lifecycle_run is not None:
                 original_by_path = {item["path"]: item["content"] for item in snapshot["files"]}
