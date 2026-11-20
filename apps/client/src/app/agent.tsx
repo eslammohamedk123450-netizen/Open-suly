@@ -208,7 +208,7 @@ export default function AgentScreen() {
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.intro}>
             <Text style={styles.introTitle}>حوّل طلبك إلى مهمة</Text>
-            <Text style={styles.muted}>ابدأ باختبار محرك المهام، أو اختر Hermes Agent عند تهيئة خدمته ومنح الصلاحية.</Text>
+            <Text style={styles.muted}>اختبر محرك المهام، أو استخدم SULY AI بعد إعداد المزود والموافقة، أو جهّز Hermes Agent في بيئته المعزولة.</Text>
           </View>
 
           <View style={styles.card}>
