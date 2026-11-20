@@ -3,7 +3,7 @@ import logging
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
 from app.core.auth import AuthenticatedUser, get_current_user
@@ -389,9 +389,13 @@ def get_task_engine_approval_details(
     task_id: UUID,
     run_id: UUID,
     request_id: str,
+    response: Response,
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Return upstream-redacted approval details to the task owner; do not persist display text."""
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Vary"] = "Authorization"
     if (
         not isinstance(request_id, str)
         or not 1 <= len(request_id) <= 256
