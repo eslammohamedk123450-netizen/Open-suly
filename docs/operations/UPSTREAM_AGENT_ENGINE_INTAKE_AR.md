@@ -66,3 +66,11 @@
 |---|---|
 | Open Interpreter | لم يتم تثبيت repository canonical/revision موثوق في هذه المراجعة؛ لا pin ولا دمج حتى تأكيد الرابط الأصلي الذي قصده المستخدم. |
 | Screenpipe | لم يتم تأكيد المستودع المقصود أو إجراء license/source audit؛ مؤجل ولا يوجد pin. |
+
+
+## Hermes idempotency and orphan edge
+
+- تمت مراجعة `gateway/platforms/api_server_run_idempotency.py` و`api_server_runs.py` عند SHA `2de9f51b8008a7d49a49221c184f2f11cbfc4af1`: POST admission يستخدم idempotency ledger ويعيد نفس النتيجة للطلب المكرر بنفس المفتاح والبصمة.
+- مسارات Runs التي راجعناها لا تعرض endpoint مستقلًا للبحث عن run بواسطة Idempotency-Key. لذلك لا يجوز إعادة POST لمجرد البحث؛ إذا لم يكن السجل موجودًا فقد ينشئ تشغيلًا جديدًا.
+- SULY يحفظ المعرف فور وصوله، ويعيد محاولة RPC الحفظ مرة واحدة، ويرسل stop best-effort عند الفشل. إذا انهار Worker في النافذة الدقيقة بين استجابة Hermes وحفظ المعرف، قد يبقى `stop_pending` بلا upstream ID.
+- أضيف عدّاد server-only لهذه السجلات مع error log من reconciler؛ لا نعتبرها stopped ولا نخفيها. إغلاق هذه الفجوة بالكامل يتطلب endpoint lookup آمنًا upstream أو تغيير admission contract في نسخة Hermes مخصصة، بعد اختبار توافق وترخيص.
