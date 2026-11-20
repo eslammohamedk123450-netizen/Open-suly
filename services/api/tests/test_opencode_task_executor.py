@@ -180,3 +180,51 @@ def test_executor_persists_runtime_id_immediately_when_lease_is_acquired():
     assert runtime_calls[0]["status"] == "provisioning"
     assert runtime_calls[1]["session_id"] == "sesABC123"
     assert runtime_calls[1]["status"] == "running"
+
+
+def test_executor_runs_event_consumer_concurrently_and_stops_it_after_prompt():
+    from threading import Event
+    from types import SimpleNamespace
+
+    user_id, project_id, task_id, run_id = (str(uuid4()) for _ in range(4))
+    lifecycle = Lifecycle()
+    started, stopped = Event(), Event()
+    runtime_id = str(uuid4())
+
+    class EventConsumer:
+        def consume(self, **kwargs):
+            assert kwargs["session_id"] == "sesABC123"
+            assert kwargs["sequence_start"] == 10
+            assert kwargs["max_seconds"] == 1800
+            started.set()
+            assert kwargs["stop_event"].wait(timeout=2)
+            stopped.set()
+            return 0
+
+    class CallbackBroker(Broker):
+        def run_task(self, task_id, run_id, engine_id, *, files, prompt, title, on_lease_acquired=None, on_session_created=None):
+            lease = SimpleNamespace(
+                runtime_id=runtime_id,
+                base_url="https://runtime.example.test",
+                gateway_path=f"/v1/runtime-gateway/{runtime_id}",
+                access_token="x" * 48,
+            )
+            on_lease_acquired(lease)
+            on_session_created(lease, "sesABC123")
+            return {
+                "execution": {"runtime_id": runtime_id, "session_id": "sesABC123"},
+                "results": {"changed_files": [], "deleted_paths": [], "changed_count": 0},
+            }
+
+    executor = OpenCodeTaskExecutor(
+        workspace_store=Workspace(), session_store=Sessions(),
+        runtime_broker=CallbackBroker(), lifecycle_store=lifecycle,
+        event_consumer=EventConsumer(),
+    )
+    executor.execute(
+        user_id=user_id, project_id=project_id, task_id=task_id,
+        engine_run_id=run_id, prompt="Run with live events",
+    )
+
+    assert started.is_set()
+    assert stopped.is_set()
