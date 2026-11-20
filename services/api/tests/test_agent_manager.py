@@ -123,3 +123,43 @@ def test_agent_manager_rejects_duplicate_agent_and_duplicate_preferences():
             capabilities=frozenset({"code.edit"}),
             preferred_engines=("opencode", "opencode"),
         )])
+
+
+def test_agent_manager_rejects_invalid_registry_and_profile_shapes():
+    with pytest.raises(TypeError, match="engine_registry_required"):
+        AgentManager(object())
+    with pytest.raises(ValueError, match="agent_capabilities_required"):
+        AgentManager(registry(), [AgentDefinition(
+            agent_id="invalid-agent",
+            display_name="Invalid",
+            capabilities=set({"research"}),
+        )])
+    with pytest.raises(ValueError, match="preferred_engines_must_be_tuple"):
+        AgentManager(registry(), [AgentDefinition(
+            agent_id="invalid-agent",
+            display_name="Invalid",
+            capabilities=frozenset({"research"}),
+            preferred_engines=["hermes-agent"],
+        )])
+    with pytest.raises(ValueError, match="invalid_agent_flags"):
+        AgentManager(registry(), [AgentDefinition(
+            agent_id="invalid-agent",
+            display_name="Invalid",
+            capabilities=frozenset({"research"}),
+            enabled=1,
+        )])
+    with pytest.raises(ValueError, match="invalid_preferred_engine"):
+        AgentManager(registry(), [AgentDefinition(
+            agent_id="invalid-agent",
+            display_name="Invalid",
+            capabilities=frozenset({"research"}),
+            preferred_engines=("unsafe/engine",),
+        )])
+
+
+def test_agent_manager_rejects_non_string_route_values():
+    manager = AgentManager(registry())
+    with pytest.raises(ValueError, match="invalid_agent_route"):
+        manager.route([], "research")
+    with pytest.raises(ValueError, match="invalid_agent_route"):
+        manager.route("agent", [])
