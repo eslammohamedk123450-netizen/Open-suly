@@ -44,6 +44,8 @@ class TaskWorker:
         lease_seconds: int = 90,
         heartbeat_interval_seconds: float | None = None,
     ) -> None:
+        if not isinstance(worker_id, str):
+            raise ValueError("worker_id must be a string")
         normalized = worker_id.strip()
         if not normalized or len(normalized) > 120:
             raise ValueError("worker_id must contain 1–120 non-whitespace characters")
@@ -53,7 +55,11 @@ class TaskWorker:
         self.worker_id = normalized
         self.lease_seconds = lease_seconds
         interval = heartbeat_interval_seconds if heartbeat_interval_seconds is not None else max(1.0, lease_seconds / 3)
-        if not 0.01 <= interval <= lease_seconds / 2:
+        if (
+            isinstance(interval, bool)
+            or not isinstance(interval, (int, float))
+            or not 0.01 <= interval <= lease_seconds / 2
+        ):
             raise ValueError("heartbeat interval must be positive and no more than half the lease")
         self.heartbeat_interval_seconds = interval
 
