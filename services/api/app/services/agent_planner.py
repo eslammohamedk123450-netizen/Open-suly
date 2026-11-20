@@ -38,6 +38,12 @@ def plan_request(request: str) -> PlannedTask:
         raise UnsupportedTaskRequest("Provide the text to analyze after the operation prefix.")
     if len(text) > 20000:
         raise UnsupportedTaskRequest("Text analysis input exceeds 20,000 characters.")
+    # Keep planning and execution capabilities in sync: a planner may only emit
+    # an operation currently registered by the worker runtime.
+    from app.worker_runtime import TOOL_REGISTRY
+
+    if TOOL_REGISTRY.get("text.analyze") is None:
+        raise UnsupportedTaskRequest("Text analysis is not available in the current worker registry.")
     return PlannedTask(steps=[{
         "step_key": "analyze_text",
         "title": "Analyze supplied text",
