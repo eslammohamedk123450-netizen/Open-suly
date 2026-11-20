@@ -18,6 +18,7 @@ class ToolApprovalStore:
             .select("permission_scope")
             .eq("user_id", user_id)
             .is_("revoked_at", "null")
+            .limit(200)
             .execute()
             .data
         )
