@@ -117,23 +117,19 @@ class OpenCodeLifecycleStore:
         ).eq("user_id", user_id).execute().data
         return bool(rows)
 
-    def recover_interrupted_runs(self, *, user_id: str, limit: int = 100) -> int:
-        """Mark nonterminal worker-owned runs as interrupted after process restart."""
+    def recover_interrupted_runs(self, *, user_id: str, orphaned_run_ids: list[str]) -> int:
+        """Mark only IDs explicitly proven orphaned by the runtime reconciler."""
         _uuid(user_id, "opencode_task_identity_invalid")
-        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
-            raise ValueError("opencode_recovery_limit_invalid")
-        rows = self._client.table("opencode_task_runs").select(
-            "id,status"
-        ).eq("user_id", user_id).in_(
-            "status", ["provisioning", "running", "waiting_approval", "collecting", "applying"]
-        ).limit(limit).execute().data or []
+        if not isinstance(orphaned_run_ids, list) or len(orphaned_run_ids) > 100:
+            raise ValueError("opencode_recovery_ids_invalid")
         recovered = 0
-        for row in rows:
+        for run_id in set(orphaned_run_ids):
+            _uuid(run_id, "opencode_task_identity_invalid")
             updated = self._client.table("opencode_task_runs").update({
-                "status": "failed", "error_code": "worker_restarted",
+                "status": "failed", "error_code": "runtime_lost",
                 "finished_at": datetime.now(timezone.utc).isoformat(),
-            }).eq("id", row["id"]).eq("user_id", user_id).eq(
-                "status", row["status"]
+            }).eq("id", run_id).eq("user_id", user_id).in_(
+                "status", ["provisioning", "running", "waiting_approval", "collecting", "applying"]
             ).execute().data
             if updated:
                 recovered += 1
