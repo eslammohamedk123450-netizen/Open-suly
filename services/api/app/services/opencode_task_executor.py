@@ -6,6 +6,7 @@ canonical project files automatically.
 from __future__ import annotations
 
 from typing import Any
+from difflib import unified_diff
 
 from app.services.opencode_session_store import OpenCodeSessionStore
 from app.services.project_workspace_store import ProjectWorkspaceStore
@@ -95,18 +96,33 @@ class OpenCodeTaskExecutor:
             )
             change_set = None
             if lifecycle_run is not None:
-                original_paths = {item["path"] for item in snapshot["files"]}
+                original_by_path = {item["path"]: item["content"] for item in snapshot["files"]}
                 changes = []
                 for item in results.get("changed_files", []):
                     if not isinstance(item, dict):
                         continue
-                    action = "update" if item.get("path") in original_paths else "create"
+                    path = item.get("path")
+                    action = "update" if path in original_by_path else "create"
+                    old_content = original_by_path.get(path, "")
+                    new_content = item.get("content", "")
+                    diff = "".join(unified_diff(
+                        old_content.splitlines(keepends=True),
+                        new_content.splitlines(keepends=True),
+                        fromfile=f"a/{path}" if action == "update" else "/dev/null",
+                        tofile=f"b/{path}",
+                    ))
                     changes.append({
-                        "action": action, "path": item.get("path"),
-                        "content": item.get("content"), "sha256": item.get("sha256"),
+                        "action": action, "path": path,
+                        "content": new_content, "sha256": item.get("sha256"),
+                        "diff": diff[:256 * 1024],
                     })
                 for path in results.get("deleted_paths", []):
-                    changes.append({"action": "delete", "path": path})
+                    old_content = original_by_path.get(path, "")
+                    diff = "".join(unified_diff(
+                        old_content.splitlines(keepends=True), [],
+                        fromfile=f"a/{path}", tofile="/dev/null",
+                    ))
+                    changes.append({"action": "delete", "path": path, "diff": diff[:256 * 1024]})
                 change_set = self._lifecycle.create_change_set(
                     user_id=user_id, project_id=project_id, run_id=lifecycle_run["id"],
                     base_revision=snapshot["revision"], changes=changes,
