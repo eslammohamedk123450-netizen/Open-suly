@@ -52,7 +52,7 @@ class EngineRegistry:
             raise ValueError("invalid_engine_flags")
         if definition.adapter is not None and not callable(getattr(definition.adapter, "execute", None)):
             raise ValueError("invalid_engine_adapter")
-        if any(not _CAPABILITY.fullmatch(item) for item in definition.capabilities):
+        if any(not isinstance(item, str) or not _CAPABILITY.fullmatch(item) for item in definition.capabilities):
             raise ValueError("invalid_engine_capability")
         if (
             isinstance(definition.max_input_bytes, bool)
@@ -71,6 +71,8 @@ class EngineRegistry:
         self._engines[definition.engine_id] = definition
 
     def get(self, engine_id: str) -> EngineDefinition | None:
+        if not isinstance(engine_id, str):
+            return None
         return self._engines.get(engine_id)
 
     def list(self) -> tuple[EngineDefinition, ...]:
