@@ -132,6 +132,7 @@ export async function grantHermesApproval(): Promise<void> {
 export async function createAgentTask(
   operation: AgentOperation,
   prompt: string,
+  projectId?: string,
 ): Promise<AgentTask> {
   const cleanPrompt = prompt.trim();
   if (!cleanPrompt) throw new Error("اكتب وصف المهمة أولًا.");
@@ -141,6 +142,7 @@ export async function createAgentTask(
     body: JSON.stringify({
       title: operation === "hermes.agent.turn" ? "مهمة Hermes Agent" : operation === "ai.respond" ? "مهمة SULY AI" : "تحليل نص",
       request: operation === "text.analyze" ? "analyze: " + cleanPrompt : operation === "hermes.agent.turn" ? "agent: " + cleanPrompt : cleanPrompt,
+      ...(projectId ? { project_id: projectId } : {}),
       idempotency_key: "agent-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 14),
     }),
   });
@@ -166,8 +168,10 @@ export async function createAgentTask(
   return task;
 }
 
-export async function listAgentTasks(limit = 30): Promise<AgentTask[]> {
-  const payload = await request<{ items: AgentTask[] }>("/v1/tasks?limit=" + encodeURIComponent(String(limit)));
+export async function listAgentTasks(limit = 30, projectId?: string): Promise<AgentTask[]> {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (projectId) query.set("project_id", projectId);
+  const payload = await request<{ items: AgentTask[] }>("/v1/tasks?" + query.toString());
   return payload.items ?? [];
 }
 
