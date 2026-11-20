@@ -222,3 +222,9 @@ The task database foundation is live, but it must not be described as autonomous
 - Unit tests cover default-deny behavior, exact-scope authorization, no handler execution before approval, and rejection of self-granted scopes.
 - This is an authorization gate interface, not yet a persisted user-consent workflow. No external tool is currently registered.
 - No Supabase schema change, provider, API key, paid service, or deployment was introduced.
+
+
+### Additional tool output boundary
+- Registry handlers must return JSON-serializable objects.
+- Tool output is size-bounded (64 KB by default, configurable per tool); invalid or oversized outputs fail before checkpoint persistence.
+- This is output validation, not a sandbox or a hard execution timeout.
