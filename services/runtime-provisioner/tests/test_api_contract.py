@@ -170,7 +170,7 @@ def test_event_gateway_forwards_sse_without_buffering(monkeypatch):
     assert clients and clients[0].closed
 
 
-def test_runtime_recovery_rotates_token_only_for_exact_task_owner(tmp_path, monkeypatch):
+def test_runtime_recovery_restores_same_task_credential_for_exact_owner(tmp_path, monkeypatch):
     import hashlib
     import time
     import pytest
