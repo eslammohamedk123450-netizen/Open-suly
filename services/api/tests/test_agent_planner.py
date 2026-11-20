@@ -77,3 +77,59 @@ def test_planner_supports_arabic_general_agent_prefix_when_enabled(monkeypatch):
     ))
     planned = plan_request("وكيل: راجع هذه المهمة")
     assert planned.steps[0]["input"]["prompt"] == "راجع هذه المهمة"
+
+
+def test_agent_plan_validator_accepts_bounded_dependency_graph():
+    from app.services.agent_planner import validate_agent_plan
+
+    steps = validate_agent_plan([
+        {
+            "step_key": "first_step",
+            "title": "First",
+            "description": "",
+            "depends_on": [],
+            "input": {"operation": "text.analyze", "text": "first"},
+        },
+        {
+            "step_key": "second_step",
+            "title": "Second",
+            "description": "Depends on first",
+            "depends_on": ["first_step"],
+            "input": {"operation": "text.analyze", "text": "second"},
+        },
+    ])
+    assert steps[1]["depends_on"] == ["first_step"]
+
+
+@pytest.mark.parametrize("steps", [
+    [],
+    [{"step_key": "first_step", "title": "First", "input": {"operation": "shell.exec"}}],
+    [{"step_key": "first_step", "title": "First", "depends_on": ["missing_step"],
+      "input": {"operation": "text.analyze", "text": "x"}}],
+    [
+        {"step_key": "first_step", "title": "First", "depends_on": ["second_step"],
+         "input": {"operation": "text.analyze", "text": "x"}},
+        {"step_key": "second_step", "title": "Second", "depends_on": ["first_step"],
+         "input": {"operation": "text.analyze", "text": "y"}},
+    ],
+    [{"step_key": "first_step", "title": "First", "extra": "not allowed",
+      "input": {"operation": "text.analyze", "text": "x"}}],
+])
+def test_agent_plan_validator_rejects_unsafe_or_invalid_dags(steps):
+    from app.services.agent_planner import validate_agent_plan
+
+    with pytest.raises(UnsupportedTaskRequest):
+        validate_agent_plan(steps)
+
+
+def test_agent_plan_validator_caps_step_count():
+    from app.services.agent_planner import validate_agent_plan
+
+    steps = [{
+        "step_key": f"step_{index:02d}",
+        "title": f"Step {index}",
+        "depends_on": [],
+        "input": {"operation": "text.analyze", "text": "x"},
+    } for index in range(33)]
+    with pytest.raises(UnsupportedTaskRequest, match="32 steps"):
+        validate_agent_plan(steps)
