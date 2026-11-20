@@ -474,6 +474,29 @@ def test_task_steering_rejects_non_running_engine_before_upstream_call(monkeypat
 
 
 
+def test_task_approval_cannot_resolve_request_from_another_engine_run(monkeypatch):
+    admin = _SteerAdmin()
+    admin.tables["engine_run_events"] = [{
+        "id": 1,
+        "engine_run_id": "00000000-0000-0000-0000-000000000088",
+        "event_name": "approval.request",
+        "approval_request_id": "approval-req_123",
+    }]
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    monkeypatch.setattr(tasks_module, "resolve_agent_approval", lambda *_args: (_ for _ in ()).throw(
+        AssertionError("An approval from a different run must never be resolved")
+    ))
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    try:
+        response = client.post(
+            "/v1/tasks/00000000-0000-0000-0000-000000000001/engine-runs/00000000-0000-0000-0000-000000000099/approvals",
+            json={"request_id": "approval-req_123", "choice": "once"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 404
+
+
 def test_task_owner_can_resolve_one_exact_hermes_approval_once(monkeypatch):
     from types import SimpleNamespace
 
