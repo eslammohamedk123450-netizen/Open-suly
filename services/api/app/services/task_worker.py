@@ -221,6 +221,14 @@ class TaskWorker:
                 output = handler(step)
             if not isinstance(output, dict):
                 raise TypeError("A task handler must return a JSON object.")
+            try:
+                output_bytes = json.dumps(
+                    output, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+                ).encode("utf-8")
+            except (TypeError, ValueError) as exc:
+                raise ValueError("worker_output_invalid") from exc
+            if len(output_bytes) > _MAX_OUTPUT_BYTES:
+                raise ValueError("worker_output_too_large")
         except Exception:
             heartbeat_stop.set()
             heartbeat.join()
