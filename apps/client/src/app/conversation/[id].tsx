@@ -84,7 +84,16 @@ export default function ConversationScreen() {
             </View>
           ))}
           {!!error && <Text style={styles.error}>{error}</Text>}
-          {!!engineNotice && <Text style={styles.engineNotice}>{engineNotice}</Text>}
+          {!!engineNotice && (
+            <View style={styles.noticeBox}>
+              <Text style={styles.engineNotice}>{engineNotice}</Text>
+              {engineNotice.includes("موافقة صريحة") && (
+                <Pressable style={styles.permissionButton} onPress={() => router.push("/agent")}>
+                  <Text style={styles.permissionText}>فتح مساحة الوكيل لإدارة الموافقة</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
         </ScrollView>
         <View style={styles.composer}>
           <TextInput value={draft} onChangeText={setDraft} placeholder="اكتب رسالتك..." placeholderTextColor={colors.faint} style={styles.input} multiline textAlign="right" textAlignVertical="center" />
@@ -107,7 +116,8 @@ const styles = StyleSheet.create({
   welcome: { alignItems: "center", padding: 28, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, welcomeTitle: { color: colors.gold, fontSize: 17, fontWeight: "800" }, welcomeText: { color: colors.muted, fontSize: 12, textAlign: "center", lineHeight: 21, marginTop: 8 },
   userMessage: { alignSelf: "flex-end", maxWidth: "88%", borderRadius: 18, borderBottomRightRadius: 5, padding: 13, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.goldDark }, assistantMessage: { alignSelf: "flex-start", maxWidth: "88%", borderRadius: 18, borderBottomLeftRadius: 5, padding: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   userText: { color: colors.text, fontSize: 13, lineHeight: 22, textAlign: "right" }, assistantText: { color: colors.muted, fontSize: 13, lineHeight: 22, textAlign: "left" }, time: { color: colors.faint, fontSize: 9, marginTop: 7, textAlign: "left" },
-  engineNotice: { color: colors.faint, fontSize: 10, textAlign: "center", marginTop: 8 }, error: { color: "#F08B8B", fontSize: 11, textAlign: "center" },
+  noticeBox: { alignItems: "center", gap: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  engineNotice: { color: colors.faint, fontSize: 10, textAlign: "center", marginTop: 8 }, permissionButton: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 9, borderWidth: 1, borderColor: colors.goldDark }, permissionText: { color: colors.gold, fontSize: 10, fontWeight: "700" }, error: { color: "#F08B8B", fontSize: 11, textAlign: "center" },
   composer: { width: "100%", maxWidth: 760, alignSelf: "center", padding: 12, flexDirection: "row", alignItems: "flex-end", gap: 9, borderTopWidth: 1, borderTopColor: colors.border }, input: { flex: 1, minHeight: 48, maxHeight: 130, borderRadius: 15, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, color: colors.text, paddingHorizontal: 13, paddingVertical: 12, fontSize: 13 },
   sendButton: { width: 46, height: 46, borderRadius: 15, backgroundColor: colors.gold, alignItems: "center", justifyContent: "center" }, sendText: { color: colors.background, fontSize: 25, fontWeight: "900" }, disabled: { opacity: 0.45 },
 });
