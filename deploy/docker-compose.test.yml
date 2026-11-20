@@ -1,0 +1,40 @@
+# Local SULY API + durable task worker smoke-test stack.
+# Supply server-only values through the untracked repository-root .env file.
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: services/api/Dockerfile
+    env_file:
+      - ../.env
+    environment:
+      APP_ENV: development
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      WORKER_ENABLED: "false"
+      HERMES_AGENT_ENABLED: "false"
+    ports:
+      - "${SULY_API_BIND:-127.0.0.1}:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ..
+      dockerfile: services/api/Dockerfile
+    env_file:
+      - ../.env
+    environment:
+      WORKER_ENABLED: "true"
+      HERMES_AGENT_ENABLED: "false"
+      LOG_LEVEL: INFO
+    command: ["python", "-m", "app.worker_runtime"]
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
