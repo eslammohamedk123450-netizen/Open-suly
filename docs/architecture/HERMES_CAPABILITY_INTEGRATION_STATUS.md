@@ -26,7 +26,7 @@ SULY intends to reuse Hermes Agent as its primary general-purpose agent runtime.
 | Messaging/channel integrations | SULY channels | Not enabled; upstream gateway/channel ownership must not replace SULY auth |
 | Remote execution backends | Sandbox provider adapter | Pending; only approved ephemeral providers, no credential leakage |
 | Run status/events/streaming | Durable task event bridge | Pending lifecycle integration, bounded event storage and redaction |
-| Stop/cancel | SULY task cancellation | Worker now exposes cancel event on heartbeat/lease loss; upstream stop adapter pending |
+| Stop/cancel | SULY task cancellation | Worker cancellation event reaches Hermes HTTP bridge; client request is aborted on cancellation/lease loss. Upstream execution termination is not guaranteed without a Hermes run-control API. |
 | Retry/recovery/checkpoint | SULY durable DAG | SULY-owned retry and checkpoints; Hermes run mapping/idempotency pending |
 | Health and metrics | SULY engine monitor | Pending; readiness must distinguish process health from model/tool capability |
 
@@ -45,10 +45,10 @@ SULY intends to reuse Hermes Agent as its primary general-purpose agent runtime.
 
 - Upstream Hermes is pinned to commit `9f47677483d1b4de4d1a88d37b3b7ca18b18b215`.
 - Compose profile is opt-in, no host port, and API server disabled.
-- SULY bridge settings and bounded synchronous chat bridge exist. Base URL parsing rejects non-HTTP(S), missing-host, embedded credentials, query strings, and fragments before requests; invalid settings are covered by new tests. The worker now registers `hermes.agent.turn` as an approval-gated task operation (`agent.hermes.run`) with strict input-field and input/output size limits. The operation reaches the bridge only after the worker loads persisted approval scopes.
-- Worker `run_once` accepts optional cancel-aware handlers. Lease loss/failure sets cancellation event and prevents result checkpoint.
+- SULY bridge settings and a bounded asynchronous HTTP chat bridge exist. Base URL parsing rejects non-HTTP(S), missing-host, embedded credentials, query strings, and fragments before requests; invalid settings are covered by new tests. The worker now registers `hermes.agent.turn` as an approval-gated task operation (`agent.hermes.run`) with strict input-field and input/output size limits. The operation reaches the bridge only after the worker loads persisted approval scopes.
+- Worker `run_once` accepts optional cancel-aware handlers. Lease loss/failure sets cancellation event and prevents result checkpoint. The cancellation event now flows through the approved tool context and engine adapter to abort the in-flight HTTP request; engine timeout overrides are passed through to HTTPX.
 - WorkerRuntime forwards the optional cancellation-aware handler interface.
-- Unit tests for worker lease heartbeat and cancel-event behavior are authored but have not been executed in this environment.
+- Unit tests cover HTTP request cancellation, timeout override, approval-preserving event propagation, worker lease heartbeat, and no-checkpoint-after-lease-loss. CI status is tracked per commit; do not treat authored tests as executed until the corresponding GitHub Actions run completes.
 - No Hermes container is built or started, no provider/model configured, and no real tool/agent execution is verified.
 
 ## Capability enablement policy
@@ -62,3 +62,13 @@ Authenticated clients can now query `GET /v1/tools/approvals/catalog` to discove
 ## Tool schema discovery
 
 The authenticated tool catalog now publishes each registered tool's allowed and required input field names and the registry-enforced maximum serialized input/output byte sizes. This is metadata only: it does not relax the worker allow-list, change approval requirements, or expose arbitrary execution. Client-side forms can use this metadata for discovery while the server remains authoritative for validation.
+
+
+## 2026-11-20 cancellation bridge update
+
+- HermesAgentAdapter receives the worker cancellation event and the engine-registry timeout.
+- ToolExecutionContext carries a server-created cancellation event separately from user-controlled task input and approval scopes.
+- Only tools explicitly marked supports_cancellation receive the event; the Hermes operation is marked as cancellation-aware.
+- The HTTP bridge uses httpx.AsyncClient and cancels its local request task when SULY signals cancellation. This closes the client-side request and prevents SULY from accepting/checkpointing a late result.
+- IMPORTANT LIMITATION: aborting the HTTP request does not prove that a remote Hermes process stopped generating or executing. A future upstream run-ID/stop endpoint is required for authoritative remote cancellation and durable run reconciliation.
+- No Hermes API server, provider, worker, or paid service was enabled by this change. Sandbox review remains a prerequisite.
