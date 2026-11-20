@@ -143,14 +143,38 @@ class RuntimeLeaseProvider(Protocol):
     """Provider must provision a fresh runtime globally for every task attempt."""
 
     def acquire(self, task_id: str, engine_run_id: str, engine_id: str) -> RuntimeLease:
+        ...
+
+    def release(self, lease: RuntimeLease) -> bool:
+        ...
+
+
+class TaskScopedRuntimeBroker:
+    """Validate leases and prevent reuse within this broker process."""
+
+    def __init__(self, provider: RuntimeLeaseProvider, *, allowed_origins: frozenset[str]) -> None:
+        if not callable(getattr(provider, "acquire", None)) or not callable(getattr(provider, "release", None)):
+            raise TypeError("runtime_lease_provider_required")
+        if not isinstance(allowed_origins, frozenset) or not allowed_origins or any(
+            not _valid_https_origin(origin) for origin in allowed_origins
+        ):
+            raise ValueError("runtime_broker_allowed_origins_required")
+        self._provider = provider
+        self._allowed_origins = allowed_origins
+        self._lock = RLock()
+        self._active_by_runtime: dict[str, tuple[tuple[str, str, str], RuntimeLease]] = {}
+        self._active_by_attempt: dict[tuple[str, str, str], str] = {}
+        self._seen_runtime_ids: set[str] = set()
+        self._seen_attempts: set[tuple[str, str, str]] = set()
+        self._pending_attempts: set[tuple[str, str, str]] = set()
+        self._releasing_runtime_ids: set[str] = set()
+
+    def acquire(self, task_id: str, engine_run_id: str, engine_id: str) -> RuntimeLease:
         attempt = (task_id, engine_run_id, engine_id)
         with self._lock:
             if attempt in self._seen_attempts or attempt in self._pending_attempts:
                 raise RuntimeError("runtime_attempt_already_leased")
-            # Reserve before contacting the provider so concurrent calls cannot
-            # provision two runtimes for the same task attempt.
             self._pending_attempts.add(attempt)
-
         try:
             lease = self._provider.acquire(task_id, engine_run_id, engine_id)
             if not isinstance(lease, RuntimeLease):
@@ -166,16 +190,10 @@ class RuntimeLeaseProvider(Protocol):
                 try:
                     self._provider.release(lease)
                 except Exception:
-                    logger.warning(
-                        "Failed to release invalid runtime lease %s",
-                        getattr(lease, "runtime_id", "unknown"),
-                    )
+                    logger.warning("Failed to release invalid runtime lease %s", getattr(lease, "runtime_id", "unknown"))
                 raise
-
             with self._lock:
                 runtime_reused = lease.runtime_id in self._seen_runtime_ids
-                # The pending reservation prevents this attempt from racing
-                # with another acquire in this broker process.
                 attempt_reused = attempt in self._seen_attempts
                 reused = runtime_reused or attempt_reused
                 if not reused:
@@ -184,10 +202,7 @@ class RuntimeLeaseProvider(Protocol):
                     self._seen_runtime_ids.add(lease.runtime_id)
                     self._seen_attempts.add(attempt)
                 self._pending_attempts.discard(attempt)
-
             if reused:
-                # Never tear down a runtime ID that has already been issued: it may
-                # still belong to another active task or another broker process.
                 if not runtime_reused:
                     try:
                         if not self._provider.release(lease):
@@ -209,15 +224,9 @@ class RuntimeLeaseProvider(Protocol):
         attempt = (lease.task_id, lease.engine_run_id, lease.engine_id)
         with self._lock:
             active = self._active_by_runtime.get(lease.runtime_id)
-            if (
-                active is None
-                or active[0] != attempt
-                or active[1] is not lease
-                or lease.runtime_id in self._releasing_runtime_ids
-            ):
+            if active is None or active[0] != attempt or active[1] is not lease or lease.runtime_id in self._releasing_runtime_ids:
                 return False
             self._releasing_runtime_ids.add(lease.runtime_id)
-
         try:
             released = self._provider.release(lease)
             if not isinstance(released, bool):
@@ -234,23 +243,14 @@ class RuntimeLeaseProvider(Protocol):
                 self._releasing_runtime_ids.discard(lease.runtime_id)
 
     @contextmanager
-    def session(
-        self,
-        task_id: str,
-        engine_run_id: str,
-        engine_id: str,
-    ) -> Iterator[RuntimeLease]:
-        """Acquire one runtime lease and always attempt teardown after engine use."""
+    def session(self, task_id: str, engine_run_id: str, engine_id: str) -> Iterator[RuntimeLease]:
         lease = self.acquire(task_id, engine_run_id, engine_id)
         try:
             yield lease
         finally:
             try:
                 if not self.release(lease):
-                    logger.warning(
-                        "Runtime teardown was not confirmed for runtime %s",
-                        lease.runtime_id,
-                    )
+                    logger.warning("Runtime teardown was not confirmed for runtime %s", lease.runtime_id)
             except Exception:
                 logger.warning("Runtime teardown failed for runtime %s", lease.runtime_id)
 
