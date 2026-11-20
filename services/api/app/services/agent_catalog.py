@@ -1,13 +1,13 @@
-"""Default SULY agent roles mapped to pinned, disabled specialist engines.
+"""SULY agent roles mapped to pinned specialist engines.
 
-Agent roles are product capabilities, not independent permission principals.
-They remain disabled until an isolated engine adapter and approval workflow pass
-their respective release gates.
+A role is enabled only when its capability has a server-enabled engine adapter.
+Persisted task approval remains a separate mandatory execution gate.
 """
 from __future__ import annotations
 
 from app.services.agent_manager import AgentDefinition, AgentManager
 from app.services.engine_catalog import build_engine_registry
+from app.services.engine_registry import EngineRegistry
 
 
 AGENT_DEFINITIONS: tuple[AgentDefinition, ...] = (
@@ -33,6 +33,14 @@ AGENT_DEFINITIONS: tuple[AgentDefinition, ...] = (
         requires_approval=True,
     ),
     AgentDefinition(
+        agent_id="research-agent",
+        display_name="SULY Research Agent",
+        capabilities=frozenset({"research", "research.summarize"}),
+        preferred_engines=("hermes-agent",),
+        enabled=False,
+        requires_approval=True,
+    ),
+    AgentDefinition(
         agent_id="browser-agent",
         display_name="SULY Browser Agent",
         capabilities=frozenset({
@@ -42,9 +50,29 @@ AGENT_DEFINITIONS: tuple[AgentDefinition, ...] = (
         enabled=False,
         requires_approval=True,
     ),
+    AgentDefinition(
+        agent_id="workflow-agent",
+        display_name="SULY Workflow Agent",
+        capabilities=frozenset({"workflow.execute"}),
+        preferred_engines=("n8n", "dify"),
+        enabled=False,
+        requires_approval=True,
+    ),
 )
 
 
-def build_agent_manager() -> AgentManager:
-    """Build the product role map without enabling any role or runtime."""
-    return AgentManager(build_engine_registry(), AGENT_DEFINITIONS)
+def build_agent_manager(engines: EngineRegistry | None = None) -> AgentManager:
+    """Enable only roles backed by an enabled engine for every role capability."""
+    registry = engines if engines is not None else build_engine_registry()
+    definitions = []
+    for agent in AGENT_DEFINITIONS:
+        enabled = all(bool(registry.candidates(capability)) for capability in agent.capabilities)
+        definitions.append(AgentDefinition(
+            agent_id=agent.agent_id,
+            display_name=agent.display_name,
+            capabilities=agent.capabilities,
+            preferred_engines=agent.preferred_engines,
+            enabled=enabled,
+            requires_approval=agent.requires_approval,
+        ))
+    return AgentManager(registry, definitions)
