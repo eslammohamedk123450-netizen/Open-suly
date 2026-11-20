@@ -283,6 +283,7 @@ class TaskScopedRuntimeBroker:
         files: list[dict] | None,
         prompt: str,
         title: str = "SULY task",
+        on_lease_acquired: Callable[[RuntimeLease], None] | None = None,
     ) -> dict:
         """Execute and retain the lease for approvals/review until explicit release.
 
@@ -292,8 +293,12 @@ class TaskScopedRuntimeBroker:
         runner = getattr(self._provider, "run_task", None)
         if not callable(runner):
             raise RuntimeError("runtime_provider_execution_not_supported")
+        if on_lease_acquired is not None and not callable(on_lease_acquired):
+            raise ValueError("runtime_lease_callback_invalid")
         lease = self.acquire(task_id, engine_run_id, engine_id, files=files)
         try:
+            if on_lease_acquired is not None:
+                on_lease_acquired(lease)
             result = runner(lease, prompt=prompt, title=title)
             if not isinstance(result, dict):
                 raise RuntimeError("runtime_provider_invalid_execution_result")
