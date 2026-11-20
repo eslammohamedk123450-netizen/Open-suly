@@ -4,7 +4,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { colors } from "@/theme/tokens";
 import { useAuth } from "@/providers/AuthProvider";
-import { listProjectFileHistory, listProjectFiles, readProjectFile, restoreProjectFileRevision, saveProjectFile, type ProjectFile, type ProjectFileRevision } from "@/lib/project-files";
+import {
+  listProjectFileHistory, listProjectFiles, readProjectFile,
+  restoreProjectFileRevision, saveProjectFile,
+  type ProjectFile, type ProjectFileRevision,
+} from "@/lib/project-files";
 
 export default function ProjectFilesScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -14,10 +18,12 @@ export default function ProjectFilesScreen() {
   const [content, setContent] = useState("");
   const [newPath, setNewPath] = useState("");
   const [history, setHistory] = useState<ProjectFileRevision[]>([]);
-  const [restoring, setRestoring] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const [notice, setNotice] = useState("");
+
+  const loadHistory = async (path: string) => setHistory(await listProjectFileHistory(id, path));
 
   const refresh = useCallback(async () => {
     if (!user || !id) { setLoading(false); return; }
@@ -28,9 +34,11 @@ export default function ProjectFilesScreen() {
       if (selected && items.some((item) => item.path === selected)) {
         const file = await readProjectFile(id, selected);
         setContent(file.content);
+        await loadHistory(selected);
       } else if (selected) {
         setSelected("");
         setContent("");
+        setHistory([]);
       }
       setNotice("");
     } catch (error) {
@@ -46,6 +54,7 @@ export default function ProjectFilesScreen() {
       const file = await readProjectFile(id, path);
       setSelected(path);
       setContent(file.content);
+      await loadHistory(path);
     } catch (error) { setNotice(error instanceof Error ? error.message : "تعذر فتح الملف."); }
   };
 
@@ -58,11 +67,33 @@ export default function ProjectFilesScreen() {
       await saveProjectFile(id, path, content);
       setSelected(path);
       setNewPath("");
-      const items = await listProjectFiles(id);
-      setFiles(items);
-      setNotice("تم حفظ الملف داخل مساحة المشروع.");
+      setFiles(await listProjectFiles(id));
+      await loadHistory(path);
+      setNotice("تم حفظ الملف. النسخ السابقة محفوظة في سجل الإصدارات.");
     } catch (error) { setNotice(error instanceof Error ? error.message : "تعذر حفظ الملف."); }
     finally { setSaving(false); }
+  };
+
+  const restore = (revision: ProjectFileRevision) => {
+    Alert.alert(
+      "استعادة نسخة قديمة",
+      "سيتم استبدال محتوى الملف بهذه النسخة، مع الاحتفاظ بالمحتوى الحالي في سجل الإصدارات.",
+      [
+        { text: "إلغاء", style: "cancel" },
+        { text: "استعادة", style: "destructive", onPress: () => {
+          setRestoring(true);
+          void restoreProjectFileRevision(id, revision.id)
+            .then(async () => {
+              const file = await readProjectFile(id, revision.path);
+              setContent(file.content);
+              await loadHistory(revision.path);
+              setNotice("تمت الاستعادة، وحُفظت النسخة السابقة في السجل.");
+            })
+            .catch((error) => setNotice(error instanceof Error ? error.message : "تعذرت استعادة النسخة."))
+            .finally(() => setRestoring(false));
+        } },
+      ],
+    );
   };
 
   return (
@@ -72,11 +103,11 @@ export default function ProjectFilesScreen() {
           <Pressable style={styles.back} onPress={() => router.back()}><Text style={styles.backText}>→</Text></Pressable>
           <View style={styles.headerCopy}>
             <Text style={styles.title}>ملفات المشروع</Text>
-            <Text style={styles.subtitle}>محرر ملفات نصية — حتى 256 كيلوبايت للملف</Text>
+            <Text style={styles.subtitle}>محرر ملفات نصية وسجل نسخ قابل للاستعادة</Text>
           </View>
           <View style={styles.logo}><Text style={styles.logoText}>S</Text></View>
         </View>
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {loading ? <View style={styles.state}><ActivityIndicator color={colors.gold} /></View> : null}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>ملفات مساحة العمل ({files.length}/200)</Text>
@@ -88,24 +119,33 @@ export default function ProjectFilesScreen() {
             ))}
             {files.length === 0 && !loading ? <Text style={styles.muted}>لا توجد ملفات بعد. أنشئ أول ملف بالأسفل.</Text> : null}
           </View>
+          {selected ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>سجل الإصدارات ({history.length})</Text>
+              {history.length === 0 ? <Text style={styles.muted}>ستظهر النسخ السابقة بعد أول تعديل محفوظ.</Text> : history.map((revision) => (
+                <View key={revision.id} style={styles.revisionRow}>
+                  <View style={styles.revisionCopy}>
+                    <Text style={styles.revisionDate}>{new Date(revision.created_at).toLocaleString()}</Text>
+                    <Text style={styles.fileSize}>{Math.ceil(revision.size_bytes / 1024)} KB</Text>
+                  </View>
+                  <Pressable style={[styles.restoreButton, restoring && styles.disabled]} disabled={restoring} onPress={() => restore(revision)}>
+                    <Text style={styles.restoreText}>استعادة</Text>
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          ) : null}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{selected || "إنشاء ملف جديد"}</Text>
             {!selected && <TextInput value={newPath} onChangeText={setNewPath} placeholder="src/main.py" placeholderTextColor={colors.faint} autoCapitalize="none" style={styles.pathInput} />}
-            <TextInput
-              value={content}
-              onChangeText={setContent}
-              multiline
-              textAlignVertical="top"
-              autoCapitalize="none"
-              autoCorrect={false}
-              spellCheck={false}
-              placeholder="اكتب محتوى الملف هنا..."
-              placeholderTextColor={colors.faint}
-              style={styles.editor}
-            />
+            <TextInput value={content} onChangeText={setContent} multiline textAlignVertical="top"
+              autoCapitalize="none" autoCorrect={false} spellCheck={false}
+              placeholder="اكتب محتوى الملف هنا..." placeholderTextColor={colors.faint} style={styles.editor} />
             <View style={styles.actions}>
-              {selected ? <Pressable style={styles.secondary} onPress={() => { setSelected(""); setContent(""); setNewPath(""); }}><Text style={styles.secondaryText}>ملف جديد</Text></Pressable> : null}
-              <Pressable style={[styles.save, saving && styles.disabled]} onPress={() => void save()} disabled={saving}>
+              {selected ? <Pressable style={styles.secondary} onPress={() => { setSelected(""); setContent(""); setNewPath(""); setHistory([]); }}>
+                <Text style={styles.secondaryText}>ملف جديد</Text>
+              </Pressable> : null}
+              <Pressable style={[styles.save, (saving || restoring) && styles.disabled]} onPress={() => void save()} disabled={saving || restoring}>
                 <Text style={styles.saveText}>{saving ? "جارٍ الحفظ..." : "حفظ الملف"}</Text>
               </Pressable>
             </View>
@@ -134,7 +174,12 @@ const styles = StyleSheet.create({
   fileRow: { minHeight: 42, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 10, borderRadius: 9, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border },
   fileSelected: { borderColor: colors.gold },
   filePath: { color: colors.text, fontSize: 11, textAlign: "left", flex: 1 },
-  fileSize: { color: colors.faint, fontSize: 9, marginRight: 10 },\n  revisionRow: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 10, borderRadius: 9, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border },\n  revisionCopy: { flex: 1, gap: 3 },\n  revisionDate: { color: colors.text, fontSize: 10, textAlign: "left" },\n  restoreButton: { minHeight: 34, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.goldDark, alignItems: "center", justifyContent: "center" },\n  restoreText: { color: colors.gold, fontSize: 10, fontWeight: "700" },
+  fileSize: { color: colors.faint, fontSize: 9, marginRight: 10 },
+  revisionRow: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 10, borderRadius: 9, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border },
+  revisionCopy: { flex: 1, gap: 3 },
+  revisionDate: { color: colors.text, fontSize: 10, textAlign: "left" },
+  restoreButton: { minHeight: 34, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.goldDark, alignItems: "center", justifyContent: "center" },
+  restoreText: { color: colors.gold, fontSize: 10, fontWeight: "700" },
   pathInput: { minHeight: 42, borderRadius: 9, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background, color: colors.text, paddingHorizontal: 12, textAlign: "left" },
   editor: { minHeight: 300, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background, color: colors.text, padding: 12, fontSize: 12, lineHeight: 19, textAlign: "left", fontFamily: "monospace" },
   actions: { flexDirection: "row", gap: 9 },
