@@ -101,7 +101,10 @@ def _wait_for_opencode(host_port: int, token: str, timeout_seconds: float = 30.0
                 response = client.get("/api/info")
                 if response.status_code == 200 and response.headers.get("content-type", "").split(";", 1)[0].lower() == "application/json":
                     payload = response.json()
-                    if isinstance(payload, dict) and isinstance(payload.get("data", {}).get("version"), str):
+                    if isinstance(payload, dict) and (
+                        isinstance(payload.get("version"), str)
+                        or isinstance(payload.get("data"), dict) and isinstance(payload["data"].get("version"), str)
+                    ):
                         return
             except (httpx.HTTPError, ValueError, AttributeError):
                 pass
