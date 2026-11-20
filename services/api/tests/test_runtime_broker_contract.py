@@ -340,6 +340,9 @@ def test_runtime_lease_accepts_only_its_exact_opaque_gateway_path():
 
 
 class ExecutableProvider(FakeProvider):
+    def acquire(self, task_id, engine_run_id, engine_id, *, files=None):
+        return super().acquire(task_id, engine_run_id, engine_id)
+
     def run_task(self, lease, *, prompt, title="SULY task"):
         return {"execution": {"session_id": "sesABC123"}, "results": {"changed_files": []}}
 
