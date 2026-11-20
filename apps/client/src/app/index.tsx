@@ -104,7 +104,7 @@ export default function HomeScreen() {
                 <Pressable style={styles.toolButton} onPress={() => setNotice("إرفاق الملفات سيتم تفعيله ضمن مرحلة الملفات.")}>
                   <Text style={styles.toolText}>＋ ملف</Text>
                 </Pressable>
-                <Pressable style={styles.toolButton} onPress={() => setNotice("اختيار نمط الوكيل سيتم تفعيله ضمن مرحلة الوكلاء.")}>
+                <Pressable style={styles.toolButton} onPress={() => router.push("/agent")}>
                   <Text style={styles.toolText}>◈ وضع الوكيل</Text>
                 </Pressable>
               </View>
