@@ -202,7 +202,7 @@ For every engine:
 - السياسة تفرض network=none، root filesystem read-only، إسقاط كل Linux capabilities، no-new-privileges، حدود CPU/RAM/PIDs/ulimits، مستخدم غير root، وmount واحد لمساحة عمل خاصة ومملوكة لهوية worker.
 - نرفض مسارات خارج workspace root والروابط الرمزية والصلاحيات المفتوحة وأسماء الصور mutable tags وأوامر غير صالحة.
 - أضيفت اختبارات لقيود الموارد، الصور، المسارات، symlinks، صلاحيات المجلد، وعدم تمرير Docker socket.
-- Commits: `2cec8a1e4151` (policy), `5fef4002f0ba` (initial tests), `1c3800fd8596` (type validation), `85da8cb183b2` (private workspace), `336a11140915` (tests).
+- Commits: `2cec8a1e4151` (policy), `5fef4002f0ba` (initial tests), `1c3800fd8596` (type validation), `b5ac371b2b70` (private workspace), `336a11140915` (tests).
 - هذه policy builder فقط؛ لا يوجد Docker runner أو image build أو container فعلي حتى الآن. كما أن network=none يعني أن أي coding agent لن يستطيع الوصول لمزود LLM قبل بناء egress proxy مقيد ومختبر.
 - لا تفعيل للمحركات ولا mounts لملفات المستخدمين؛ لا يوجد Docker socket أو host networking.
 
@@ -229,3 +229,15 @@ For every engine:
 - Commits: `178c1be01802` (router), `2c8f7ad35966` (tests), `89957bf2fa5e` (auto-plan client), `477df523a12f` و`3050736ca0b1` (availability gates), `baf5bd807d83` و`288d2cd2130b` (client catalog/UI).
 - CI على HEAD `e99f0e1349d4` قيد التنفيذ وقت التوثيق؛ لا يُسجل نجاح قبل اكتماله.
 - لا يزال OpenHands/OpenCode/Aider/Browser Use غير مشغّل؛ لا يوجد Docker runner أو egress proxy. هذه المرحلة تبني catalog/route والحدود، وليست إعلان تشغيل المحركات.
+
+
+## Session checkpoint — 2026-11-20 (Agent plan safety and readiness gates)
+
+- أضيفت مصادقة وتحقق موحد لخطط المهام المرسلة من العميل: العمليات يجب أن تكون مسجلة في ToolRegistry، والمدخلات ضمن schema/الحجم المسموح، وعدد الخطوات ≤32، والمفاتيح فريدة، والاعتماديات موجودة وسابقة للخطوة، ولا يسمح بدورة أو حقل غير معروف.
+- أضيفت اختبارات API ترفض العمليات غير المسجلة قبل أي اتصال بقاعدة البيانات.
+- أصبح auto-plan يرفض إنشاء مهام إذا Worker معطل؛ ورفض general-agent إذا Hermes غير مفعّل أو العزل غير مؤكد أو الإعدادات ناقصة.
+- كتالوج الأدوات وكتالوج الوكلاء وواجهة Agent تعكس حالة Worker والعزل الفعلية، ولا تعلن أداة/وكيلًا متاحًا عندما لا يستطيع الخادم تنفيذها.
+- أضيفت متغيرات البيئة الموثقة للـWorker وHermes وEngine Reconciler، وجميعها false افتراضيًا.
+- Commits ذات الصلة: `233c2ee36c44` (DAG validator)، `b857d2778a5f` (server plan validation)، `21c24b3fea03` (اختبار رفض shell.exec)، `a05feb5d1226` (API readiness tests)، `6bede601c606` (.env example).
+- CI: على `a05feb5d1226` نجح API tests وClient typecheck/web export؛ Baseline checks على HEAD `6bede601c606` نجحت، وPlatform CI كان قيد التنفيذ وقت التوثيق.
+- ما زال تشغيل محركات coding/browser upstream معطلاً لحين اكتمال Docker runner وegress proxy واختبارات عزل فعلية.
