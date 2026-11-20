@@ -492,6 +492,53 @@ def test_agent_catalog_enables_only_configured_general_agent(monkeypatch):
         manager.route("coding-agent", "code.edit")
 
 
+def test_worker_builds_all_pinned_engines_but_only_enables_configured_hermes(monkeypatch):
+    import app.worker_runtime as runtime_module
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
+        hermes_agent_enabled=True,
+        hermes_agent_isolation_confirmed=True,
+        hermes_agent_base_url="http://hermes:8642",
+        hermes_agent_api_key=object(),
+    ))
+    registry = runtime_module.build_engine_registry(
+        Event(),
+        idempotency_key="suly-engine-catalog-test",
+        on_run_started=lambda _run_id: True,
+    )
+
+    assert {engine.engine_id for engine in registry.list()} == {
+        "hermes-agent", "opencode", "browser-use",
+    }
+    assert registry.get("hermes-agent").enabled is True
+    assert registry.get("hermes-agent").adapter is not None
+    assert registry.get("opencode").enabled is False
+    assert registry.get("opencode").adapter is None
+    assert registry.get("browser-use").enabled is False
+    assert registry.get("browser-use").adapter is None
+
+
+def test_worker_keeps_every_engine_disabled_when_worker_flag_is_off(monkeypatch):
+    import app.worker_runtime as runtime_module
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=False,
+        hermes_agent_enabled=True,
+        hermes_agent_isolation_confirmed=True,
+        hermes_agent_base_url="http://hermes:8642",
+        hermes_agent_api_key=object(),
+    ))
+    registry = runtime_module.build_engine_registry(
+        Event(),
+        idempotency_key="suly-engine-disabled-test",
+        on_run_started=lambda _run_id: True,
+    )
+    assert all(not engine.enabled for engine in registry.list())
+
+
 def test_hermes_execution_is_routed_through_agent_manager(monkeypatch):
     import app.worker_runtime as runtime_module
     from types import SimpleNamespace
