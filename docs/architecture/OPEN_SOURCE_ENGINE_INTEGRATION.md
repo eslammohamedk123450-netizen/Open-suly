@@ -164,3 +164,12 @@ Every integration batch must list:
 - A failed or rejected heartbeat sets both the lease-loss state and the cancellation event. Long-running external engine adapters can observe the event and request upstream stop; SULY still rejects checkpoint/completion after lease loss.
 - Added worker unit tests for event propagation on heartbeat lease loss and successful completion while the lease remains valid.
 - This is only the worker-side cancellation signal. No Hermes run lifecycle adapter is registered or enabled yet; the next bridge must map run IDs, poll terminal state, and call Hermes stop on cancellation before the engine can be exposed to task execution.
+
+
+## Worker and agent runtime wiring — 2026-11-20
+
+- The task worker's engine registry now consumes the pinned engine catalogue: Hermes, OpenCode, and Browser Use are all registered in the same registry.
+- Only Hermes can currently receive a runtime adapter, and only when the existing server-side worker/Hermes/isolation configuration passes. OpenCode and Browser Use remain disabled and have no adapter.
+- The worker's agent manager now consumes the canonical SULY role catalogue: general, coding, research, browser, and workflow agents.
+- Role availability is derived from registered enabled engine capabilities; persisted tool approval remains an independent requirement.
+- This is registry/role integration, not yet a complete OpenCode or Browser Use runtime integration.
