@@ -95,6 +95,14 @@ class BrowserNetworkPolicy:
             pass
         else:
             raise ValueError('browser_url_ip_literal_rejected')
+        try:
+            # inet_aton also recognizes legacy IPv4 forms such as 127.1 and
+            # integer/hex addresses that strict ipaddress parsing rejects.
+            socket.inet_aton(hostname)
+        except OSError:
+            pass
+        else:
+            raise ValueError('browser_url_ip_literal_rejected')
         if hostname not in self.allowed_hosts and not (
             self.allow_subdomains and any(hostname.endswith('.' + allowed) for allowed in self.allowed_hosts)
         ):
