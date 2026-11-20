@@ -87,6 +87,28 @@ def _db() -> sqlite3.Connection:
     return db
 
 
+def _wait_for_opencode(host_port: int, token: str, timeout_seconds: float = 30.0) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    with httpx.Client(
+        base_url=f"http://127.0.0.1:{host_port}",
+        auth=("suly", token),
+        timeout=httpx.Timeout(2.0, connect=1.0),
+        follow_redirects=False,
+        trust_env=False,
+    ) as client:
+        while time.monotonic() < deadline:
+            try:
+                response = client.get("/api/info")
+                if response.status_code == 200 and response.headers.get("content-type", "").split(";", 1)[0].lower() == "application/json":
+                    payload = response.json()
+                    if isinstance(payload, dict) and isinstance(payload.get("data", {}).get("version"), str):
+                        return
+            except (httpx.HTTPError, ValueError, AttributeError):
+                pass
+            time.sleep(0.5)
+    raise RuntimeErrorSafe("opencode_startup_timeout")
+
+
 def _manager() -> DockerTaskRuntimeManager:
     global _manager
     if _manager is None:
@@ -131,8 +153,10 @@ def _runtime(runtime_id: str, token: str | None):
 def startup() -> None:
     if not SULY_TOKEN:
         raise RuntimeError("SULY_PROVISIONER_TOKEN is required")
-    if not PUBLIC_GATEWAY_ORIGIN.startswith("https://"):
-        raise RuntimeError("RUNTIME_GATEWAY_ORIGIN must be HTTPS")
+    parsed = httpx.URL(PUBLIC_GATEWAY_ORIGIN)
+    if (parsed.scheme != "https" or not parsed.host or parsed.path not in ("", "/")
+            or parsed.query or parsed.fragment or parsed.username or parsed.password):
+        raise RuntimeError("RUNTIME_GATEWAY_ORIGIN must be an HTTPS origin without path or credentials")
     _db().close()
 
 
@@ -150,6 +174,7 @@ def create_runtime(body: CreateRuntime, authorization: str | None = Header(defau
     except (ValueError, RuntimeErrorSafe) as exc:
         raise HTTPException(422, str(exc)) from exc
     try:
+        _wait_for_opencode(result["host_port"], result["access_token"])
         with _db() as db:
             db.execute(
                 "INSERT INTO runtimes (runtime_id,task_id,engine_run_id,engine_id,container_id,host_port,token_hash,expires_at,created_at,baseline_json) VALUES(?,?,?,?,?,?,?,?,?,?)",
@@ -159,9 +184,11 @@ def create_runtime(body: CreateRuntime, authorization: str | None = Header(defau
                  result["expires_at"], time.time(),
                  json.dumps({item.path: item.sha256 or hashlib.sha256(item.content.encode()).hexdigest() for item in body.files}, separators=(",", ":"))),
             )
-    except Exception:
+    except Exception as exc:
         _manager().destroy(runtime_id=result["runtime_id"], task_id=task_id, engine_run_id=run_id)
-        raise HTTPException(503, "runtime_registration_failed")
+        if isinstance(exc, RuntimeErrorSafe):
+            raise HTTPException(503, "opencode_startup_failed") from exc
+        raise HTTPException(503, "runtime_registration_failed") from exc
     return {
         "runtime_id": result["runtime_id"], "task_id": task_id,
         "engine_run_id": run_id, "engine_id": body.engine_id,
