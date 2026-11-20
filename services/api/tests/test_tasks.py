@@ -471,3 +471,23 @@ def test_task_steering_rejects_non_running_engine_before_upstream_call(monkeypat
         app.dependency_overrides.clear()
 
     assert response.status_code == 409
+
+
+
+def test_task_steering_cannot_access_another_users_task_or_run(monkeypatch):
+    admin = _SteerAdmin()
+    admin.tables["tasks"][0]["user_id"] = "different-user"
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    monkeypatch.setattr(tasks_module, "steer_agent_run", lambda *_args: (_ for _ in ()).throw(
+        AssertionError("An unowned task must never reach Hermes")
+    ))
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    try:
+        response = client.post(
+            "/v1/tasks/00000000-0000-0000-0000-000000000001/engine-runs/00000000-0000-0000-0000-000000000099/steer",
+            json={"input": "Do not access another user's run"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
