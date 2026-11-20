@@ -62,7 +62,7 @@ class HermesAgentAdapter:
         *,
         idempotency_key: str,
         on_run_started: Callable[[str], bool],
-        on_event: Callable[[dict[str, str | int | float]], None] | None = None,
+        on_event: Callable[[dict[str, str | int | float]], bool | None] | None = None,
     ) -> None:
         # نمرر إشارة الإلغاء وهوية المحاولة وقناة أحداث لا تقبل إلا metadata.
         self.cancel_event = cancel_event
@@ -154,9 +154,24 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
     # ننشئ سجل المحاولة أولًا ليصبح UUID الخاص به مفتاح idempotency ثابتًا لدى Hermes.
     run_id = run_store.start(step, "hermes-agent")
 
-    def persist_engine_event(event: dict[str, str | int | float]) -> None:
-        # تجاهل نتيجة الحفظ هنا؛ فقدان lease يمنع الكتابة داخل RPC ولا يوقف فحص الحالة النهائي.
-        run_store.append_event(run_id, step, event)
+    def persist_engine_event(event: dict[str, str | int | float]) -> bool:
+        # نسجل metadata فقط؛ لا نطبع محتوى الحدث أو أي نص من المحرك.
+        try:
+            persisted = run_store.append_event(run_id, step, event)
+        except Exception:
+            logger.warning(
+                "Hermes progress event persistence failed for run %s (event=%s)",
+                run_id,
+                event.get("event", "unknown"),
+            )
+            return False
+        if not persisted:
+            logger.warning(
+                "Hermes progress event rejected after lease loss for run %s (event=%s)",
+                run_id,
+                event.get("event", "unknown"),
+            )
+        return persisted
 
     registry = build_engine_registry(
         cancel_event,
