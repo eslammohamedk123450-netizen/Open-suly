@@ -11,6 +11,7 @@ import hmac
 import json
 import os
 import re
+import secrets
 import sqlite3
 import tarfile
 import tempfile
@@ -76,6 +77,11 @@ class ExecuteRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=32000)
     session_id: str | None = Field(default=None, pattern=r"^ses[A-Za-z0-9_-]{1,128}$")
     title: str = Field(default="SULY task", min_length=1, max_length=120)
+
+
+class RecoverRuntime(BaseModel):
+    task_id: str
+    engine_run_id: str
 
 
 def _db() -> sqlite3.Connection:
@@ -267,6 +273,69 @@ def release_runtime(runtime_id: str, body: dict[str, str], authorization: str | 
         with _db() as db:
             db.execute("DELETE FROM runtimes WHERE runtime_id=?", (runtime_id,))
     return {"released": released}
+
+
+@app.post("/v1/runtimes/{runtime_id}/recover")
+def recover_runtime(
+    runtime_id: str,
+    body: RecoverRuntime,
+    authorization: str | None = Header(default=None),
+):
+    """Rotate the runtime credential after API/worker process recovery.
+
+    The raw credential is never persisted: only its SHA-256 digest is stored.
+    """
+    _require_suly(authorization)
+    runtime_id = _identity(runtime_id)
+    task_id = _identity(body.task_id)
+    run_id = _identity(body.engine_run_id)
+    now = time.time()
+    token = secrets.token_urlsafe(48)
+    digest = hashlib.sha256(token.encode()).hexdigest()
+    try:
+        with _db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute(
+                "SELECT task_id,engine_run_id,expires_at FROM runtimes WHERE runtime_id=?",
+                (runtime_id,),
+            ).fetchone()
+            if (
+                row is None
+                or row["task_id"] != task_id
+                or row["engine_run_id"] != run_id
+                or row["expires_at"] <= now
+            ):
+                db.rollback()
+                raise HTTPException(404, "runtime_not_found")
+            updated = db.execute(
+                "UPDATE runtimes SET token_hash=? WHERE runtime_id=? AND task_id=? AND engine_run_id=? AND expires_at>?",
+                (digest, runtime_id, task_id, run_id, now),
+            ).rowcount
+            if updated != 1:
+                db.rollback()
+                raise HTTPException(409, "runtime_recovery_conflict")
+            db.commit()
+    except HTTPException:
+        raise
+    except sqlite3.Error as exc:
+        raise HTTPException(503, "runtime_recovery_unavailable") from exc
+    with _db() as db:
+        row = db.execute(
+            "SELECT expires_at FROM runtimes WHERE runtime_id=? AND task_id=? AND engine_run_id=?",
+            (runtime_id, task_id, run_id),
+        ).fetchone()
+    if row is None:
+        raise HTTPException(404, "runtime_not_found")
+    return {
+        "runtime_id": runtime_id,
+        "task_id": task_id,
+        "engine_run_id": run_id,
+        "engine_id": "opencode",
+        "base_url": PUBLIC_GATEWAY_ORIGIN.rstrip("/"),
+        "gateway_path": f"/v1/runtime-gateway/{runtime_id}",
+        "access_token": token,
+        "expires_at": row["expires_at"],
+    }
 
 
 @app.api_route("/v1/runtime-gateway/{runtime_id}/{path:path}", methods=["GET", "POST"])
