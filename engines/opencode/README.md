@@ -46,3 +46,11 @@ Any upstream update requires:
 2. Re-run license and dependency review.
 3. Update the gitlink pin and `UPSTREAM.json` together.
 4. Re-run adapter, isolation, and engine smoke tests.
+
+
+## SULY HTTP bridge checkpoint
+
+- `services/api/app/services/opencode_http.py` is a narrow async HTTP transport for one already-validated task-attempt runtime lease.
+- It uses HTTPS only, Basic auth in the Authorization header, TLS verification, no environment proxy inheritance, no redirects, bounded timeouts/connections/response size, and a small explicit route allowlist.
+- Initial operations are health, create-session (with catch-all ask permissions), and bounded skill/provider catalog metadata. It deliberately does not expose prompt execution, shell, PTY, MCP, plugins, filesystem APIs, arbitrary paths, or session deletion.
+- This is not a runtime provisioner and does not make OpenCode available to users. The engine remains disabled until durable session ownership, worker/lease checks, permission UI, safe prompt/output reduction, and a concrete isolated runtime provider are implemented.

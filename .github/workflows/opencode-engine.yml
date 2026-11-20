@@ -36,6 +36,18 @@ jobs:
       - name: Verify immutable upstream provenance
         run: python engines/opencode/verify_upstream.py
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install SULY API test dependencies
+        run: pip install -r services/api/requirements-dev.txt
+
+      - name: Test OpenCode bridge and protocol guards
+        working-directory: services/api
+        run: python -m pytest -q tests/test_opencode_http.py tests/test_opencode_contract.py tests/test_runtime_broker_contract.py
+
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
         with:
