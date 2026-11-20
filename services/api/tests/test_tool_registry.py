@@ -29,7 +29,14 @@ def test_registry_exposes_only_registered_tool_metadata():
     assert [tool["name"] for tool in tools] == ["hermes.agent.turn", "text.analyze"]
     assert tools[0]["requires_approval"] is True
     assert tools[1]["requires_approval"] is False
-    assert tools[0]["permission_scope"] == "task.text.analyze"
+    by_name = {tool["name"]: tool for tool in tools}
+    assert by_name["text.analyze"]["permission_scope"] == "task.text.analyze"
+    assert by_name["hermes.agent.turn"]["permission_scope"] == "agent.hermes.run"
+    assert by_name["hermes.agent.turn"]["allowed_input_fields"] == ["prompt"]
+    assert by_name["hermes.agent.turn"]["required_input_fields"] == ["prompt"]
+    assert by_name["hermes.agent.turn"]["max_input_bytes"] == 20_100
+    assert by_name["hermes.agent.turn"]["max_output_bytes"] == 52_000
+    assert by_name["text.analyze"]["allowed_input_fields"] == ["text"]
 
 
 def test_registry_rejects_unknown_operation_and_unexpected_fields():
