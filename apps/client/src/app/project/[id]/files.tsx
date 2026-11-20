@@ -1,10 +1,10 @@
 import { useCallback, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { colors } from "@/theme/tokens";
 import { useAuth } from "@/providers/AuthProvider";
-import { listProjectFiles, readProjectFile, saveProjectFile, type ProjectFile } from "@/lib/project-files";
+import { listProjectFileHistory, listProjectFiles, readProjectFile, restoreProjectFileRevision, saveProjectFile, type ProjectFile, type ProjectFileRevision } from "@/lib/project-files";
 
 export default function ProjectFilesScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -13,6 +13,8 @@ export default function ProjectFilesScreen() {
   const [selected, setSelected] = useState("");
   const [content, setContent] = useState("");
   const [newPath, setNewPath] = useState("");
+  const [history, setHistory] = useState<ProjectFileRevision[]>([]);
+  const [restoring, setRestoring] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
@@ -132,7 +134,7 @@ const styles = StyleSheet.create({
   fileRow: { minHeight: 42, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 10, borderRadius: 9, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border },
   fileSelected: { borderColor: colors.gold },
   filePath: { color: colors.text, fontSize: 11, textAlign: "left", flex: 1 },
-  fileSize: { color: colors.faint, fontSize: 9, marginRight: 10 },
+  fileSize: { color: colors.faint, fontSize: 9, marginRight: 10 },\n  revisionRow: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 10, borderRadius: 9, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border },\n  revisionCopy: { flex: 1, gap: 3 },\n  revisionDate: { color: colors.text, fontSize: 10, textAlign: "left" },\n  restoreButton: { minHeight: 34, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.goldDark, alignItems: "center", justifyContent: "center" },\n  restoreText: { color: colors.gold, fontSize: 10, fontWeight: "700" },
   pathInput: { minHeight: 42, borderRadius: 9, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background, color: colors.text, paddingHorizontal: 12, textAlign: "left" },
   editor: { minHeight: 300, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background, color: colors.text, padding: 12, fontSize: 12, lineHeight: 19, textAlign: "left", fontFamily: "monospace" },
   actions: { flexDirection: "row", gap: 9 },
