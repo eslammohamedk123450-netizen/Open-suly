@@ -67,11 +67,11 @@ begin
     raise exception 'engine_run_task_cancelled';
   end if;
 
-  insert into public.engine_runs(task_id, step_id, user_id, attempt_count, engine_id)
+  insert into public.engine_runs as existing(task_id, step_id, user_id, attempt_count, engine_id)
   values (v_step.task_id, v_step.id, v_step.user_id, v_step.attempt_count, p_engine_id)
   on conflict (step_id, attempt_count) do update
     set updated_at = now()
-    where public.engine_runs.status = 'running'
+    where existing.status = 'running'
   returning id into v_run_id;
 
   if v_run_id is null then
