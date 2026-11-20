@@ -66,7 +66,7 @@ def build_agent_manager(engines: EngineRegistry | None = None) -> AgentManager:
     registry = engines if engines is not None else build_engine_registry()
     definitions = []
     for agent in AGENT_DEFINITIONS:
-        enabled = all(bool(registry.candidates(capability)) for capability in agent.capabilities)
+        enabled = any(bool(registry.candidates(capability)) for capability in agent.capabilities)
         definitions.append(AgentDefinition(
             agent_id=agent.agent_id,
             display_name=agent.display_name,
