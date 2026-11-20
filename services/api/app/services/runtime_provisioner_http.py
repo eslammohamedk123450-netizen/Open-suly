@@ -187,6 +187,7 @@ class HTTPSRuntimeLeaseProvider:
             raise RuntimeProvisionerError("runtime_execution_unavailable") from exc
         if not isinstance(execution, dict) or not isinstance(execution.get("session_id"), str):
             raise RuntimeProvisionerError("runtime_execution_invalid_response")
+        execution["runtime_id"] = lease.runtime_id
         results = self.fetch_results(lease)
         return {"execution": execution, "results": results}
     def fetch_results(self, lease: RuntimeLease) -> dict[str, Any]:
