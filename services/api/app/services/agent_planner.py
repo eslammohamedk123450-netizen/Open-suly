@@ -39,7 +39,12 @@ def plan_request(request: str) -> PlannedTask:
         from app.worker_runtime import TOOL_REGISTRY
 
         settings = get_settings()
-        if not settings.hermes_agent_enabled or not settings.hermes_agent_isolation_confirmed:
+        if (
+            not settings.hermes_agent_enabled
+            or not settings.hermes_agent_isolation_confirmed
+            or not settings.hermes_agent_base_url
+            or settings.hermes_agent_api_key is None
+        ):
             raise UnsupportedTaskRequest(
                 "The general agent is unavailable until the isolated Hermes runtime is explicitly enabled."
             )
