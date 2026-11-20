@@ -125,6 +125,7 @@ class DockerTaskRuntimeManager:
             f"{_LABEL_PREFIX}.engine": engine_id,
             f"{_LABEL_PREFIX}.managed": "true",
             f"{_LABEL_PREFIX}.workspace": str(workspace),
+            f"{_LABEL_PREFIX}.expires": str(int(time.time() + self.limits.lifetime_seconds)),
         }
         try:
             _safe_workspace(files, workspace, self.limits.workspace_bytes)
@@ -181,6 +182,24 @@ class DockerTaskRuntimeManager:
                 except Exception: pass
             shutil.rmtree(workspace, ignore_errors=True)
             raise
+
+    def cleanup_expired(self, *, now: int | None = None) -> int:
+        """Reap only SULY-labelled containers whose signed ownership metadata is complete."""
+        current = int(time.time()) if now is None else now
+        removed = 0
+        for container in self.client.containers.list(all=True, filters={"label": f"{_LABEL_PREFIX}.managed=true"}):
+            labels = container.labels or {}
+            try:
+                expiry = int(labels.get(f"{_LABEL_PREFIX}.expires", "0"))
+                runtime_id = labels[f"{_LABEL_PREFIX}.id"]
+                task_id = labels[f"{_LABEL_PREFIX}.task"]
+                run_id = labels[f"{_LABEL_PREFIX}.run"]
+            except (KeyError, TypeError, ValueError):
+                continue
+            if expiry <= current:
+                if self.destroy(runtime_id=runtime_id, task_id=task_id, engine_run_id=run_id):
+                    removed += 1
+        return removed
 
     def destroy(self, *, runtime_id: str, task_id: str, engine_run_id: str) -> bool:
         runtime_id, task_id, engine_run_id = map(_canonical_uuid, (runtime_id, task_id, engine_run_id))
