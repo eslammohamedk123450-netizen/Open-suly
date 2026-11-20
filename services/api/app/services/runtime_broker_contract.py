@@ -155,6 +155,33 @@ class RuntimeLeaseProvider(Protocol):
     def acquire(self, task_id: str, engine_run_id: str, engine_id: str, *, files: list[dict] | None = None) -> RuntimeLease:
         ...
 
+    def run_task(
+        self,
+        task_id: str,
+        engine_run_id: str,
+        engine_id: str,
+        *,
+        files: list[dict] | None,
+        prompt: str,
+        title: str = "SULY task",
+    ) -> dict:
+        """Execute through the configured provider and always release the runtime."""
+        runner = getattr(self._provider, "run_task", None)
+        if not callable(runner):
+            raise RuntimeError("runtime_provider_execution_not_supported")
+        lease = self.acquire(task_id, engine_run_id, engine_id, files=files)
+        try:
+            result = runner(lease, prompt=prompt, title=title)
+            if not isinstance(result, dict):
+                raise RuntimeError("runtime_provider_invalid_execution_result")
+            return result
+        finally:
+            try:
+                if not self.release(lease):
+                    logger.warning("Runtime teardown was not confirmed for runtime %s", lease.runtime_id)
+            except Exception:
+                logger.warning("Runtime teardown failed for runtime %s", lease.runtime_id)
+
     def release(self, lease: RuntimeLease) -> bool:
         ...
 
