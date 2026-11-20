@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.config import get_settings
 from app.core.supabase import get_supabase_admin_client
+from app.services.tool_approvals import ToolApprovalStore
 from app.services.ai_gateway import (
     AIProviderError,
     AIProviderNotConfigured,
@@ -83,6 +84,12 @@ async def respond_to_message(
     settings = get_settings()
     try:
         with admin:
+            if "ai.provider.run" not in ToolApprovalStore(admin).active_scopes(user.id):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="استخدام مزود الذكاء الاصطناعي يتطلب موافقة صريحة من مساحة الوكيل.",
+                )
+
             owned_conversation = (
                 admin.table("conversations")
                 .select("id")
