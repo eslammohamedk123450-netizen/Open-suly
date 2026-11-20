@@ -99,7 +99,8 @@ def build_engine_registry(
             display_name="Hermes Agent",
             capabilities=frozenset({"agent.general"}),
             enabled=bool(
-                settings.hermes_agent_enabled
+                settings.worker_enabled
+                and settings.hermes_agent_enabled
                 and settings.hermes_agent_isolation_confirmed
                 and settings.hermes_agent_base_url
                 and settings.hermes_agent_api_key is not None
@@ -164,7 +165,8 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
         raise ValueError("hermes.agent.turn requires a string input.prompt")
     settings = get_settings()
     if (
-        not settings.hermes_agent_enabled
+        not settings.worker_enabled
+        or not settings.hermes_agent_enabled
         or not settings.hermes_agent_isolation_confirmed
         or not settings.hermes_agent_base_url
         or settings.hermes_agent_api_key is None
