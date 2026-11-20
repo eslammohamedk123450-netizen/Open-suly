@@ -45,11 +45,12 @@ begin
 
   select encode(
     extensions.digest(
-      convert_to(coalesce(string_agg(
-        path || chr(0) ||
-        encode(extensions.digest(convert_to(content, 'UTF8'), 'sha256'), 'hex') ||
-        chr(10), '' order by path
-      ), ''), 'UTF8'),
+      coalesce(string_agg(
+        convert_to(path, 'UTF8') || decode('00', 'hex') ||
+        convert_to(encode(extensions.digest(convert_to(content, 'UTF8'), 'sha256'), 'hex'), 'UTF8') ||
+        decode('0a', 'hex'),
+        ''::bytea order by path
+      ), ''::bytea),
       'sha256'
     ), 'hex'
   )
@@ -104,6 +105,9 @@ begin
     elsif v_action in ('create', 'update') then
       v_content := v_change ->> 'content';
       v_expected_hash := v_change ->> 'sha256';
+      if (select count(*) from jsonb_object_keys(v_change)) <> 4 then
+        raise exception 'changeset_write_payload_invalid';
+      end if;
       if v_content is null or octet_length(v_content) > 262144
          or v_expected_hash is null
          or v_expected_hash !~ '^[0-9a-f]{64}$'
