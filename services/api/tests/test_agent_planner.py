@@ -72,6 +72,8 @@ def test_planner_supports_arabic_general_agent_prefix_when_enabled(monkeypatch):
     monkeypatch.setattr(config, "get_settings", lambda: SimpleNamespace(
         hermes_agent_enabled=True,
         hermes_agent_isolation_confirmed=True,
+        hermes_agent_base_url="http://hermes:8642",
+        hermes_agent_api_key=object(),
     ))
     planned = plan_request("وكيل: راجع هذه المهمة")
     assert planned.steps[0]["input"]["prompt"] == "راجع هذه المهمة"
