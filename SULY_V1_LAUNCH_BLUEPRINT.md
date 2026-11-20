@@ -233,5 +233,6 @@ The task database foundation is live, but it must not be described as autonomous
 - Tool input JSON is now strict as well: non-finite numeric values and non-string object keys are rejected before dispatch.
 - Worker failures no longer persist raw exception text in task error records; a stable generic failure code/message is stored to avoid leaking user content, provider payloads, or secrets.
 - Worker tests cover redaction and verify invalid handler output cannot be checkpointed as completed.
+- Worker claim responses are validated before execution: object shape, JSON-object input, attempt bounds, and bounded step metadata are checked; malformed claims fail closed.
 
 
