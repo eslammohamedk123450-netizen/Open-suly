@@ -346,3 +346,11 @@ The task database foundation is live, but it must not be described as autonomous
 - Restore operations are guarded by the same expected-version check. A stale editor must reload before saving or restoring.
 - Client editor tracks the loaded version and submits it on save/restore. Conflict responses are surfaced to the user without retrying over newer content.
 - This is conflict detection, not a collaborative merge engine; automatic merge and line-level diff review remain pending.
+
+
+### Project file change review — 2026-11-20
+
+- Added an authenticated, owner-scoped preview endpoint that returns a unified diff without writing proposed content.
+- Preview validates the file's observed `updated_at` version and rejects stale proposals; new-file previews use an empty baseline and cannot overwrite an existing path.
+- The workspace editor now provides a “Review changes” action and displays the diff before the separate Save action. Editing after preview invalidates the preview.
+- The preview endpoint does not execute code, call an AI model, or persist a proposal. It is a review primitive for the future isolated coding-agent patch workflow.
