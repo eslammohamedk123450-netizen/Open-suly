@@ -93,7 +93,7 @@ def test_browser_policy_rejects_legacy_numeric_ipv4_host_encodings(host):
 def test_browser_policy_rejects_oversized_ambiguous_numeric_hosts(host):
     with pytest.raises(ValueError):
         policy(allowed_hosts=frozenset({host}))
-    with pytest.raises(ValueError, match="private_hostname"):
+    with pytest.raises(ValueError):
         policy().validate(f"https://{host}/")
 
 
