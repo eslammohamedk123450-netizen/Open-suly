@@ -193,3 +193,17 @@ The task database foundation is live, but it must not be described as autonomous
 - The new tests simulate RPC responses; they do not constitute a live Supabase task execution test.
 - No LLM-based planner, web search, browser, filesystem, code execution, or external connector tools are enabled.
 - The worker remains opt-in and is not deployed or running as a hosted service.
+
+
+## Tool registry foundation — 2026-11-20
+
+### Implemented on main
+- Added a central worker tool registry with explicit operation names, descriptions, permission-scope metadata, required/allowed input fields, input byte limits, and handler binding.
+- Worker dispatch now resolves operations through this registry instead of a separate ad-hoc handler dictionary.
+- Unknown operations, unexpected input fields, missing required fields, non-JSON input, duplicate registrations, and oversized inputs fail closed before execution.
+- The only registered operation remains `text.analyze`; its input contract is limited to a text string. No shell, browser, filesystem, web-search, or external-provider capability was added.
+
+### Verification boundary
+- Automated tests cover registry metadata, duplicate registration, schema enforcement, size limits, and rejection of unsupported operations.
+- Permission-scope values are metadata only; no user-consent grant system is claimed yet.
+- No external tool, paid service, API key, deployment, or database migration was introduced.
