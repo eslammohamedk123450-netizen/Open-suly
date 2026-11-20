@@ -95,3 +95,66 @@ def test_engine_request_contract_does_not_include_identity_or_grants():
     assert not hasattr(request, "user_id")
     assert not hasattr(request, "approved_scopes")
     assert not hasattr(request, "supabase_client")
+
+
+def test_execute_invokes_enabled_adapter_and_returns_validated_result():
+    registry = EngineRegistry([EngineDefinition(
+        engine_id="fake-engine", display_name="Fake Engine",
+        capabilities=frozenset({"agent.general"}), enabled=True,
+        adapter=FakeAdapter(),
+    )])
+    result = registry.execute("fake-engine", EngineRequest(
+        task_id="task-123", capability="agent.general",
+        input_payload={"prompt": "hello"}, timeout_seconds=30,
+    ))
+    assert result == EngineResult(engine_id="fake-engine", output={"accepted": "task-123"})
+
+
+def test_execute_refuses_disabled_or_unknown_engine():
+    registry = EngineRegistry([EngineDefinition(
+        engine_id="fake-engine", display_name="Fake Engine",
+        capabilities=frozenset({"agent.general"}), adapter=FakeAdapter(),
+    )])
+    request = EngineRequest("task-123", "agent.general", {"prompt": "hello"})
+    with pytest.raises(RuntimeError, match="engine_disabled"):
+        registry.execute("fake-engine", request)
+    with pytest.raises(ValueError, match="engine_not_registered"):
+        registry.execute("missing-engine", request)
+
+
+def test_execute_rejects_unsupported_capability_and_oversized_input():
+    registry = EngineRegistry([EngineDefinition(
+        engine_id="fake-engine", display_name="Fake Engine",
+        capabilities=frozenset({"agent.general"}), enabled=True,
+        max_input_bytes=10, adapter=FakeAdapter(),
+    )])
+    with pytest.raises(ValueError, match="engine_capability_not_supported"):
+        registry.execute("fake-engine", EngineRequest("task-1", "browser.automation", {}))
+    with pytest.raises(ValueError, match="engine_input_too_large"):
+        registry.execute("fake-engine", EngineRequest("task-1", "agent.general", {"prompt": "x" * 100}))
+
+
+def test_execute_rejects_invalid_timeout_and_non_json_payload():
+    registry = EngineRegistry([EngineDefinition(
+        engine_id="fake-engine", display_name="Fake Engine",
+        capabilities=frozenset({"agent.general"}), enabled=True,
+        adapter=FakeAdapter(),
+    )])
+    with pytest.raises(ValueError, match="engine_timeout_out_of_bounds"):
+        registry.execute("fake-engine", EngineRequest("task-1", "agent.general", {}, 301))
+    with pytest.raises(ValueError, match="engine_input_not_json_serializable"):
+        registry.execute("fake-engine", EngineRequest("task-1", "agent.general", {"bad": object()}))
+
+
+def test_execute_rejects_mismatched_engine_identity_and_oversized_output():
+    class WrongEngine:
+        def execute(self, _request):
+            return EngineResult("other-engine", {"ok": True})
+    registry = EngineRegistry([EngineDefinition(
+        engine_id="fake-engine", display_name="Fake Engine",
+        capabilities=frozenset({"agent.general"}), enabled=True,
+        adapter=WrongEngine(),
+    )])
+    request = EngineRequest("task-1", "agent.general", {})
+    with pytest.raises(ValueError, match="engine_identity_mismatch"):
+        registry.execute("fake-engine", request)
