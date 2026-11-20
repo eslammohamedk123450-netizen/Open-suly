@@ -341,10 +341,11 @@ def steer_task_engine_run(
 
             steps = (
                 client.table("task_steps")
-                .select("id,lease_token,status")
+                .select("id,lease_token,status,lease_expires_at")
                 .eq("id", str(engine_run["step_id"]))
                 .eq("task_id", str(task_id))
                 .eq("user_id", user.id)
+                .gt("lease_expires_at", datetime.now(timezone.utc).isoformat())
                 .limit(1)
                 .execute()
                 .data
@@ -549,7 +550,7 @@ def resolve_task_engine_approval(
 
             steps = (
                 client.table("task_steps")
-                .select("id,lease_token,status")
+                .select("id,lease_token,status,lease_expires_at")
                 .eq("id", str(engine_run["step_id"]))
                 .eq("task_id", str(task_id))
                 .eq("user_id", user.id)
