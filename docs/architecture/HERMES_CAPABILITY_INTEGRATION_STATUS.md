@@ -114,3 +114,14 @@ The authenticated tool catalog now publishes each registered tool's allowed and 
 - Tests cover SSE parsing, run-ID binding, event allow-listing, and content suppression.
 - Commits: `0ac9476135a1`, `18555cf1f90a`, `1280ca0bd3be`.
 - CI is still required before treating the tests as passing.
+
+
+## Durable progress and owner-scoped steering — 2026-11-20
+
+- Hermes SSE metadata is now persisted to engine_run_events through a server-only RPC that rechecks the active task-step lease and running engine attempt. The event schema excludes prompts, reasoning, tool arguments, previews, and outputs; upstream sequence numbers are idempotent.
+- GET /v1/tasks/{task_id} returns owner-filtered engine_events, and the Expo task detail screen displays safe Arabic event labels, receive times, and sequence numbers. The screen polls the task snapshot; this is not WebSocket/live streaming.
+- The authenticated task owner can POST a bounded steering instruction to /v1/tasks/{task_id}/engine-runs/{run_id}/steer. The API checks task ownership, running task/run state, Hermes identity, current step lease, and explicit worker/Hermes/isolation configuration before calling the pinned upstream POST /v1/runs/{run_id}/steer endpoint.
+- Steering text is sent to the active Hermes run but is not persisted in SULY event history. Only the metadata event run.steered is appended, and the database RPC rechecks the lease to close the race after the upstream request.
+- The task detail UI exposes a steering input only while a Hermes run is marked running. It addresses the SULY engine-run UUID, never accepts an upstream run ID from the client.
+- The implementation does not yet integrate Hermes approval resolution, clarify, sessions, skill discovery/invocation, memory, or subagent management. Approval requires a separate request-identity and permission design; do not forward raw upstream approval payloads or grant `always` automatically.
+- Migration 20261120235000_engine_run_events.sql is committed but not applied. Apply and validate it in disposable/staging Supabase before deploying the API that reads/writes the new table.
