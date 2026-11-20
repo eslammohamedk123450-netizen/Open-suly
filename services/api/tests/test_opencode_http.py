@@ -274,7 +274,7 @@ async def test_prompt_async_is_session_scoped_bounded_and_sends_text_only():
         with pytest.raises(ValueError, match="prompt_invalid"):
             await client.submit_prompt_async(
                 session_id="ses_taskrun_123456789",
-                prompt="\\x00invalid",
+                prompt=chr(0) + "invalid",
             )
         with pytest.raises(ValueError, match="prompt_invalid"):
             await client.submit_prompt_async(
