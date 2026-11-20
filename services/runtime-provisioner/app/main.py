@@ -4,7 +4,9 @@ Deploy behind TLS on a dedicated worker host. This service alone owns Docker acc
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import logging
 import hmac
 import json
 import os
@@ -13,6 +15,7 @@ import sqlite3
 import tarfile
 import tempfile
 import time
+from threading import Lock
 from io import BytesIO
 from pathlib import PurePosixPath
 from typing import Any
@@ -33,7 +36,7 @@ MAX_RESULT_BYTES = 8 * 1024 * 1024
 MAX_RESULT_FILES = 500
 _ID = re.compile(r"^[0-9a-f-]{36}$")
 _ALLOWED_PROXY = {
-    ("GET", "/api/info"), ("POST", "/api/session"),
+    ("GET", "/api/event"), ("GET", "/api/info"), ("POST", "/api/session"),
     ("GET", "/api/skill"), ("GET", "/api/provider"),
 }
 
@@ -47,8 +50,12 @@ def _allowed_opencode_route(method: str, route: str) -> bool:
         ("POST", r"/api/session/ses[A-Za-z0-9_-]{1,128}/interrupt"),
     )
     return any(method == expected and re.fullmatch(pattern, route) for expected, pattern in patterns)
+logger = logging.getLogger("suly.runtime_provisioner")
+_cleanup_task: asyncio.Task | None = None
+
 app = FastAPI(title="SULY Runtime Provisioner", docs_url=None, redoc_url=None, openapi_url=None)
-_manager: DockerTaskRuntimeManager | None = None
+_runtime_manager: DockerTaskRuntimeManager | None = None
+_runtime_manager_lock = Lock()
 
 
 class FileSnapshot(BaseModel):
@@ -91,7 +98,7 @@ def _wait_for_opencode(host_port: int, token: str, timeout_seconds: float = 30.0
     deadline = time.monotonic() + timeout_seconds
     with httpx.Client(
         base_url=f"http://127.0.0.1:{host_port}",
-        auth=("suly", token),
+        auth=("opencode", token),
         timeout=httpx.Timeout(2.0, connect=1.0),
         follow_redirects=False,
         trust_env=False,
@@ -112,18 +119,22 @@ def _wait_for_opencode(host_port: int, token: str, timeout_seconds: float = 30.0
     raise RuntimeErrorSafe("opencode_startup_timeout")
 
 
-def _manager() -> DockerTaskRuntimeManager:
-    global _manager
-    if _manager is None:
-        if not IMAGE or "@sha256:" not in IMAGE:
-            raise RuntimeError("OPENCODE_RUNTIME_IMAGE must be digest-pinned")
-        _manager = DockerTaskRuntimeManager(image=IMAGE, workspace_root=WORKSPACE_ROOT)
-    return _manager
+def _get_manager() -> DockerTaskRuntimeManager:
+    """Return one lazily-created Docker manager without shadowing its state."""
+    global _runtime_manager
+    with _runtime_manager_lock:
+        if _runtime_manager is None:
+            if not IMAGE or not re.fullmatch(r"[A-Za-z0-9./:_-]+@sha256:[0-9a-f]{64}", IMAGE):
+                raise RuntimeError("OPENCODE_RUNTIME_IMAGE must be digest-pinned")
+            _runtime_manager = DockerTaskRuntimeManager(image=IMAGE, workspace_root=WORKSPACE_ROOT)
+        return _runtime_manager
 
 
 def _require_suly(authorization: str | None) -> None:
-    if not SULY_TOKEN or not authorization or not authorization.startswith("Bearer "):
+    if not SULY_TOKEN:
         raise HTTPException(503, "provisioner_auth_not_configured")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "unauthorized")
     supplied = authorization[7:]
     if not hmac.compare_digest(supplied, SULY_TOKEN):
         raise HTTPException(401, "unauthorized")
@@ -152,15 +163,50 @@ def _runtime(runtime_id: str, token: str | None):
     return row
 
 
+async def _cleanup_expired_loop() -> None:
+    while True:
+        try:
+            await asyncio.to_thread(_get_manager().cleanup_expired)
+            db = _db()
+            try:
+                db.execute("DELETE FROM runtimes WHERE expires_at<=?", (time.time(),))
+                db.commit()
+            finally:
+                db.close()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # Do not log container env, access tokens, or user workspace contents.
+            logger.exception("runtime_cleanup_failed")
+        await asyncio.sleep(30)
+
+
 @app.on_event("startup")
-def startup() -> None:
+async def startup() -> None:
+    global _cleanup_task
     if not SULY_TOKEN:
         raise RuntimeError("SULY_PROVISIONER_TOKEN is required")
+    if not IMAGE or not re.fullmatch(r"[A-Za-z0-9./:_-]+@sha256:[0-9a-f]{64}", IMAGE):
+        raise RuntimeError("OPENCODE_RUNTIME_IMAGE must be digest-pinned")
     parsed = httpx.URL(PUBLIC_GATEWAY_ORIGIN)
     if (parsed.scheme != "https" or not parsed.host or parsed.path not in ("", "/")
             or parsed.query or parsed.fragment or parsed.username or parsed.password):
         raise RuntimeError("RUNTIME_GATEWAY_ORIGIN must be an HTTPS origin without path or credentials")
-    _db().close()
+    db = _db()
+    db.close()
+    _cleanup_task = asyncio.create_task(_cleanup_expired_loop(), name="suly-runtime-cleanup")
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    global _cleanup_task
+    if _cleanup_task is not None:
+        _cleanup_task.cancel()
+        try:
+            await _cleanup_task
+        except asyncio.CancelledError:
+            pass
+        _cleanup_task = None
 
 
 @app.post("/v1/runtimes", status_code=201)
@@ -170,7 +216,7 @@ def create_runtime(body: CreateRuntime, authorization: str | None = Header(defau
     if body.engine_id != "opencode":
         raise HTTPException(422, "engine_not_allowed")
     try:
-        result = _manager().create(
+        result = _get_manager().create(
             task_id=task_id, engine_run_id=run_id, engine_id=body.engine_id,
             files=[item.model_dump(exclude_none=True) for item in body.files],
         )
@@ -188,7 +234,7 @@ def create_runtime(body: CreateRuntime, authorization: str | None = Header(defau
                  json.dumps({item.path: item.sha256 or hashlib.sha256(item.content.encode()).hexdigest() for item in body.files}, separators=(",", ":"))),
             )
     except Exception as exc:
-        _manager().destroy(runtime_id=result["runtime_id"], task_id=task_id, engine_run_id=run_id)
+        _get_manager().destroy(runtime_id=result["runtime_id"], task_id=task_id, engine_run_id=run_id)
         if isinstance(exc, RuntimeErrorSafe):
             raise HTTPException(503, "opencode_startup_failed") from exc
         raise HTTPException(503, "runtime_registration_failed") from exc
@@ -213,7 +259,7 @@ def release_runtime(runtime_id: str, body: dict[str, str], authorization: str | 
     if row["task_id"] != task_id or row["engine_run_id"] != run_id:
         raise HTTPException(404, "runtime_not_found")
     try:
-        released = _manager().destroy(runtime_id=runtime_id, task_id=task_id, engine_run_id=run_id)
+        released = _get_manager().destroy(runtime_id=runtime_id, task_id=task_id, engine_run_id=run_id)
     except (ValueError, RuntimeErrorSafe) as exc:
         raise HTTPException(409, "runtime_release_rejected") from exc
     if released:
@@ -235,16 +281,14 @@ async def runtime_gateway(runtime_id: str, path: str, request: Request, authoriz
     method = request.method
     if not _allowed_opencode_route(method, route):
         raise HTTPException(404, "route_not_allowed")
-    body = await request.body()
-    if len(body) > 65536:
-        raise HTTPException(413, "request_too_large")
+    body = await _read_bounded_request_body(request, limit=65536)
     headers = {"Accept": request.headers.get("accept", "application/json")}
     if body:
         headers["Content-Type"] = request.headers.get("content-type", "application/json")
     try:
         async with httpx.AsyncClient(
             base_url=f"http://127.0.0.1:{row['host_port']}",
-            auth=("suly", _runtime_token_from_request(authorization)),
+            auth=("opencode", _runtime_token_from_request(authorization)),
             timeout=httpx.Timeout(60, connect=3, read=55),
             follow_redirects=False, trust_env=False,
         ) as client:
@@ -265,6 +309,30 @@ async def runtime_gateway(runtime_id: str, path: str, request: Request, authoriz
                 return Response(content, status_code=upstream.status_code, headers=safe_headers)
     except httpx.HTTPError as exc:
         raise HTTPException(502, "runtime_unreachable") from exc
+
+
+async def _read_bounded_request_body(request: Request, *, limit: int) -> bytes:
+    """Enforce request limits while streaming; never buffer an unbounded body."""
+    if not 1 <= limit <= 1024 * 1024:
+        raise ValueError("request_body_limit_invalid")
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            declared_size = int(declared)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(400, "invalid_content_length") from exc
+        if declared_size < 0:
+            raise HTTPException(400, "invalid_content_length")
+        if declared_size > limit:
+            raise HTTPException(413, "request_too_large")
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > limit:
+            raise HTTPException(413, "request_too_large")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _runtime_token_from_request(value: str | None) -> str:
@@ -326,7 +394,7 @@ async def execute(runtime_id: str, body: ExecuteRequest, authorization: str | No
 def runtime_results(runtime_id: str, authorization: str | None = Header(default=None)):
     row = _runtime(runtime_id, _runtime_token_from_request(authorization))
     try:
-        container = _manager().client.containers.get(row["container_id"])
+        container = _get_manager().client.containers.get(row["container_id"])
         stream, _stat = container.get_archive("/workspace")
         archive_parts, archive_size = [], 0
         for chunk in stream:
@@ -381,7 +449,7 @@ def runtime_results(runtime_id: str, authorization: str | None = Header(default=
 @app.post("/internal/cleanup")
 def cleanup(authorization: str | None = Header(default=None)):
     _require_suly(authorization)
-    removed = _manager().cleanup_expired()
+    removed = _get_manager().cleanup_expired()
     with _db() as db:
         db.execute("DELETE FROM runtimes WHERE expires_at<=?", (time.time(),))
     return {"removed": removed}
