@@ -1,23 +1,23 @@
-"""Narrow HTTP bridge to the isolated Hermes Agent API server.
+"""Lease-aware client for the pinned Hermes native Runs API.
 
-The bridge is deliberately disabled by default. Hermes' API server exposes its
-full agent toolset, including terminal execution; enabling this adapter is only
-safe after the Hermes container's sandbox and tool policy have been reviewed.
-SULY never sends Supabase credentials or trusted approval scopes to Hermes.
+Hermes is a single-tenant runtime. This client remains disabled unless the
+deployment explicitly attests that a per-task isolated runtime is in use.
+SULY owns authorization, task leases, and the durable upstream run reference.
 """
 from __future__ import annotations
 
 import asyncio
 from threading import Event
+from typing import Callable
+from urllib.parse import urlsplit
 
 import httpx
-from urllib.parse import urlsplit
 
 from app.core.config import get_settings
 
 
 class HermesAgentUnavailable(RuntimeError):
-    """Raised when the optional Hermes runtime is not safely configured."""
+    """Raised when the optional isolated Hermes runtime is not configured."""
 
 
 class HermesAgentError(RuntimeError):
@@ -25,7 +25,27 @@ class HermesAgentError(RuntimeError):
 
 
 class HermesAgentCancelled(RuntimeError):
-    """Raised when SULY cancels the in-flight HTTP request."""
+    """Raised after Hermes confirms that an interrupted run is cancelled."""
+
+
+_TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled", "interrupted"})
+_MAX_PROMPT_CHARS = 20_000
+_MAX_RUN_ID_CHARS = 128
+
+
+def _validate_base_url(value: str) -> str:
+    # نمنع بيانات الدخول أو query string داخل عنوان الخادم.
+    parsed = urlsplit(value)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise HermesAgentUnavailable("Hermes agent base URL is invalid.")
+    return value.rstrip("/")
 
 
 def run_agent_turn(
@@ -33,27 +53,34 @@ def run_agent_turn(
     *,
     timeout_seconds: float | None = None,
     cancel_event: Event | None = None,
+    idempotency_key: str | None = None,
+    on_run_started: Callable[[str], bool] | None = None,
 ) -> dict[str, str]:
+    """Create and poll one durable Hermes run; stop it when SULY signals cancellation.
+
+    The callback must persist the opaque upstream run ID using the active SULY
+    step lease. A failed persistence check immediately requests upstream stop.
+    """
     settings = get_settings()
     if not settings.hermes_agent_enabled:
         raise HermesAgentUnavailable("Hermes agent runtime is disabled.")
+    if not settings.hermes_agent_isolation_confirmed:
+        raise HermesAgentUnavailable("Hermes per-task isolation is not confirmed.")
     if not settings.hermes_agent_base_url or not settings.hermes_agent_api_key:
         raise HermesAgentUnavailable("Hermes agent runtime is not configured.")
-    if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 20_000:
+    if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > _MAX_PROMPT_CHARS:
         raise ValueError("Hermes prompt must contain 1–20000 characters.")
-
-    base_url = settings.hermes_agent_base_url.rstrip("/")
-    parsed_base = urlsplit(base_url)
     if (
-        parsed_base.scheme not in {"http", "https"}
-        or not parsed_base.hostname
-        or parsed_base.username is not None
-        or parsed_base.password is not None
-        or parsed_base.query
-        or parsed_base.fragment
+        not isinstance(idempotency_key, str)
+        or not 1 <= len(idempotency_key) <= 255
+        or not idempotency_key.isascii()
+        or any(ord(ch) < 33 or ord(ch) > 126 for ch in idempotency_key)
     ):
-        raise HermesAgentUnavailable("Hermes agent base URL is invalid.")
-    url = f"{base_url}/v1/chat/completions"
+        raise ValueError("Hermes idempotency key must contain 1–255 visible ASCII characters.")
+    if on_run_started is None:
+        raise ValueError("Hermes upstream run persistence callback is required.")
+
+    base_url = _validate_base_url(settings.hermes_agent_base_url)
     token = settings.hermes_agent_api_key.get_secret_value()
     timeout = timeout_seconds if timeout_seconds is not None else settings.hermes_agent_timeout_seconds
     if not isinstance(timeout, (int, float)) or not 1 <= timeout <= 300:
@@ -62,50 +89,102 @@ def run_agent_turn(
         raise HermesAgentCancelled("Hermes request was cancelled.")
 
     async def request() -> dict[str, str]:
-        try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                request_task = asyncio.create_task(client.post(
-                    url,
-                    headers={"Authorization": f"Bearer {token}"},
-                    json={
-                        "model": settings.hermes_agent_model,
-                        "messages": [{"role": "user", "content": prompt}],
-                        "stream": False,
-                    },
-                ))
-                if cancel_event is not None:
-                    async def watch_cancellation() -> None:
-                        while not cancel_event.is_set():
-                            await asyncio.sleep(0.05)
+        # كل طلب HTTP له مهلة قصيرة حتى يظل فحص الإلغاء واستعادة الـlease ممكنين.
+        per_request_timeout = httpx.Timeout(15.0, connect=5.0)
+        headers = {"Authorization": f"Bearer {token}"}
+        deadline = asyncio.get_running_loop().time() + timeout
+        run_id: str | None = None
 
-                    cancel_task = asyncio.create_task(watch_cancellation())
-                    done, _ = await asyncio.wait(
-                        {request_task, cancel_task},
-                        return_when=asyncio.FIRST_COMPLETED,
-                    )
-                    if cancel_task in done:
-                        request_task.cancel()
-                        await asyncio.gather(request_task, return_exceptions=True)
-                        raise HermesAgentCancelled("Hermes request was cancelled.")
-                    cancel_task.cancel()
-                    await asyncio.gather(cancel_task, return_exceptions=True)
-                response = await request_task
+        async with httpx.AsyncClient(timeout=per_request_timeout) as client:
+            try:
+                # نطلب من Hermes إنشاء تشغيل دائم بمفتاح idempotency ثابت للمحاولة.
+                response = await client.post(
+                    f"{base_url}/v1/runs",
+                    headers={**headers, "Idempotency-Key": idempotency_key},
+                    json={"input": prompt.strip()},
+                )
                 response.raise_for_status()
-                payload = response.json()
-        except HermesAgentCancelled:
-            raise
-        except (httpx.HTTPError, ValueError) as exc:
-            # Do not propagate upstream bodies, which may contain prompts or secrets.
-            raise HermesAgentError("Hermes agent request failed.") from exc
+                admission = response.json()
+                run_id = admission.get("run_id") if isinstance(admission, dict) else None
+                if not isinstance(run_id, str) or not 1 <= len(run_id) <= _MAX_RUN_ID_CHARS:
+                    raise HermesAgentError("Hermes returned an invalid run identifier.")
 
-        try:
-            content = payload["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError) as exc:
-            raise HermesAgentError("Hermes agent returned an invalid response.") from exc
-        if not isinstance(content, str) or not content.strip():
-            raise HermesAgentError("Hermes agent returned an empty response.")
-        if len(content) > settings.hermes_agent_max_output_chars:
-            raise HermesAgentError("Hermes agent response exceeded the configured limit.")
-        return {"engine": "hermes-agent", "content": content}
+                # لا نكمل التنفيذ قبل حفظ المعرف الخارجي داخل سجل المحاولة في SULY.
+                if not on_run_started(run_id):
+                    await client.post(f"{base_url}/v1/runs/{run_id}/stop", headers=headers)
+                    raise HermesAgentError("SULY could not persist the Hermes run reference.")
+
+                while True:
+                    # عند الإلغاء نطلب الإيقاف من Hermes ثم ننتظر الحالة النهائية بحد زمني.
+                    if cancel_event is not None and cancel_event.is_set():
+                        stop_response = await client.post(
+                            f"{base_url}/v1/runs/{run_id}/stop",
+                            headers=headers,
+                        )
+                        stop_response.raise_for_status()
+                        stop_deadline = min(deadline + 30.0, asyncio.get_running_loop().time() + 30.0)
+                        while asyncio.get_running_loop().time() < stop_deadline:
+                            status_response = await client.get(
+                                f"{base_url}/v1/runs/{run_id}",
+                                headers=headers,
+                            )
+                            status_response.raise_for_status()
+                            status_payload = status_response.json()
+                            status = status_payload.get("status") if isinstance(status_payload, dict) else None
+                            if status in _TERMINAL_STATUSES:
+                                if status == "cancelled":
+                                    raise HermesAgentCancelled("Hermes run was cancelled.")
+                                if status == "completed":
+                                    break
+                                raise HermesAgentError("Hermes run ended after cancellation was requested.")
+                            await asyncio.sleep(0.5)
+                        else:
+                            raise HermesAgentError("Hermes stop request did not settle within the safety timeout.")
+                        if status == "completed":
+                            content = status_payload.get("output")
+                            if isinstance(content, str) and content.strip():
+                                return {"engine": "hermes-agent", "content": content[:settings.hermes_agent_max_output_chars]}
+                            raise HermesAgentError("Hermes returned an invalid completed run.")
+
+                    # نوقف الانتظار قبل تجاوز المهلة الكلية للمهمة.
+                    remaining = deadline - asyncio.get_running_loop().time()
+                    if remaining <= 0:
+                        try:
+                            await client.post(f"{base_url}/v1/runs/{run_id}/stop", headers=headers)
+                        except httpx.HTTPError:
+                            pass
+                        raise HermesAgentError("Hermes run exceeded its configured timeout.")
+
+                    status_response = await client.get(
+                        f"{base_url}/v1/runs/{run_id}",
+                        headers=headers,
+                    )
+                    status_response.raise_for_status()
+                    status_payload = status_response.json()
+                    if not isinstance(status_payload, dict):
+                        raise HermesAgentError("Hermes returned an invalid run status.")
+                    status = status_payload.get("status")
+                    if status == "completed":
+                        output = status_payload.get("output")
+                        if not isinstance(output, str) or not output.strip():
+                            raise HermesAgentError("Hermes returned an empty run output.")
+                        if len(output) > settings.hermes_agent_max_output_chars:
+                            raise HermesAgentError("Hermes run output exceeded the configured limit.")
+                        return {"engine": "hermes-agent", "content": output}
+                    if status in {"failed", "interrupted", "unknown"}:
+                        raise HermesAgentError("Hermes run did not complete successfully.")
+                    if status == "cancelled":
+                        raise HermesAgentCancelled("Hermes run was cancelled.")
+                    if status not in {"started", "running", "stopping"}:
+                        raise HermesAgentError("Hermes returned an unknown run status.")
+                    await asyncio.sleep(min(0.5, max(0.05, remaining)))
+
+            except HermesAgentCancelled:
+                raise
+            except HermesAgentError:
+                raise
+            except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+                # لا نمرر جسم الاستجابة أو نص الخطأ الخارجي لأنه قد يحتوي على أسرار.
+                raise HermesAgentError("Hermes run request failed.") from exc
 
     return asyncio.run(request())
