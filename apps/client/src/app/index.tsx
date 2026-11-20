@@ -104,8 +104,8 @@ export default function HomeScreen() {
                 <Pressable style={styles.toolButton} onPress={() => setNotice("إرفاق الملفات سيتم تفعيله ضمن مرحلة الملفات.")}>
                   <Text style={styles.toolText}>＋ ملف</Text>
                 </Pressable>
-                <Pressable style={styles.toolButton} onPress={() => router.push("/agent")}>
-                  <Text style={styles.toolText}>◈ وضع الوكيل</Text>
+                <Pressable style={styles.toolButton} onPress={() => router.push({ pathname: "/agent", params: draft.trim() ? { prompt: draft.trim() } : {} })}>
+                  <Text style={styles.toolText}>◈ تنفيذ كمهمة</Text>
                 </Pressable>
               </View>
               <Pressable style={[styles.sendButton, !draft.trim() && styles.sendDisabled]} onPress={sendDraft} accessibilityLabel="إرسال الطلب">
