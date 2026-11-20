@@ -1,6 +1,7 @@
 """Owner-scoped project workspace API."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -83,6 +84,7 @@ def update_project(project_id: UUID, request: UpdateProjectRequest, user: Authen
         values["name"] = _clean_name(values["name"])
     if "description" in values and values["description"] is not None:
         values["description"] = values["description"].strip()
+    values["updated_at"] = datetime.now(timezone.utc).isoformat()
     client = _admin()
     try:
         with client:
