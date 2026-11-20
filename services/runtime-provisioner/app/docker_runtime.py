@@ -152,7 +152,7 @@ class DockerTaskRuntimeManager:
                 name=f"suly-{runtime_id}",
                 network=network.name,
                 labels=labels,
-                environment={"OPENCODE_SERVER_PASSWORD": token, "OPENCODE_SERVER_USERNAME": "suly"},
+                environment={"OPENCODE_SERVER_PASSWORD": token, "OPENCODE_SERVER_USERNAME": "opencode"},
                 volumes={str(workspace): {"bind": "/workspace", "mode": "rw"}},
                 working_dir="/workspace",
                 ports={"4096/tcp": ("127.0.0.1", None)},
