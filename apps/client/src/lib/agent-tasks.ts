@@ -175,6 +175,29 @@ export async function getAgentTask(taskId: string): Promise<AgentTaskSnapshot> {
   return request<AgentTaskSnapshot>("/v1/tasks/" + encodeURIComponent(taskId));
 }
 
+export type AgentApprovalDetails = {
+  task_id: string;
+  engine_run_id: string;
+  request_id: string;
+  command?: string;
+  description?: string;
+};
+
+export async function getAgentApprovalDetails(
+  taskId: string,
+  engineRunId: string,
+  requestId: string,
+): Promise<AgentApprovalDetails> {
+  if (!/^[A-Za-z0-9_.:@-]{1,256}$/.test(requestId)) {
+    throw new Error("معرّف طلب الموافقة غير صالح.");
+  }
+  return request<AgentApprovalDetails>(
+    "/v1/tasks/" + encodeURIComponent(taskId)
+      + "/engine-runs/" + encodeURIComponent(engineRunId)
+      + "/approvals/" + encodeURIComponent(requestId),
+  );
+}
+
 export async function resolveAgentApproval(
   taskId: string,
   engineRunId: string,
