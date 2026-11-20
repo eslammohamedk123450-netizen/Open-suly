@@ -206,3 +206,13 @@ def test_registry_rejects_boolean_limits_and_request_timeout():
         registry.execute("fake-engine", EngineRequest(
             "task-1", "agent.general", {}, True,
         ))
+
+
+def test_registry_rejects_non_string_capabilities_without_type_errors():
+    with pytest.raises(ValueError, match="invalid_engine_capability"):
+        EngineRegistry([EngineDefinition(
+            engine_id="test-engine",
+            display_name="Test",
+            capabilities=frozenset({None}),
+        )])
+    assert EngineRegistry().get([]) is None
