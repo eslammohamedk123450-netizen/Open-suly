@@ -243,3 +243,50 @@ def test_count_missing_upstream_identity_rejects_invalid_rpc_values(value):
 def test_count_missing_upstream_identity_rejects_invalid_age(age):
     with pytest.raises(ValueError, match="invalid_missing_identity_age"):
         EngineRunStore(FakeRpc(0)).count_missing_upstream_identity(age)
+
+
+
+def test_append_engine_run_event_persists_only_allowlisted_metadata():
+    client = FakeRpc(True)
+    event = {"event": "tool.started", "seq": 4, "timestamp": 1_800_000_000.5}
+    assert EngineRunStore(client).append_event(RUN_ID, step(), event) is True
+    assert client.calls == [(
+        "append_engine_run_event",
+        {
+            "p_run_id": str(RUN_ID),
+            "p_step_id": str(step().step_id),
+            "p_lease_token": str(step().lease_token),
+            "p_event_name": "tool.started",
+            "p_event_seq": 4,
+            "p_event_timestamp": 1_800_000_000.5,
+        },
+    )]
+
+
+@pytest.mark.parametrize("event", [
+    {"event": "message.delta", "text": "private"},
+    {"event": "tool.started", "seq": True},
+    {"event": "tool.started", "seq": -1},
+    {"event": "tool.started", "timestamp": True},
+    {"event": "tool.started", "timestamp": 4_102_444_801},
+    ["not", "an", "event"],
+])
+def test_append_engine_run_event_rejects_untrusted_or_invalid_metadata(event):
+    client = FakeRpc(True)
+    with pytest.raises(ValueError, match="invalid_engine_run_event"):
+        EngineRunStore(client).append_event(RUN_ID, step(), event)
+    assert client.calls == []
+
+
+def test_append_engine_run_event_reports_lease_loss():
+    client = FakeRpc(False)
+    assert EngineRunStore(client).append_event(
+        RUN_ID, step(), {"event": "run.queued", "seq": 1},
+    ) is False
+
+
+def test_append_engine_run_event_rejects_invalid_rpc_response():
+    with pytest.raises(RuntimeError, match="engine_run_event_append_invalid_response"):
+        EngineRunStore(FakeRpc("true")).append_event(
+            RUN_ID, step(), {"event": "run.queued"},
+        )
