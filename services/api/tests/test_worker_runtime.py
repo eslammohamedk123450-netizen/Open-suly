@@ -170,3 +170,45 @@ def test_worker_rejects_malformed_claim_payloads(invalid_claim, expected_error):
 
     with pytest.raises(ValueError, match=expected_error):
         worker.claim()
+
+
+def test_hermes_agent_task_requires_persisted_approval_scope():
+    step = make_step({"operation": "hermes.agent.turn", "prompt": "hello"})
+    with pytest.raises(PermissionError, match="tool_approval_required:agent.hermes.run"):
+        dispatch(step)
+
+
+def test_hermes_agent_task_calls_bridge_only_after_approval(monkeypatch):
+    import app.worker_runtime as runtime_module
+
+    class ApprovedScopes:
+        def active_scopes(self, _user_id):
+            return frozenset({"agent.hermes.run"})
+
+    monkeypatch.setattr(
+        runtime_module,
+        "run_agent_turn",
+        lambda prompt: {"engine": "hermes-agent", "content": f"processed: {prompt}"},
+    )
+    result = dispatch(
+        make_step({"operation": "hermes.agent.turn", "prompt": "safe task"}),
+        ApprovedScopes(),
+    )
+    assert result == {
+        "operation": "hermes.agent.turn",
+        "engine": "hermes-agent",
+        "content": "processed: safe task",
+    }
+
+
+def test_hermes_agent_operation_is_registered_with_approval_and_bounded_fields():
+    from app.worker_runtime import TOOL_REGISTRY
+
+    definition = TOOL_REGISTRY.get("hermes.agent.turn")
+    assert definition is not None
+    assert definition.permission_scope == "agent.hermes.run"
+    assert definition.requires_approval is True
+    assert definition.allowed_input_fields == frozenset({"prompt"})
+    assert definition.required_input_fields == frozenset({"prompt"})
+    assert definition.max_input_bytes <= 20_100
+    assert definition.max_output_bytes <= 52_000
