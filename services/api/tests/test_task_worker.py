@@ -41,6 +41,10 @@ def test_worker_rejects_invalid_configuration():
         TaskWorker(object(), " ")
     with pytest.raises(ValueError):
         TaskWorker(object(), "worker-1", lease_seconds=5)
+    with pytest.raises(ValueError, match="worker_id must be a string"):
+        TaskWorker(object(), None)
+    with pytest.raises(ValueError, match="heartbeat interval"):
+        TaskWorker(object(), "worker-1", heartbeat_interval_seconds=True)
 
 
 def test_claim_parses_lease_without_exposing_it_in_task_input():
