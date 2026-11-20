@@ -670,11 +670,14 @@ def test_hermes_agent_turn_persists_metadata_events_and_never_logs_payload(monke
 
     class Registry:
         def execute(self, _engine_id, _request):
-            callbacks["on_event"]({
+            from app.services.hermes_agent import _safe_run_event
+            safe_event = _safe_run_event({
+                "run_id": "run_native_123",
                 "event": "tool.started",
                 "seq": 7,
                 "command": "sensitive command must not be stored",
-            })
+            }, "run_native_123")
+            callbacks["on_event"](safe_event)
             return EngineResult(engine_id="hermes-agent", output={
                 "engine": "hermes-agent",
                 "content": "safe output",
@@ -708,7 +711,7 @@ def test_hermes_agent_turn_persists_metadata_events_and_never_logs_payload(monke
     assert result["content"] == "safe output"
     saved = [entry for entry in store.events if entry[0] == "event"]
     assert len(saved) == 1
-    assert saved[0][3] == {"event": "tool.started", "seq": 7, "command": "sensitive command must not be stored"}
+    assert saved[0][3] == {"event": "tool.started", "seq": 7}
     assert "sensitive command" not in caplog.text
 
 
