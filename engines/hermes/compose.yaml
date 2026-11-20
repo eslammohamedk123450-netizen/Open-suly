@@ -1,5 +1,8 @@
 # Isolated upstream Hermes Agent runtime.
-# Build context is pinned to an exact upstream commit; no floating main branch.
+# Build context is pinned to a verified immutable upstream commit; no floating main branch.
+# Upstream SECURITY.md describes Hermes as single-tenant and requires whole-process OS isolation
+# for untrusted/multi-user production workloads. This profile is not yet production-ready:
+# per-tenant isolation, egress policy, and resource limits must be completed before activation.
 services:
   hermes-agent:
     image: suly-hermes-agent:2026-11-20
