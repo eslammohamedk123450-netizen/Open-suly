@@ -11,7 +11,7 @@ Private control-plane component. It owns Docker access and must run on a dedicat
 - `GET /v1/runtimes/{runtime_id}/results`: export bounded UTF-8 workspace files; symlinks, secrets, .git, node_modules and binary files are excluded.
 - `POST /internal/cleanup`: SULY-authenticated expiry cleanup.
 
-Runtime ownership, container mapping, token hashes and expiry are stored in SQLite. Raw per-runtime tokens are returned only on creation and are not stored.
+Runtime ownership, container mapping, token hashes, expiry and the initial workspace hash map are stored in SQLite. Raw per-runtime tokens are returned only on creation and are not stored. The API waits for authenticated `/api/info` readiness before issuing the lease. The SULY provider can pass a bounded file snapshot, submit a prompt, and retrieve changed/deleted file metadata and contents.
 
 ## Configuration
 
@@ -21,7 +21,7 @@ Runtime ownership, container mapping, token hashes and expiry are stored in SQLi
 - `RUNTIME_DB_PATH`: persistent volume path (default `/var/lib/suly-runtime/runtimes.sqlite3`).
 - `RUNTIME_WORKSPACE_ROOT`: persistent workspace path.
 
-Terminate TLS at a trusted reverse proxy/load balancer. The public SULY API connects to the private provisioner endpoint over TLS. Docker only publishes OpenCode on 127.0.0.1.
+Terminate TLS at a trusted reverse proxy/load balancer. The public SULY API connects to the private provisioner endpoint over TLS. Docker only publishes OpenCode on 127.0.0.1. If the provisioner itself runs in a container while using the host Docker socket, it must use host networking (or an equivalently verified host-loopback route); otherwise 127.0.0.1 inside the provisioner container will not reach the Docker host's loopback-published ports. Prefer running this control plane directly on its dedicated worker host.
 
 ## Mandatory production controls
 
@@ -29,7 +29,7 @@ Terminate TLS at a trusted reverse proxy/load balancer. The public SULY API conn
 2. Apply host firewall egress restrictions: allow only approved AI gateway/provider endpoints and DNS; block metadata IPs, private control-plane ranges, host management ports and Docker endpoints. Per-task bridge networks alone are not an egress firewall.
 3. Configure TLS, request rate limits, body limits and DDoS protection at ingress.
 4. Persist and encrypt SQLite/workspace volumes; do not run multiple replicas with independent local SQLite stores. Multi-host deployments require a shared transactional lease store and distributed watchdog.
-5. Results are a bounded UTF-8 snapshot; binary files, symlinks and files over 1 MiB are omitted. SULY must apply results against the recorded workspace revision and show a reviewable diff before changing canonical project files.
+5. Results are a bounded UTF-8 snapshot with changed files and deleted paths compared with the initial content hashes; binary files, symlinks and files over 1 MiB are omitted. The provider exposes `run_task()` to submit and collect the result. SULY must apply results against the recorded workspace revision and show a reviewable diff before changing canonical project files; this provisioner does not write directly to Supabase.
 6. The gateway uses HTTP only on loopback between gateway and container. Public access must always be HTTPS.
 
 ## Run
