@@ -80,3 +80,37 @@ def test_runtime_manager_factory_rejects_mutable_image_tag(monkeypatch):
     import pytest
     with pytest.raises(RuntimeError, match="digest-pinned"):
         runtime_api._get_manager()
+
+
+def test_gateway_body_limit_is_enforced_during_streaming():
+    import asyncio
+    import pytest
+    from fastapi import HTTPException
+    from app.main import _read_bounded_request_body
+
+    class FakeRequest:
+        headers = {}
+        async def stream(self):
+            yield b"a" * 40
+            yield b"b" * 40
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(_read_bounded_request_body(FakeRequest(), limit=64))
+    assert error.value.status_code == 413
+
+
+def test_gateway_rejects_oversized_declared_body_before_reading():
+    import asyncio
+    import pytest
+    from fastapi import HTTPException
+    from app.main import _read_bounded_request_body
+
+    class FakeRequest:
+        headers = {"content-length": "1000"}
+        async def stream(self):
+            raise AssertionError("body must not be consumed")
+            yield b""
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(_read_bounded_request_body(FakeRequest(), limit=64))
+    assert error.value.status_code == 413
