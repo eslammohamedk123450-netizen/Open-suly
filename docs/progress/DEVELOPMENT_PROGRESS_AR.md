@@ -440,3 +440,8 @@ undefined
 - أضفنا اختبارات للـDNS وIPv4/IPv6 وnumeric IPv4 aliases والمنافذ والـallowlist.
 - هذا preflight لا يثبت أمان الاتصال الفعلي: يلزم egress proxy يكرر الفحص لكل redirect/subresource ويثبت IP المحلول عند الاتصال لمنع DNS rebinding. لم يتم ربطه بمتصفح حي، وBrowser Use ما زال disabled.
 - API tests نجحت على commit a858ea69، وPlatform CI كان ما يزال ينفذ Client typecheck/Web export وقت التحديث. أحدث تحديث توثيقي ينتظر CI على HEAD الجديد.
+
+
+## نتيجة تحقق لاحقة — 2026-11-20
+
+- بعد إضافة اختبارات صيغ IPv4 القديمة ومحارف Unicode/Bidi والمنفذ صفر، نجح API CI على commit `82671ffd`: **432 passed, 2 warnings**. فحص Client typecheck/export كان ما زال قيد التنفيذ عند آخر قراءة. تحديث التوثيق اللاحق لا يغير كود الاختبارات.
