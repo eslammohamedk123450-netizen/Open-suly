@@ -16,6 +16,7 @@ class ToolExecutionContext:
     """Trusted server-created grants; never construct this from task input."""
     approved_scopes: frozenset[str] = field(default_factory=frozenset)
     cancel_event: Event | None = field(default=None, repr=False, compare=False)
+    engine_run_store: Any = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -104,7 +105,7 @@ class ToolRegistry:
         if tool.requires_approval and tool.permission_scope not in grants:
             raise PermissionError(f"tool_approval_required:{tool.permission_scope}")
         if tool.supports_cancellation:
-            result = tool.handler(step, context.cancel_event if context is not None else None)
+            result = tool.handler(step, context)
         else:
             result = tool.handler(step)
         if not isinstance(result, dict):
