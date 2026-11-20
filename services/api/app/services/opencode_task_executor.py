@@ -83,41 +83,56 @@ class OpenCodeTaskExecutor:
                 )
             raise
 
-        session = self._sessions.register(
-            user_id=user_id,
-            project_id=project_id,
-            upstream_session_id=execution["session_id"],
-            title=title,
-            task_id=task_id,
-            engine_run_id=engine_run_id,
-            workspace_revision=snapshot["revision"],
-        )
-        change_set = None
-        if lifecycle_run is not None:
-            original_paths = {item["path"] for item in snapshot["files"]}
-            changes = []
-            for item in results.get("changed_files", []):
-                if not isinstance(item, dict):
-                    continue
-                action = "update" if item.get("path") in original_paths else "create"
-                changes.append({
-                    "action": action, "path": item.get("path"),
-                    "content": item.get("content"), "sha256": item.get("sha256"),
-                })
-            for path in results.get("deleted_paths", []):
-                changes.append({"action": "delete", "path": path})
-            change_set = self._lifecycle.create_change_set(
-                user_id=user_id, project_id=project_id, run_id=lifecycle_run["id"],
-                base_revision=snapshot["revision"], changes=changes,
+        try:
+            session = self._sessions.register(
+                user_id=user_id,
+                project_id=project_id,
+                upstream_session_id=execution["session_id"],
+                title=title,
+                task_id=task_id,
+                engine_run_id=engine_run_id,
+                workspace_revision=snapshot["revision"],
             )
-            self._lifecycle.update_status(
-                user_id=user_id, run_id=lifecycle_run["id"], status="review_ready",
-            )
-            self._lifecycle.append_event(
-                user_id=user_id, run_id=lifecycle_run["id"], sequence=2,
-                event_type="changes.collected",
-                payload={"change_set_id": change_set["id"], "changed_count": len(changes)},
-            )
+            change_set = None
+            if lifecycle_run is not None:
+                original_paths = {item["path"] for item in snapshot["files"]}
+                changes = []
+                for item in results.get("changed_files", []):
+                    if not isinstance(item, dict):
+                        continue
+                    action = "update" if item.get("path") in original_paths else "create"
+                    changes.append({
+                        "action": action, "path": item.get("path"),
+                        "content": item.get("content"), "sha256": item.get("sha256"),
+                    })
+                for path in results.get("deleted_paths", []):
+                    changes.append({"action": "delete", "path": path})
+                change_set = self._lifecycle.create_change_set(
+                    user_id=user_id, project_id=project_id, run_id=lifecycle_run["id"],
+                    base_revision=snapshot["revision"], changes=changes,
+                )
+                self._lifecycle.update_status(
+                    user_id=user_id, run_id=lifecycle_run["id"], status="review_ready",
+                )
+                self._lifecycle.append_event(
+                    user_id=user_id, run_id=lifecycle_run["id"], sequence=2,
+                    event_type="changes.collected",
+                    payload={"change_set_id": change_set["id"], "changed_count": len(changes)},
+                )
+    
+        except Exception:
+            if lifecycle_run is not None:
+                self._lifecycle.update_status(
+                    user_id=user_id, run_id=lifecycle_run["id"], status="failed",
+                    error_code="opencode_result_persistence_failed",
+                )
+                self._lifecycle.append_event(
+                    user_id=user_id, run_id=lifecycle_run["id"], sequence=2,
+                    event_type="task.failed", payload={"code": "opencode_result_persistence_failed"},
+                )
+            self._broker.release_attempt(task_id, engine_run_id, "opencode")
+            raise
+
         return {
             "session": session,
             "task_run": lifecycle_run,
