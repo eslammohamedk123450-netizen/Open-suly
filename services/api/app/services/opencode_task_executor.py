@@ -56,13 +56,15 @@ class OpenCodeTaskExecutor:
             lease_callback = None
             if lifecycle_run is not None:
                 def persist_runtime_lease(lease) -> None:
-                    self._lifecycle.set_runtime(
+                    persisted = self._lifecycle.set_runtime(
                         user_id=user_id,
                         run_id=lifecycle_run["id"],
                         runtime_id=lease.runtime_id,
                         session_id=None,
                         status="provisioning",
                     )
+                    if not persisted:
+                        raise RuntimeError("opencode_runtime_persistence_failed")
                 lease_callback = persist_runtime_lease
             result = self._broker.run_task(
                 task_id,
@@ -80,12 +82,15 @@ class OpenCodeTaskExecutor:
             if not isinstance(results, dict) or not isinstance(results.get("changed_files"), list):
                 raise RuntimeError("opencode_workspace_result_invalid")
             if lifecycle_run is not None and isinstance(execution.get("runtime_id"), str):
-                self._lifecycle.set_runtime(
+                persisted = self._lifecycle.set_runtime(
                     user_id=user_id, run_id=lifecycle_run["id"],
                     runtime_id=execution["runtime_id"], session_id=execution["session_id"],
                     status="running",
                 )
+                if not persisted:
+                    raise RuntimeError("opencode_session_persistence_failed")
         except Exception:
+            self._broker.release_attempt(task_id, engine_run_id, "opencode")
             if lifecycle_run is not None:
                 self._lifecycle.update_status(
                     user_id=user_id, run_id=lifecycle_run["id"], status="failed",
