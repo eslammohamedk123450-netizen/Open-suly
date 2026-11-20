@@ -322,3 +322,13 @@ undefined
 - أضفنا اختبارات لتمييز retries لنفس task بهويات تشغيل مستقلة والتحقق من private namespaces. هذا اختبار بناء command فقط؛ لا يثبت تشغيل container أو منع cross-tenant escape.
 - CI: Repository baseline على commit 6289ed2e نجح، وPlatform CI كان قيد التشغيل عند آخر فحص. تغييرات الاختبارات والتوثيق اللاحقة على commits 1ab4cede وf4cb68bc تحتاج انتظار CI النهائي على أحدث HEAD.
 - Hermes وOpenCode وBrowser Use والـworker ما زالت disabled افتراضيًا. لم يتم تشغيل Docker أو تطبيق migration أو نشر أي خدمة.
+
+
+## دفعة تدقيق Browser Use — 2026-11-20
+
+- راجعت Browser Use عند pin `ccbdb8095fbaf903c748880a600054a34c7b6191`، وتحققت من نسخة الحزمة 1.0.6 وترخيص MIT.
+- اكتشفت أن MCP server يعرض `browser_exec` كـPython REPL مستمر ينفذ داخل process نفسه؛ يستطيع قراءة environment والملفات المحلية، بما فيها `BROWSER_USE_API_KEY` إذا كانت موجودة. لذلك لا يمكن مشاركة MCP server بين مهام أو مستخدمين.
+- راجعت دعم local Chrome profile والاتصال بملف Chrome قائم، وأكدت ضرورة منع الوصول لملفات/ملفات تعريف المتصفح المضيف أو browser-harness daemon مشترك.
+- upstream يوضح أن allowed_domains/prohibited_domains لا تحمي cloud browser؛ هذه القواعد تخص local Chromium فقط. لذلك لا يمكن اعتبارها SSRF/egress boundary.
+- أضفت `docs/architecture/BROWSER_USE_INTEGRATION_AUDIT.md` وفيه عقد العزل المطلوب: MCP process/container لكل task attempt، egress proxy default-deny، فحص DNS/redirect/IPv4/IPv6، موافقة قبل side effects، وإنهاء process tree وإبطال credentials.
+- Browser Use يظل disabled metadata فقط. لم يتم تشغيل browser أو MCP server أو استخدام API key، ولا توجد أي browser side effects.
