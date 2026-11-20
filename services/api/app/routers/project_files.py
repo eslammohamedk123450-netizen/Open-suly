@@ -22,6 +22,11 @@ BLOCKED_PARTS = {"..", ".git", "node_modules", ".suly"}
 
 class SaveProjectFileRequest(BaseModel):
     content: str = Field(max_length=MAX_FILE_BYTES)
+    expected_updated_at: str | None = Field(default=None, min_length=1, max_length=64)
+
+
+class RestoreProjectFileRequest(BaseModel):
+    expected_updated_at: str = Field(min_length=1, max_length=64)
 
 
 def _admin():
@@ -155,6 +160,7 @@ def read_project_file_revision(
 def restore_project_file_revision(
     project_id: UUID,
     revision_id: UUID,
+    request: RestoreProjectFileRequest,
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     client = _admin()
@@ -174,9 +180,10 @@ def restore_project_file_revision(
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }).eq("id", revision["file_id"])
               .eq("project_id", str(project_id)).eq("user_id", user.id)
+              .eq("updated_at", request.expected_updated_at)
               .execute().data)
         if not restored:
-            raise HTTPException(status_code=404, detail="Project file no longer exists.")
+            raise HTTPException(status_code=409, detail="The file changed after it was opened. Reload it before restoring this version.")
         row = restored[0]
         return {"restored": True, "path": row["path"], "updated_at": row["updated_at"]}
     except HTTPException:
@@ -202,21 +209,41 @@ def save_project_file(
     try:
         with client:
             _owned_project(client, project_id, user.id)
-            existing = (client.table("project_files").select("id")
+            existing = (client.table("project_files").select("id,updated_at")
                 .eq("project_id", str(project_id)).eq("user_id", user.id)
                 .eq("path", safe_path).limit(1).execute().data)
-            if not existing:
+            now = datetime.now(timezone.utc).isoformat()
+            if existing:
+                if request.expected_updated_at is None:
+                    raise HTTPException(status_code=428, detail="Reload this file before saving so SULY can protect newer edits.")
+                rows = (client.table("project_files").update({
+                    "content": request.content,
+                    "size_bytes": size_bytes,
+                    "updated_at": now,
+                }).eq("id", existing[0]["id"])
+                  .eq("project_id", str(project_id)).eq("user_id", user.id)
+                  .eq("updated_at", request.expected_updated_at)
+                  .execute().data)
+                if not rows:
+                    raise HTTPException(status_code=409, detail="This file was changed elsewhere. Reload the latest version before saving.")
+            else:
+                if request.expected_updated_at is not None:
+                    raise HTTPException(status_code=409, detail="This file no longer exists. Reload the project before saving.")
                 count = (client.table("project_files").select("id")
                     .eq("project_id", str(project_id)).eq("user_id", user.id)
                     .limit(MAX_PROJECT_FILES).execute().data)
                 if len(count or []) >= MAX_PROJECT_FILES:
                     raise HTTPException(status_code=409, detail="This project has reached the 200-file limit.")
-            rows = (client.table("project_files").upsert({
-                "project_id": str(project_id), "user_id": user.id,
-                "path": safe_path, "content": request.content,
-                "size_bytes": size_bytes,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }, on_conflict="project_id,path").execute().data)
+                try:
+                    rows = (client.table("project_files").insert({
+                        "project_id": str(project_id), "user_id": user.id,
+                        "path": safe_path, "content": request.content,
+                        "size_bytes": size_bytes, "updated_at": now,
+                    }).execute().data)
+                except Exception as exc:
+                    if "duplicate key" in str(exc).lower() or "unique constraint" in str(exc).lower():
+                        raise HTTPException(status_code=409, detail="A file with this path was created elsewhere. Reload the project.") from exc
+                    raise
         if not rows:
             raise HTTPException(status_code=503, detail="Project file was not saved.")
         row = rows[0]
