@@ -88,6 +88,9 @@ def test_sandbox_rejects_symlinked_workspace(tmp_path):
     SandboxLimits(pids_limit=1),
     SandboxLimits(timeout_seconds=0),
     SandboxLimits(container_uid=True),
+    SandboxLimits(cpu_count="1"),
+    SandboxLimits(memory_mb="2048"),
+    SandboxLimits(timeout_seconds="30"),
 ])
 def test_sandbox_rejects_unsafe_resource_limits(tmp_path, limits):
     root = tmp_path / "workspaces"
