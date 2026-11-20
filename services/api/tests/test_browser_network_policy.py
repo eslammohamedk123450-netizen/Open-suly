@@ -43,6 +43,7 @@ def test_browser_policy_allows_only_explicit_subdomains_when_enabled():
     'https://user:pass@example.com/',
     'https:///missing-host',
     'https://example.com:8443/',
+    'https://example.com:0/',
     'https://example.com\\n.evil/',
     'https://example.com@127.0.0.1/',
 ])
