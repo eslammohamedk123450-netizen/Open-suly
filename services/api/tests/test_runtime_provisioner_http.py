@@ -147,3 +147,29 @@ def test_acquire_rejects_secret_paths_in_workspace_snapshot():
             ])
     finally:
         client.close()
+
+def test_recover_rotates_a_live_task_runtime_lease():
+    task, run, runtime = str(uuid4()), str(uuid4()), str(uuid4())
+    seen = {}
+
+    def handler(request):
+        seen["path"] = request.url.path
+        seen["body"] = request.read().decode()
+        return httpx.Response(200, json={
+            "runtime_id": runtime, "task_id": task, "engine_run_id": run,
+            "engine_id": "opencode", "base_url": ORIGIN,
+            "gateway_path": f"/v1/runtime-gateway/{runtime}",
+            "access_token": "r" * 48, "expires_at": time() + 600,
+        })
+
+    client = provider(handler)
+    try:
+        lease = client.recover(runtime, task, run)
+    finally:
+        client.close()
+
+    assert lease.runtime_id == runtime
+    assert lease.access_token == "r" * 48
+    assert seen["path"] == f"/v1/runtimes/{runtime}/recover"
+    assert '"task_id":"' + task + '"' in seen["body"]
+    assert '"engine_run_id":"' + run + '"' in seen["body"]
