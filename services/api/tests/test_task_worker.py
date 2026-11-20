@@ -140,3 +140,45 @@ def test_worker_never_checkpoints_after_heartbeat_loses_lease():
 def test_worker_rejects_heartbeat_interval_longer_than_half_lease():
     with pytest.raises(ValueError, match="heartbeat interval"):
         TaskWorker(object(), "worker-a", lease_seconds=30, heartbeat_interval_seconds=16)
+
+
+def test_cancel_aware_handler_receives_event_on_heartbeat_lease_loss():
+    client = FakeRpc([STEP, True, False])
+    worker = TaskWorker(client, "worker-cancel-aware", heartbeat_interval_seconds=0.01)
+    heartbeat_seen = Event()
+    original_rpc = client.rpc
+
+    def tracked_rpc(name, args):
+        prior_calls = len(client.calls)
+        result = original_rpc(name, args)
+        if name == "renew_task_step_lease" and prior_calls >= 2:
+            heartbeat_seen.set()
+        return result
+
+    client.rpc = tracked_rpc
+    cancel_observed = Event()
+
+    def cancel_aware(_step, cancel_event):
+        assert heartbeat_seen.wait(1)
+        assert cancel_event.wait(1)
+        cancel_observed.set()
+        return {"ok": True}
+
+    assert worker.run_once(lambda _step: {"unexpected": True}, cancel_aware_handler=cancel_aware) == "lease_lost"
+    assert cancel_observed.is_set()
+    assert all(call[0] != "complete_task_step" for call in client.calls)
+
+
+def test_cancel_aware_handler_still_completes_when_lease_held():
+    client = FakeRpc([STEP, True, True])
+    worker = TaskWorker(client, "worker-cancel-aware-success")
+    seen_event = []
+
+    def handler(_step, cancel_event):
+        seen_event.append(cancel_event)
+        assert not cancel_event.is_set()
+        return {"ok": "bounded"}
+
+    assert worker.run_once(lambda _step: {}, cancel_aware_handler=handler) == "completed"
+    assert len(seen_event) == 1
+    assert client.calls[-1][0] == "complete_task_step"
