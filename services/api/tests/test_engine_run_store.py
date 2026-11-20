@@ -98,3 +98,25 @@ def test_attach_upstream_run_id_reports_lease_loss():
     assert EngineRunStore(FakeRpc(False)).attach_upstream_run_id(
         RUN_ID, step(), "run_hermes_123",
     ) is False
+
+
+@pytest.mark.parametrize("batch_size", [0, -1, 501, True, 1.5])
+def test_reconcile_orphans_rejects_invalid_batch_size(batch_size):
+    with pytest.raises(ValueError, match="invalid_reconciliation_batch_size"):
+        EngineRunStore(FakeRpc(0)).reconcile_orphans(batch_size)
+
+
+@pytest.mark.parametrize("value,expected", [(0, 0), (3, 3), ([4], 4), ({"reconcile_orphan_engine_runs": 2}, 2)])
+def test_reconcile_orphans_returns_bounded_reconciled_count(value, expected):
+    client = FakeRpc(value)
+    assert EngineRunStore(client).reconcile_orphans(10) == expected
+    assert client.calls == [(
+        "reconcile_orphan_engine_runs",
+        {"p_batch_size": 10},
+    )]
+
+
+@pytest.mark.parametrize("value", [-1, 11, True, "2", None])
+def test_reconcile_orphans_rejects_invalid_rpc_result(value):
+    with pytest.raises(RuntimeError, match="engine_run_reconciliation_invalid_response"):
+        EngineRunStore(FakeRpc(value)).reconcile_orphans(10)
