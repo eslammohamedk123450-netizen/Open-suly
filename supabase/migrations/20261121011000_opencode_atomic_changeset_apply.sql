@@ -93,7 +93,7 @@ begin
     end if;
 
     if v_action = 'delete' then
-      if (select count(*) from jsonb_object_keys(v_change)) <> 2 then
+      if (select count(*) from jsonb_object_keys(v_change)) not in (2, 3) then
         raise exception 'changeset_delete_payload_invalid';
       end if;
       delete from public.project_files
@@ -105,7 +105,7 @@ begin
     elsif v_action in ('create', 'update') then
       v_content := v_change ->> 'content';
       v_expected_hash := v_change ->> 'sha256';
-      if (select count(*) from jsonb_object_keys(v_change)) <> 4 then
+      if (select count(*) from jsonb_object_keys(v_change)) not in (4, 5) then
         raise exception 'changeset_write_payload_invalid';
       end if;
       if v_content is null or octet_length(v_content) > 262144
