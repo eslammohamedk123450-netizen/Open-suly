@@ -172,6 +172,28 @@ def test_worker_rejects_malformed_claim_payloads(invalid_claim, expected_error):
         worker.claim()
 
 
+def test_ai_provider_task_requires_persisted_approval_scope():
+    step = make_step({"operation": "ai.respond", "prompt": "hello"})
+    with pytest.raises(PermissionError, match="tool_approval_required:ai.provider.run"):
+        dispatch(step)
+
+
+def test_ai_provider_task_calls_gateway_only_after_approval(monkeypatch):
+    import app.worker_runtime as runtime_module
+
+    class ApprovedScopes:
+        def active_scopes(self, _user_id):
+            return frozenset({"ai.provider.run"})
+
+    async def fake_generate_reply(messages):
+        assert messages == [{"role": "user", "content": "safe task"}]
+        return "AI response"
+
+    monkeypatch.setattr(runtime_module, "generate_reply", fake_generate_reply)
+    result = dispatch(make_step({"operation": "ai.respond", "prompt": "safe task"}), ApprovedScopes())
+    assert result == {"operation": "ai.respond", "content": "AI response"}
+
+
 def test_hermes_agent_task_requires_persisted_approval_scope():
     step = make_step({"operation": "hermes.agent.turn", "prompt": "hello"})
     with pytest.raises(PermissionError, match="tool_approval_required:agent.hermes.run"):
