@@ -3,7 +3,7 @@
 SULY pins the complete upstream Hermes Agent runtime as a remote Docker build context:
 
 - Upstream: https://github.com/NousResearch/hermes-agent
-- Pinned commit: `9f47677483d1b4de4d1a88d37b3b7ca18b18b215`
+- Pinned commit: `2de9f51b8008a7d49a49221c184f2f11cbfc4af1`
 - License at the pinned upstream source: MIT; preserve upstream copyright and license notice.
 - Upstream Dockerfile is used directly; SULY does not fork or flatten Hermes into the FastAPI environment.
 
@@ -16,7 +16,7 @@ SULY pins the complete upstream Hermes Agent runtime as a remote Docker build co
 - The service has no Supabase credentials or SULY admin secrets.
 - The API server exposes Hermes' full agent toolset, including terminal execution. It is hard-disabled in this Compose file; do not change that setting until a dedicated sandbox/tool policy review is complete.
 - If the API is enabled after that review, set a unique `HERMES_API_SERVER_KEY` through the deployment secret manager. Never commit it.
-- The SULY HTTP bridge is disabled by default and is not registered as an executable task tool yet.
+- The SULY HTTP bridge is disabled by default. The `hermes.agent.turn` task operation is registered behind persisted user approval, but cannot execute until the Hermes API, provider, database migrations, and per-task isolation are configured and verified.
 - Hermes still requires a deliberately configured model provider. SULY has not selected or configured one.
 
 ## Build / start
@@ -28,7 +28,7 @@ docker compose -f engines/hermes/compose.yaml --profile agent-engines build
 docker compose -f engines/hermes/compose.yaml --profile agent-engines up -d
 ```
 
-The current configuration starts the isolated gateway process with the Hermes API hard-disabled. This validates packaging/build only; it does not enable SULY-to-Hermes task execution or real model inference.
+The current configuration starts the Hermes gateway with its API server hard-disabled. This validates packaging/build only; it does not enable SULY-to-Hermes task execution or real model inference. Upstream describes Hermes as a single-tenant personal agent. A shared process is not an acceptable multi-tenant boundary; per-task or per-user OS/container isolation, resource limits, task-scoped storage, and default-deny egress must be implemented before enabling the API.
 
 ## SULY bridge settings
 
@@ -41,7 +41,7 @@ The FastAPI bridge uses these server-only environment variables:
 - `HERMES_AGENT_TIMEOUT_SECONDS=90`
 - `HERMES_AGENT_MAX_OUTPUT_CHARS=12000`
 
-The bridge sends only a bounded user prompt, uses a fixed non-streaming Chat Completions request, redacts upstream errors, and bounds the response. It does not pass SULY identity claims, approval scopes, database credentials, or provider secrets to Hermes.
+The current bridge uses a bounded OpenAI-compatible request and redacts upstream errors. Upstream audit also verified Hermes' native `/v1/runs` API (admission, status, SSE events, stop, and idempotency); SULY's next bridge revision will use that durable lifecycle rather than treating a single HTTP response as a run. The bridge does not pass SULY identity claims, approval scopes, database credentials, or provider secrets to Hermes.
 
 ## Verification boundary
 
