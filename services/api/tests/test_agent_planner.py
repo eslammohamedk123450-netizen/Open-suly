@@ -17,7 +17,7 @@ def test_planner_creates_only_registered_text_analysis_step(task_text):
     assert planned.steps[0]["depends_on"] == []
 
 
-@pytest.mark.parametrize("request", [
+@pytest.mark.parametrize("task_text", [
     "",
     "Build me a mobile application",
     "Search the web for current prices",
@@ -25,7 +25,7 @@ def test_planner_creates_only_registered_text_analysis_step(task_text):
 ])
 def test_planner_fails_closed_for_unsupported_or_empty_requests(task_text):
     with pytest.raises(UnsupportedTaskRequest):
-        plan_request(request)
+        plan_request(task_text)
 
 
 def test_planner_enforces_input_size():
