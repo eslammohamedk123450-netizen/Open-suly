@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 
 AddressResolver = Callable[[str, int], Iterable[str]]
 _DNS_NAME = re.compile(r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$")
+_AMBIGUOUS_NUMERIC_HOST = re.compile(r"^(?:[0-9]+(?:\.[0-9]+)*|0x[0-9a-f]+)$")
 
 
 def _resolve_addresses(host: str, port: int) -> tuple[str, ...]:
@@ -55,6 +56,7 @@ class BrowserNetworkPolicy:
                 or not _DNS_NAME.fullmatch(host)
                 or host == 'localhost'
                 or host.endswith(('.localhost', '.local', '.internal'))
+                or _AMBIGUOUS_NUMERIC_HOST.fullmatch(host)
             ):
                 raise ValueError('browser_allowed_hosts_invalid')
             try:
@@ -104,7 +106,14 @@ class BrowserNetworkPolicy:
             hostname = host.encode('idna').decode('ascii').lower().rstrip('.')
         except UnicodeError as exc:
             raise ValueError('browser_url_hostname_invalid') from exc
-        if not hostname or hostname == 'localhost' or hostname.endswith('.localhost') or hostname.endswith('.local') or hostname.endswith('.internal'):
+        if (
+            not hostname
+            or hostname == 'localhost'
+            or hostname.endswith('.localhost')
+            or hostname.endswith('.local')
+            or hostname.endswith('.internal')
+            or _AMBIGUOUS_NUMERIC_HOST.fullmatch(hostname)
+        ):
             raise ValueError('browser_url_private_hostname_rejected')
         try:
             ipaddress.ip_address(hostname)
