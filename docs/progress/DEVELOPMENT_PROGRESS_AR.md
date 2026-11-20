@@ -151,3 +151,13 @@ Commit تحديث هذا السجل: يتم ربطه بعد إنشائه.
 - أضيفت متغيرات البيئة اللازمة مع تعطيل Worker/Hermes/Reconciler افتراضيًا.
 - CI على `a05feb5d1226`: API tests وClient typecheck/web export نجحت؛ Baseline على HEAD `6bede601c606` نجح، وPlatform CI كان قيد التنفيذ.
 - المسار لم يكتمل: لا يوجد تشغيل حي لـOpenHands/OpenCode/Aider/Browser Use، ولا Docker runner أو egress proxy، ولم تُطبق migrations.
+
+
+## جلسة تطوير — 2026-11-20 (مراقبة التشغيل اليتيم)
+
+- راجعنا Hermes idempotency ledger: إعادة POST بنفس المفتاح تعيد replay عند وجود السجل، لكن لا يوجد endpoint lookup مستقل بالمفتاح.
+- تجنبنا إعادة POST للبحث حتى لا نبدأ run جديدًا بالخطأ.
+- أضيفت migration وعدّاد server-only لمراقبة سجلات stop_pending التي لا تملك upstream ID، مع error log آمن في reconciler.
+- فجوة crash بين رد Hermes وحفظ run_id موثقة بوضوح؛ لا نغلق السجل ولا ندعي إيقافه دون تأكيد.
+- Commits: `38be788521c6`, `66a59f207655`, `6c1145aeacc2`.
+- لم يتم تطبيق migration؛ CI على HEAD `66a59f207655` كان queued.
