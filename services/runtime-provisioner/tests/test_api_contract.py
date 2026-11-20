@@ -221,3 +221,41 @@ def test_runtime_recovery_rotates_token_only_for_exact_task_owner(tmp_path, monk
     assert new_row["token_hash"] == hashlib.sha256(payload["access_token"].encode()).hexdigest()
     with pytest.raises(HTTPException):
         runtime_api._runtime(runtime_id, old_token)
+
+
+def test_execution_uses_upstream_default_basic_auth_username(monkeypatch):
+    import asyncio
+
+    captured = {}
+
+    class FakeResponse:
+        def __init__(self, payload):
+            self.payload = payload
+        def raise_for_status(self):
+            return None
+        def json(self):
+            return self.payload
+
+    class FakeClient:
+        def __init__(self, *, base_url, auth, **kwargs):
+            captured["auth"] = auth
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return None
+        async def post(self, path, json):
+            if path == "/api/session":
+                return FakeResponse({"data": {"id": "sesABC123"}})
+            return FakeResponse({"data": {"ok": True}})
+
+    monkeypatch.setattr(runtime_api, "_runtime", lambda runtime_id, token: {"host_port": 4096})
+    monkeypatch.setattr(runtime_api.httpx, "AsyncClient", FakeClient)
+
+    result = asyncio.run(runtime_api.execute(
+        "00000000-0000-4000-8000-000000000001",
+        runtime_api.ExecuteRequest(prompt="hello"),
+        authorization="Bearer " + "x" * 48,
+    ))
+
+    assert captured["auth"][0] == "opencode"
+    assert result["session_id"] == "sesABC123"
