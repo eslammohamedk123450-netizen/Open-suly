@@ -252,3 +252,93 @@ async def test_pending_permissions_reject_cross_session_payload():
     ) as client:
         with pytest.raises(ValueError, match="session_mismatch"):
             await client.list_pending_permissions(session_id="ses_taskrun_123456789")
+
+
+@pytest.mark.asyncio
+async def test_prompt_async_is_session_scoped_bounded_and_sends_text_only():
+    seen = {}
+
+    async def handler(request):
+        seen["path"] = request.url.path
+        seen["body"] = request.read().decode()
+        return httpx.Response(204)
+
+    async with OpenCodeHTTPClient(
+        lease(), task_id=TASK_ID, engine_run_id=RUN_ID,
+        allowed_origins=ORIGINS, transport=httpx.MockTransport(handler),
+    ) as client:
+        await client.submit_prompt_async(
+            session_id="ses_taskrun_123456789",
+            prompt="  Fix the failing unit tests.  ",
+        )
+        with pytest.raises(ValueError, match="prompt_invalid"):
+            await client.submit_prompt_async(
+                session_id="ses_taskrun_123456789",
+                prompt="\\x00invalid",
+            )
+        with pytest.raises(ValueError, match="prompt_invalid"):
+            await client.submit_prompt_async(
+                session_id="ses_taskrun_123456789",
+                prompt="x" * 32001,
+            )
+
+    assert seen["path"] == "/api/session/ses_taskrun_123456789/prompt_async"
+    assert seen["body"] == '{"parts":[{"type":"text","text":"Fix the failing unit tests."}]}'
+
+
+@pytest.mark.asyncio
+async def test_prompt_async_rejects_non_204_and_redirects():
+    async def redirect(request):
+        return httpx.Response(307, headers={"location": "https://attacker.example/"})
+
+    async with OpenCodeHTTPClient(
+        lease(), task_id=TASK_ID, engine_run_id=RUN_ID,
+        allowed_origins=ORIGINS, transport=httpx.MockTransport(redirect),
+    ) as client:
+        with pytest.raises(OpenCodeTransportError, match="redirect_rejected"):
+            await client.submit_prompt_async(
+                session_id="ses_taskrun_123456789", prompt="Do work"
+            )
+
+    async def unexpected(request):
+        return httpx.Response(200, json={"data": {"secret": "not surfaced"}})
+
+    async with OpenCodeHTTPClient(
+        lease(), task_id=TASK_ID, engine_run_id=RUN_ID,
+        allowed_origins=ORIGINS, transport=httpx.MockTransport(unexpected),
+    ) as client:
+        with pytest.raises(OpenCodeTransportError, match="status_200"):
+            await client.submit_prompt_async(
+                session_id="ses_taskrun_123456789", prompt="Do work"
+            )
+
+
+@pytest.mark.asyncio
+async def test_abort_session_requires_confirmed_boolean_and_exact_session():
+    seen = {}
+
+    async def handler(request):
+        seen["path"] = request.url.path
+        return httpx.Response(200, json=True)
+
+    async with OpenCodeHTTPClient(
+        lease(), task_id=TASK_ID, engine_run_id=RUN_ID,
+        allowed_origins=ORIGINS, transport=httpx.MockTransport(handler),
+    ) as client:
+        await client.abort_session(session_id="ses_taskrun_123456789")
+        with pytest.raises(ValueError, match="session_id_invalid"):
+            await client.abort_session(session_id="../other")
+
+    assert seen["path"] == "/api/session/ses_taskrun_123456789/abort"
+
+
+@pytest.mark.asyncio
+async def test_abort_session_fails_closed_when_upstream_does_not_confirm():
+    async with OpenCodeHTTPClient(
+        lease(), task_id=TASK_ID, engine_run_id=RUN_ID,
+        allowed_origins=ORIGINS, transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json=False)
+        ),
+    ) as client:
+        with pytest.raises(OpenCodeTransportError, match="abort_not_confirmed"):
+            await client.abort_session(session_id="ses_taskrun_123456789")
