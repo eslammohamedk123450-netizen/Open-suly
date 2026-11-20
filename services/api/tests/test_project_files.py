@@ -51,7 +51,7 @@ def test_project_file_save_rejects_nul_content_before_database(monkeypatch):
     try:
         response = client.put(
             f"/v1/projects/{PROJECT_ID}/file?path=src/main.py",
-            json={"content": "print('safe')\\u0000"},
+            json={"content": "print('safe')\u0000"},
         )
     finally:
         app.dependency_overrides.clear()
