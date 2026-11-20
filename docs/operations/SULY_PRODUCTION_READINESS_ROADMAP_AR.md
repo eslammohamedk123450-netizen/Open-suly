@@ -384,3 +384,9 @@ For every engine:
 - [ ] Add bounded assistant-message/output reducer and session-scoped permission UI.
 - [ ] Run two-runtime isolation and end-to-end permission tests before enabling OpenCode.
 - OpenCode remains disabled; protocol contract tests do not establish a usable live engine.
+
+## Current CI checkpoint — 2026-11-20
+
+- [x] API tests: 456 passed on commit 61c194f8.
+- [x] Python compile, TypeScript typecheck, and Expo dependency compatibility on commit 61c194f8.
+- [ ] Confirm Web export completion on the same commit before marking Platform CI green.
