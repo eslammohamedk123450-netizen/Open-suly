@@ -144,10 +144,12 @@ def plan_request(request: str) -> PlannedTask:
         raise UnsupportedTaskRequest("Provide the text to analyze after the operation prefix.")
     if len(text) > 20000:
         raise UnsupportedTaskRequest("Text analysis input exceeds 20,000 characters.")
-    # Keep planning and execution capabilities in sync: a planner may only emit
-    # an operation currently registered by the worker runtime.
+    # لا نضع مهامًا في الطابور إذا كان لا يوجد worker قادر على تنفيذها.
+    from app.core.config import get_settings
     from app.worker_runtime import TOOL_REGISTRY
 
+    if not get_settings().worker_enabled:
+        raise UnsupportedTaskRequest("The task worker is disabled on the server.")
     if TOOL_REGISTRY.get("text.analyze") is None:
         raise UnsupportedTaskRequest("Text analysis is not available in the current worker registry.")
     return PlannedTask(steps=validate_agent_plan([{
