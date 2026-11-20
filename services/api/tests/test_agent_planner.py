@@ -59,6 +59,7 @@ def test_planner_rejects_general_agent_when_runtime_is_disabled(monkeypatch):
     import app.core.config as config
 
     monkeypatch.setattr(config, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=False,
         hermes_agent_enabled=False,
         hermes_agent_isolation_confirmed=False,
     ))
