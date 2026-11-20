@@ -299,3 +299,20 @@ The task database foundation is live, but it must not be described as autonomous
 - Approval scope loading is capped at 200 active grants per dispatch to keep the worker's authorization lookup bounded.
 - Cancellation's conditional update now covers queued, planning, ready, running, and waiting-approval tasks while remaining unable to overwrite terminal states.
 - Regression tests assert the bounded consent lookup and cancellation eligibility/terminal-race behavior.
+
+
+## Project workspaces — 2026-11-20
+
+### Implemented on main
+- Added owner-scoped project records with name, description, timestamps, and a private SELECT policy.
+- Added project CRUD API routes. All writes go through the trusted API; project ownership is derived from the authenticated identity.
+- Added an optional project reference to durable tasks. Task creation verifies that the selected project belongs to the caller; task listing can be filtered by project.
+- Replaced the previous conversations-only Projects screen with actual project workspace management.
+- Added a project detail screen with project task history, task counts, and a direct action to create a task inside the selected project.
+- Added client-side project API functions and project-aware task creation/listing.
+- Added automated tests for authentication, blank names, update validation, and preventing assignment of a task to another user's project.
+
+### Database rollout boundary
+- Migration: `20261120201500_projects_workspace.sql`.
+- The migration is committed but has not been applied to the connected Supabase database. Apply it through the approved staging migration workflow before deploying this API/client revision.
+- Existing tasks remain valid because `project_id` is nullable. Deleting a project detaches its tasks rather than deleting the task history.
