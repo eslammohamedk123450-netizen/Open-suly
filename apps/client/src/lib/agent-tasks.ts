@@ -2,7 +2,7 @@ import { supabase } from "@/lib/supabase";
 
 const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim().replace(/\/$/, "");
 
-export type AgentOperation = "text.analyze" | "hermes.agent.turn";
+export type AgentOperation = "text.analyze" | "ai.respond" | "hermes.agent.turn";
 
 export type AgentTask = {
   id: string;
@@ -65,6 +65,13 @@ export async function getAgentToolCatalog(): Promise<ToolCatalogItem[]> {
   return payload.items ?? [];
 }
 
+export async function grantAIApproval(): Promise<void> {
+  await request("/v1/tools/approvals", {
+    method: "POST",
+    body: JSON.stringify({ permission_scope: "ai.provider.run" }),
+  });
+}
+
 export async function grantHermesApproval(): Promise<void> {
   await request("/v1/tools/approvals", {
     method: "POST",
@@ -82,26 +89,35 @@ export async function createAgentTask(
   const task = await request<AgentTask>("/v1/tasks", {
     method: "POST",
     body: JSON.stringify({
-      title: operation === "hermes.agent.turn" ? "مهمة Hermes Agent" : "تحليل نص",
+      title: operation === "hermes.agent.turn" ? "مهمة Hermes Agent" : operation === "ai.respond" ? "مهمة SULY AI" : "تحليل نص",
       request: cleanPrompt,
       idempotency_key: "agent-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 14),
     }),
   });
-  const step = operation === "hermes.agent.turn"
+  const step = operation === "text.analyze"
     ? {
+        step_key: "analyze_text",
+        title: "تحليل النص",
+        description: "تحليل محلي حتمي للنص وإرجاع عدد الكلمات والحروف والأسطر.",
+        depends_on: [],
+        input: { operation, text: cleanPrompt },
+      }
+    : operation === "ai.respond"
+      ? {
+          step_key: "ai_response",
+          title: "إنشاء رد عبر نموذج SULY AI",
+          description: "إرسال طلب المستخدم إلى مزود الذكاء الاصطناعي المضبوط على الخادم بعد الموافقة الصريحة.",
+          depends_on: [],
+          input: { operation, prompt: cleanPrompt },
+        }
+      : {
         step_key: "hermes_turn",
         title: "تنفيذ مهمة Hermes Agent",
         description: "تشغيل طلب المستخدم عبر Hermes بعد التحقق من موافقته وحدود التنفيذ.",
         depends_on: [],
         input: { operation, prompt: cleanPrompt },
       }
-    : {
-        step_key: "analyze_text",
-        title: "تحليل النص",
-        description: "تحليل محلي حتمي للنص وإرجاع عدد الكلمات والحروف والأسطر.",
-        depends_on: [],
-        input: { operation, text: cleanPrompt },
-      };
+;
   await request("/v1/tasks/" + encodeURIComponent(task.id) + "/plan", {
     method: "POST",
     body: JSON.stringify({ steps: [step] }),
