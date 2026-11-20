@@ -337,3 +337,38 @@ def test_runtime_lease_accepts_only_its_exact_opaque_gateway_path():
         task_id=TASK_ID, engine_run_id=RUN_ID, engine_id=ENGINE_ID,
         allowed_origins=ORIGINS, now=time(),
     )
+
+
+class ExecutableProvider(FakeProvider):
+    def run_task(self, lease, *, prompt, title="SULY task"):
+        return {"execution": {"session_id": "sesABC123"}, "results": {"changed_files": []}}
+
+
+def test_successful_task_retains_runtime_until_explicit_review_release():
+    lease = make_lease()
+    provider = ExecutableProvider([lease])
+    broker = TaskScopedRuntimeBroker(provider, allowed_origins=ORIGINS)
+    result = broker.run_task(
+        TASK_ID, RUN_ID, ENGINE_ID, files=[], prompt="Implement feature"
+    )
+    assert result["execution"]["runtime_id"] == lease.runtime_id
+    assert broker.active_count == 1
+    assert broker.lease_for_attempt(TASK_ID, RUN_ID, ENGINE_ID) is lease
+    assert broker.release_attempt(TASK_ID, RUN_ID, ENGINE_ID) is True
+    assert broker.active_count == 0
+    assert provider.released == [lease.runtime_id]
+
+
+def test_failed_execution_releases_runtime_immediately():
+    lease = make_lease()
+
+    class FailingProvider(ExecutableProvider):
+        def run_task(self, lease, *, prompt, title="SULY task"):
+            raise RuntimeError("engine failed")
+
+    provider = FailingProvider([lease])
+    broker = TaskScopedRuntimeBroker(provider, allowed_origins=ORIGINS)
+    with pytest.raises(RuntimeError, match="engine failed"):
+        broker.run_task(TASK_ID, RUN_ID, ENGINE_ID, files=[], prompt="fail")
+    assert broker.active_count == 0
+    assert provider.released == [lease.runtime_id]
