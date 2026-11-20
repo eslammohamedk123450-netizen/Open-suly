@@ -55,5 +55,6 @@ Anonymous SELECT access is not granted to these tables. Profile owners can updat
 
 - Added `supabase/migrations/20261120153000_engine_run_ledger.sql` to create an owner-readable, service-written per-attempt `engine_runs` ledger and lease-guarded start/finish RPCs.
 - Added the server-side `EngineRunStore` adapter and connected the approved Hermes operation to record running/succeeded/failed/cancelled states. No prompt, output, provider key, or approval scope is stored in the ledger.
+- The authenticated task-detail API now returns owner-filtered engine attempt history, and the Expo task detail screen renders engine ID, attempt number, status, timestamps, and safe error code.
 - The migration is committed to GitHub but has NOT been applied to Supabase. Hermes and the worker remain disabled by default; this update does not start or deploy either service.
 - A terminal engine-run transition requires the same unexpired step lease token. A stale worker cannot mark a newer attempt as complete.
