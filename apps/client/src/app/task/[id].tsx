@@ -47,6 +47,25 @@ function pretty(value: unknown): string {
   }
 }
 
+function eventLabel(name: string): string {
+  const labels: Record<string, string> = {
+    "tool.started": "بدأ تنفيذ أداة",
+    "tool.completed": "اكتمل تنفيذ أداة",
+    "subagent.start": "بدأ وكيل فرعي",
+    "subagent.complete": "اكتمل وكيل فرعي",
+    "run.queued": "دخل التنفيذ قائمة الانتظار",
+    "run.completed": "اكتمل تنفيذ المهمة",
+    "run.failed": "فشل تنفيذ المحرك",
+    "run.cancelled": "أُلغي تنفيذ المحرك",
+    "run.interrupted": "توقف تنفيذ المحرك",
+    "run.stopping": "جارٍ إيقاف المحرك",
+    "run.steered": "تم تحديث توجيه المهمة",
+    "approval.request": "طلب المحرك موافقة",
+    "approval.responded": "تم الرد على طلب الموافقة",
+  };
+  return labels[name] ?? "تحديث في التنفيذ";
+}
+
 export default function TaskDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
@@ -210,6 +229,26 @@ export default function TaskDetailsScreen() {
                   ))}
                 </>
               )}
+
+              {(snapshot.engine_events?.length ?? 0) > 0 && (
+                <>
+                  <Text style={styles.sectionHeading}>تحديثات التنفيذ ({snapshot.engine_events.length})</Text>
+                  <View style={styles.card}>
+                    {snapshot.engine_events.map((event) => (
+                      <View key={event.id} style={styles.eventRow}>
+                        <View style={styles.eventCopy}>
+                          <Text style={styles.stepTitle}>{eventLabel(event.event_name)}</Text>
+                          <Text style={styles.muted}>
+                            {formatDate(event.received_at)}
+                            {event.event_seq != null ? " · #" + event.event_seq : ""}
+                          </Text>
+                        </View>
+                        <View style={styles.eventDot} />
+                      </View>
+                    ))}
+                  </View>
+                </>
+              )}
             </>
           ) : null}
           {!!notice && !!snapshot && <Text style={styles.error}>{notice}</Text>}
@@ -248,6 +287,9 @@ const styles = StyleSheet.create({
   retryBox: { marginTop: 8, gap: 9 },
   retryButton: { borderWidth: 1, borderColor: colors.goldDark, borderRadius: 10, padding: 12, alignItems: "center" },
   retryText: { color: colors.gold, fontSize: 13, fontWeight: "700" },
+  eventRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
+  eventCopy: { flex: 1, gap: 4 },
+  eventDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.gold },
   primaryButton: { backgroundColor: colors.gold, padding: 13, borderRadius: 10, marginTop: 12 },
   primaryText: { color: colors.background, fontWeight: "800" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24, gap: 12 },
