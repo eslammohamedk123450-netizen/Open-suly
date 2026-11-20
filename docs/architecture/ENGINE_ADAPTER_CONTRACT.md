@@ -66,3 +66,13 @@ An `EngineDefinition` declares:
 - `agent_catalog.py` maps SULY's general, coding, and browser agent roles to those engine IDs.
 - Both catalogues are metadata-only. All roles and runtimes remain disabled; no external adapter is constructed or invoked.
 - The next integration step is transport-specific: Hermes native Runs API, OpenCode's supported server/API surface, and Browser Use's MCP stdio server. Each requires a bounded isolated runtime and task-scoped workspace.
+
+
+## Worker runtime catalogue wiring — 2026-11-20
+
+- The worker's production registry builder now starts from the canonical pinned engine catalogue rather than defining a separate Hermes-only registry.
+- Hermes can receive a server-created adapter only when worker, Hermes, isolation attestation, internal URL, and API credential settings are all present.
+- OpenCode and Browser Use are registered from immutable provenance but remain disabled with no adapter. Their presence in the registry is not permission to execute.
+- Agent role construction now uses the canonical role catalogue and enables a role only when at least one of its declared capabilities has an enabled engine candidate.
+- SULY still requires persisted tool approval before a worker operation; agent-role enablement does not grant user permission.
+- Tests added for full engine registration, default-disabled specialists, and explicit Hermes-only activation.
