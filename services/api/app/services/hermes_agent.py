@@ -7,6 +7,7 @@ SULY owns authorization, task leases, and the durable upstream run reference.
 from __future__ import annotations
 
 import asyncio
+import re
 from threading import Event
 from typing import Callable
 from urllib.parse import urlsplit
@@ -31,6 +32,7 @@ class HermesAgentCancelled(RuntimeError):
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled", "interrupted"})
 _MAX_PROMPT_CHARS = 20_000
 _MAX_RUN_ID_CHARS = 128
+_RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 
 def _validate_base_url(value: str) -> str:
@@ -106,7 +108,7 @@ def run_agent_turn(
                 response.raise_for_status()
                 admission = response.json()
                 run_id = admission.get("run_id") if isinstance(admission, dict) else None
-                if not isinstance(run_id, str) or not 1 <= len(run_id) <= _MAX_RUN_ID_CHARS:
+                if not isinstance(run_id, str) or not _RUN_ID_PATTERN.fullmatch(run_id):
                     raise HermesAgentError("Hermes returned an invalid run identifier.")
 
                 # لا نكمل التنفيذ قبل حفظ المعرف الخارجي داخل سجل المحاولة في SULY.
@@ -130,7 +132,9 @@ def run_agent_turn(
                             )
                             status_response.raise_for_status()
                             status_payload = status_response.json()
-                            status = status_payload.get("status") if isinstance(status_payload, dict) else None
+                            if not isinstance(status_payload, dict):
+                                raise HermesAgentError("Hermes returned an invalid run status.")
+                            status = status_payload.get("status")
                             if status in _TERMINAL_STATUSES:
                                 if status == "cancelled":
                                     raise HermesAgentCancelled("Hermes run was cancelled.")
