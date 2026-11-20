@@ -28,15 +28,12 @@ def _valid_https_origin(value: object) -> bool:
         parsed = urlsplit(value)
         host = parsed.hostname.lower().rstrip(".") if parsed.hostname else ""
         port = parsed.port
+    except (TypeError, ValueError, AttributeError):
+        return False
+    try:
         ipaddress.ip_address(host)
     except ValueError:
-        # A valid DNS hostname is expected; IP literals are deliberately rejected.
-        try:
-            parsed = urlsplit(value)
-            host = parsed.hostname.lower().rstrip(".") if parsed.hostname else ""
-            port = parsed.port
-        except (TypeError, ValueError, AttributeError):
-            return False
+        pass
     else:
         return False
     if (
