@@ -147,6 +147,18 @@ def test_hermes_bridge_rejects_invalid_prompt(monkeypatch, prompt):
         )
 
 
+@pytest.mark.parametrize("timeout", [True, False, 0, 301, "30"])
+def test_hermes_bridge_rejects_invalid_timeout(monkeypatch, timeout):
+    monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
+    with pytest.raises(ValueError, match="timeout"):
+        hermes_agent.run_agent_turn(
+            "hello",
+            timeout_seconds=timeout,
+            idempotency_key="test-timeout-key",
+            on_run_started=lambda _run_id: True,
+        )
+
+
 def test_hermes_bridge_rejects_invalid_idempotency_key(monkeypatch):
     monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
     with pytest.raises(ValueError, match="idempotency"):
