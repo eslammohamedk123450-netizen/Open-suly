@@ -214,3 +214,11 @@ def test_finish_stop_reconciliation_rejects_non_boolean_rpc_result(value):
         EngineRunStore(FakeRpc(value)).finish_stop_reconciliation(
             claim, stop_confirmed=True,
         )
+
+
+@pytest.mark.parametrize("value", ["false", 1, None, {"ok": False}])
+def test_attach_upstream_run_id_rejects_non_boolean_rpc_result(value):
+    with pytest.raises(RuntimeError, match="engine_run_attach_invalid_response"):
+        EngineRunStore(FakeRpc(value)).attach_upstream_run_id(
+            RUN_ID, step(), "run_hermes_123",
+        )
