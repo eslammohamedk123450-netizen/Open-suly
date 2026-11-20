@@ -20,6 +20,7 @@ class UnsupportedTaskRequest(ValueError):
 
 
 _PREFIXES = ("analyze:", "analyse:", "حلل:", "حلّل:")
+_AGENT_PREFIXES = ("agent:", "وكيل:")
 
 
 def plan_request(request: str) -> PlannedTask:
@@ -27,11 +28,36 @@ def plan_request(request: str) -> PlannedTask:
         raise UnsupportedTaskRequest("Task request is empty.")
     normalized = request.strip()
     lowered = normalized.lower()
+    agent_prefix = next((item for item in _AGENT_PREFIXES if lowered.startswith(item)), None)
+    if agent_prefix is not None:
+        prompt = normalized[len(agent_prefix):].strip()
+        if not prompt:
+            raise UnsupportedTaskRequest("Provide the agent task after the agent: prefix.")
+        if len(prompt) > 20000:
+            raise UnsupportedTaskRequest("Agent task input exceeds 20,000 characters.")
+        from app.core.config import get_settings
+        from app.worker_runtime import TOOL_REGISTRY
+
+        settings = get_settings()
+        if not settings.hermes_agent_enabled or not settings.hermes_agent_isolation_confirmed:
+            raise UnsupportedTaskRequest(
+                "The general agent is unavailable until the isolated Hermes runtime is explicitly enabled."
+            )
+        if TOOL_REGISTRY.get("hermes.agent.turn") is None:
+            raise UnsupportedTaskRequest("The general agent is not registered in the worker runtime.")
+        return PlannedTask(steps=[{
+            "step_key": "general_agent",
+            "title": "Execute general agent task",
+            "description": "Run the task through the approved, isolated general-agent engine.",
+            "depends_on": [],
+            "input": {"operation": "hermes.agent.turn", "prompt": prompt},
+        }], planner="agent-routing-v1")
+
     prefix = next((item for item in _PREFIXES if lowered.startswith(item)), None)
     if prefix is None:
         raise UnsupportedTaskRequest(
-            "This request needs a supported operation. Current planner supports "
-            "explicit text analysis only; no generic agent plan was generated."
+            "This request needs a supported operation. Use analyze: for deterministic text analysis "
+            "or agent: for the explicitly enabled general agent."
         )
     text = normalized[len(prefix):].strip()
     if not text:
