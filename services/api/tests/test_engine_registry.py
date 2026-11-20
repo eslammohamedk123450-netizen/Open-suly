@@ -158,3 +158,51 @@ def test_execute_rejects_mismatched_engine_identity_and_oversized_output():
     request = EngineRequest("task-1", "agent.general", {})
     with pytest.raises(ValueError, match="engine_identity_mismatch"):
         registry.execute("fake-engine", request)
+
+
+def test_registry_rejects_invalid_metadata_types_and_adapter_shape():
+    with pytest.raises(ValueError, match="invalid_engine_id"):
+        EngineRegistry([EngineDefinition(
+            engine_id=None,
+            display_name="Invalid",
+            capabilities=frozenset({"agent.general"}),
+        )])
+    with pytest.raises(ValueError, match="engine_capabilities_required"):
+        EngineRegistry([EngineDefinition(
+            engine_id="test-engine",
+            display_name="Invalid",
+            capabilities={"agent.general"},
+        )])
+    with pytest.raises(ValueError, match="invalid_engine_flags"):
+        EngineRegistry([EngineDefinition(
+            engine_id="test-engine",
+            display_name="Invalid",
+            capabilities=frozenset({"agent.general"}),
+            enabled=1,
+        )])
+    with pytest.raises(ValueError, match="invalid_engine_adapter"):
+        EngineRegistry([EngineDefinition(
+            engine_id="test-engine",
+            display_name="Invalid",
+            capabilities=frozenset({"agent.general"}),
+            adapter=object(),
+        )])
+
+
+def test_registry_rejects_boolean_limits_and_request_timeout():
+    with pytest.raises(ValueError, match="invalid_engine_limits"):
+        EngineRegistry([EngineDefinition(
+            engine_id="test-engine",
+            display_name="Test",
+            capabilities=frozenset({"agent.general"}),
+            max_input_bytes=True,
+        )])
+    registry = EngineRegistry([EngineDefinition(
+        engine_id="fake-engine", display_name="Fake Engine",
+        capabilities=frozenset({"agent.general"}), enabled=True,
+        adapter=FakeAdapter(),
+    )])
+    with pytest.raises(ValueError, match="engine_timeout_out_of_bounds"):
+        registry.execute("fake-engine", EngineRequest(
+            "task-1", "agent.general", {}, True,
+        ))
