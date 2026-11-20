@@ -69,6 +69,47 @@ def test_sandbox_rejects_workspace_outside_root(tmp_path):
         builder(root).build(str(uuid4()), outside, ["aider"])
 
 
+def test_sandbox_runtime_name_and_labels_are_unique_per_engine_attempt(tmp_path):
+    root = tmp_path / "workspaces"
+    workspace = root / str(uuid4())
+    workspace.mkdir(parents=True)
+    root.chmod(0o700)
+    workspace.chmod(0o700)
+    task_id = str(uuid4())
+    run_id = str(uuid4())
+
+    argv = builder(root).build(
+        task_id,
+        workspace,
+        ["opencode", "serve"],
+        engine_run_id=run_id,
+    )
+
+    assert argv[argv.index("--name") + 1] == f"suly-run-{run_id}"
+    assert f"com.suly.task-id={task_id}" in argv
+    assert f"com.suly.engine-run-id={run_id}" in argv
+    assert argv[argv.index("--pid") + 1] == "private"
+    assert argv[argv.index("--ipc") + 1] == "private"
+    assert argv[argv.index("--uts") + 1] == "private"
+    assert argv[argv.index("--restart") + 1] == "no"
+    assert argv[argv.index("--log-driver") + 1] == "none"
+
+
+def test_sandbox_rejects_invalid_engine_run_identity(tmp_path):
+    root = tmp_path / "workspaces"
+    workspace = root / str(uuid4())
+    workspace.mkdir(parents=True)
+    root.chmod(0o700)
+    workspace.chmod(0o700)
+    with pytest.raises(ValueError, match="engine_run_id"):
+        builder(root).build(
+            str(uuid4()),
+            workspace,
+            ["hermes"],
+            engine_run_id="../another-task",
+        )
+
+
 def test_sandbox_rejects_invalid_task_and_command(tmp_path):
     root = tmp_path / "workspaces"
     workspace = root / str(uuid4())
