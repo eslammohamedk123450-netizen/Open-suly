@@ -205,3 +205,14 @@ For every engine:
 - Commits: `2cec8a1e4151` (policy), `5fef4002f0ba` (initial tests), `1c3800fd8596` (type validation), `85da8cb183b2` (private workspace), `336a11140915` (tests).
 - هذه policy builder فقط؛ لا يوجد Docker runner أو image build أو container فعلي حتى الآن. كما أن network=none يعني أن أي coding agent لن يستطيع الوصول لمزود LLM قبل بناء egress proxy مقيد ومختبر.
 - لا تفعيل للمحركات ولا mounts لملفات المستخدمين؛ لا يوجد Docker socket أو host networking.
+
+
+## Session checkpoint — 2026-11-20 (Agent planning + late identity + sandbox hardening)
+
+- أضيف `agent:` و`وكيل:` إلى planner لتكوين خطوة Hermes عامة فقط عندما تكون إعدادات Hermes مكتملة، والعزل مؤكد، والمحرك مفعّلًا. لا يتم إنشاء plan لوكيل غير متاح.
+- تم تشديد `AgentManager` و`EngineRegistry` على أنواع metadata والـflags والـtimeouts والـadapters لمنع القيم غير المتوقعة.
+- أضيفت migration `20261120220000_late_engine_run_identity.sql`: Hermes run الذي يفقد lease قبل حفظ run_id يبقى `stop_pending`، ويسمح بحفظ المعرف المتأخر دون استعادة صلاحية التنفيذ؛ يرجع attach false كي يوقف العامل التشغيل فورًا، ثم يتولى reconciler المحاولة.
+- أصلحنا مسار Hermes عند فشل callback حفظ run_id: يعيد محاولة RPC مرة واحدة (idempotently)، ثم يرسل stop best-effort ولا يكمل التنفيذ.
+- أصلحنا sandbox builder لتهيئة حدود الموارد قبل التحقق من ملكية workspace، وفرض `--pull=never` و`--memory-swap` مساويًا للذاكرة لمنع السحب التلقائي واستخدام swap.
+- CI: Platform CI وBaseline على `d7fe1543a41a` نجحا. API tests على `3598544eed8d` نجحت؛ Platform CI وBaseline للـHEAD الأحدث كانا قيد التنفيذ وقت التوثيق.
+- لا تزال كل migrations غير مطبقة. لا يوجد Docker runner أو image build أو egress proxy أو محرك coding/browser إضافي يعمل. sandbox policy builder لا يثبت العزل الفعلي.
