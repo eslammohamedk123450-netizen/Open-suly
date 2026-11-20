@@ -316,3 +316,19 @@ For every engine:
 - تمت إزالة Unicode control/format/bidi characters من تفاصيل موافقات Hermes قبل العرض.
 - Platform CI وRepository baseline على commit `01e8e88b9e267b138bbfc0fbd24599be36294441` نجحا: 364 API tests، TypeScript، Expo compatibility، Web export.
 - أحدث HEAD وقت التحديث كان `21328dcb664e7ea02f87be6af7d4959c655faa33`؛ CI الخاص به يحتاج تحققًا منفصلًا بعد اكتماله.
+
+
+## تحديث تكامل Browser Use — 2026-11-20
+
+- [x] مراجعة upstream عند pin `ccbdb8095fbaf903c748880a600054a34c7b6191`، package 1.0.6، MIT.
+- [x] مراجعة MCP Python REPL ومخاطر قراءة environment/files من process الخادم.
+- [x] مراجعة local Chrome/profile attach ومخاطر browser-harness daemon المشترك.
+- [x] إثبات أن allowed_domains/prohibited_domains لا تطبق على cloud browser؛ لا تعتبر حماية SSRF أو egress.
+- [ ] MCP process/container منفصل لكل task attempt.
+- [ ] browser profile وREPL وcredentials منفصلة، ومنع host Chrome وshared daemon.
+- [ ] egress proxy default-deny مع فحص DNS/redirect/IPv4/IPv6 وmetadata/private ranges.
+- [ ] task-scoped MCP broker مع owner/lease/runtime checks.
+- [ ] approvals مرتبطة بالفعل المحدد قبل أي side effect.
+- [ ] process-tree teardown وإبطال الأسرار واختبارات منع الوصول المتبادل.
+
+ملف التدقيق: `docs/architecture/BROWSER_USE_INTEGRATION_AUDIT.md`. Browser Use ما زال disabled؛ لا يوجد MCP server أو browser runtime حي.
