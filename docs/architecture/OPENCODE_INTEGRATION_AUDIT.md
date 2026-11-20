@@ -76,3 +76,11 @@ A fail-closed contract now exists in `services/api/app/services/runtime_broker_c
 Tests cover task/run/engine binding, endpoint allowlisting, IP-literal and HTTP rejection, credential bounds, expiry, duplicate attempts, runtime reuse, invalid provider leases, and teardown.
 
 This is only an in-process validation contract around a provider protocol. There is still no concrete runtime provider, container launch, task-scoped broker service, network policy, or live OpenCode integration. The catalog remains disabled.
+
+
+## Broker contract checkpoint — 2026-11-20
+
+- Added `services/api/app/services/runtime_broker_contract.py` with RuntimeLease, RuntimeLeaseProvider protocol, and TaskScopedRuntimeBroker.
+- The contract binds a lease to one task, one engine run, and one engine; requires an explicit runtime host allowlist; hides access credentials from repr; limits lease lifetime to one hour; rejects runtime ID reuse and repeated acquisition of the same attempt; and attempts teardown through a context manager.
+- Tests cover host allowlisting (including metadata/localhost targets), task/run mismatch, expiry, credential redaction, teardown, and cross-attempt runtime reuse.
+- This is not a concrete provider and does not start or stop Docker/OCI containers. OpenCode remains disabled. No server process, session, shell, PTY, MCP, plugin, or filesystem operation is reachable from SULY yet.
