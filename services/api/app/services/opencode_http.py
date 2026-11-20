@@ -112,9 +112,10 @@ class OpenCodeHTTPClient:
 
     async def health(self) -> dict[str, Any]:
         result = await self._request_json("GET", "/api/info")
-        if not isinstance(result, dict):
+        if not isinstance(result, dict) or not isinstance(result.get("version"), str):
             raise OpenCodeTransportError("opencode_invalid_info_response")
-        return result
+        # Do not expose upstream hostnames, URLs, process IDs, or filesystem paths.
+        return {"version": result["version"][:64]}
 
     async def create_session(self, *, title: str) -> dict[str, Any]:
         if not isinstance(title, str) or not title.strip() or len(title) > 120:
@@ -124,22 +125,26 @@ class OpenCodeHTTPClient:
             "/api/session",
             body={
                 "title": title.strip(),
-                "permission": [{"action": "*", "resource": "*", "effect": "ask"}],
+                "permissions": [{"action": "*", "resource": "*", "effect": "ask"}],
             },
         )
-        if not isinstance(result, dict) or not isinstance(result.get("id"), str):
+        session = result.get("data") if isinstance(result, dict) else None
+        if not isinstance(session, dict) or not isinstance(session.get("id"), str):
             raise OpenCodeTransportError("opencode_invalid_session_response")
-        if not _SESSION_ID.fullmatch(result["id"]):
+        if not _SESSION_ID.fullmatch(session["id"]):
             raise OpenCodeTransportError("opencode_invalid_session_id")
-        return {"id": result["id"], "title": result.get("title")}
+        title_value = session.get("title")
+        safe_title = title_value[:120] if isinstance(title_value, str) else title.strip()
+        return {"id": session["id"], "title": safe_title}
 
     async def list_skills(self) -> list[dict[str, Any]]:
         result = await self._request_json("GET", "/api/skill")
-        if not isinstance(result, list) or len(result) > 500:
+        items = result.get("data") if isinstance(result, dict) else None
+        if not isinstance(items, list) or len(items) > 500:
             raise OpenCodeTransportError("opencode_invalid_skill_catalog")
         # Return only bounded, non-executable catalog metadata; never skill source.
         safe: list[dict[str, Any]] = []
-        for item in result:
+        for item in items:
             if not isinstance(item, dict):
                 continue
             name, description = item.get("name"), item.get("description")
@@ -152,10 +157,11 @@ class OpenCodeHTTPClient:
 
     async def list_providers(self) -> list[dict[str, Any]]:
         result = await self._request_json("GET", "/api/provider")
-        if not isinstance(result, list) or len(result) > 200:
+        items = result.get("data") if isinstance(result, dict) else None
+        if not isinstance(items, list) or len(items) > 200:
             raise OpenCodeTransportError("opencode_invalid_provider_catalog")
         safe: list[dict[str, Any]] = []
-        for item in result:
+        for item in items:
             if not isinstance(item, dict):
                 continue
             provider_id, name = item.get("id"), item.get("name")
