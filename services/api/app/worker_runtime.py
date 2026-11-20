@@ -9,7 +9,7 @@ import logging
 import os
 import signal
 from threading import Event
-from typing import Any
+from typing import Any, Callable
 
 from app.core.config import get_settings
 from app.core.supabase import get_supabase_admin_client
@@ -69,7 +69,8 @@ class WorkerRuntime:
         *,
         poll_interval_seconds: float = 2.0,
         idle_backoff_max_seconds: float = 15.0,
-        handler: Any = dispatch,
+        handler: Callable[[ClaimedStep], dict[str, Any]] = dispatch,
+        cancel_aware_handler: Callable[[ClaimedStep, Event], dict[str, Any]] | None = None,
     ) -> None:
         if not 0.1 <= poll_interval_seconds <= 60:
             raise ValueError("poll interval must be between 0.1 and 60 seconds")
@@ -79,12 +80,16 @@ class WorkerRuntime:
         self.poll_interval_seconds = poll_interval_seconds
         self.idle_backoff_max_seconds = idle_backoff_max_seconds
         self.handler = handler
+        self.cancel_aware_handler = cancel_aware_handler
 
     def run(self, stop: Event) -> None:
         idle_delay = self.poll_interval_seconds
         while not stop.is_set():
             try:
-                result = self.worker.run_once(self.handler)
+                result = self.worker.run_once(
+                    self.handler,
+                    cancel_aware_handler=self.cancel_aware_handler,
+                )
                 if result == "idle":
                     stop.wait(idle_delay)
                     idle_delay = min(self.idle_backoff_max_seconds, idle_delay * 1.5)
@@ -114,14 +119,14 @@ def main() -> None:
     signal.signal(signal.SIGINT, request_stop)
     signal.signal(signal.SIGTERM, request_stop)
     logging.basicConfig(level=settings.log_level.upper())
-    logger.info("SULY worker starting: %s", worker_id)
+    logger.info("Worker starting: %s", worker_id)
     approval_store = ToolApprovalStore(client)
     WorkerRuntime(
         worker,
         poll_interval_seconds=settings.worker_poll_interval_seconds,
         handler=lambda step: dispatch(step, approval_store),
     ).run(stop)
-    logger.info("SULY worker stopped")
+    logger.info("Worker stopped")
 
 
 if __name__ == "__main__":
