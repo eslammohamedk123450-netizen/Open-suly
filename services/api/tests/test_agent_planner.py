@@ -40,6 +40,8 @@ def test_planner_creates_general_agent_step_only_when_isolated_runtime_is_enable
     monkeypatch.setattr(config, "get_settings", lambda: SimpleNamespace(
         hermes_agent_enabled=True,
         hermes_agent_isolation_confirmed=True,
+        hermes_agent_base_url="http://hermes:8642",
+        hermes_agent_api_key=object(),
     ))
     planned = plan_request("agent: Review this task and explain the safe next steps")
     assert planned.planner == "agent-routing-v1"
