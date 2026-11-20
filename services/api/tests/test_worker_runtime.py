@@ -206,6 +206,9 @@ class FakeEngineRunStore:
     def start(self, step, engine_id):
         self.events.append(("start", step.step_id, engine_id))
         return UUID("00000000-0000-0000-0000-000000000099")
+    def attach_upstream_run_id(self, run_id, step, upstream_run_id):
+        self.events.append(("attach", run_id, step.step_id, upstream_run_id))
+        return True
     def finish(self, run_id, step, status, error_code=None):
         self.events.append(("finish", run_id, step.step_id, status, error_code))
         return True
