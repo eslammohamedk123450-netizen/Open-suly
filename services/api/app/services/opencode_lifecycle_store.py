@@ -96,19 +96,24 @@ class OpenCodeLifecycleStore:
 
     def set_runtime(
         self, *, user_id: str, run_id: str, runtime_id: str,
-        session_id: str, status: str = "running",
+        session_id: str | None = None, status: str = "running",
     ) -> bool:
         _uuid(user_id, "opencode_task_identity_invalid")
         _uuid(run_id, "opencode_task_identity_invalid")
         if not isinstance(runtime_id, str) or not re.fullmatch(r"[0-9a-f-]{36}", runtime_id):
             raise ValueError("opencode_runtime_id_invalid")
-        if not isinstance(session_id, str) or not _SESSION.fullmatch(session_id):
+        if session_id is not None and (
+            not isinstance(session_id, str) or not _SESSION.fullmatch(session_id)
+        ):
             raise ValueError("opencode_session_id_invalid")
         if status not in _STATUSES:
             raise ValueError("opencode_task_status_invalid")
-        rows = self._client.table("opencode_task_runs").update({
-            "runtime_id": runtime_id, "upstream_session_id": session_id, "status": status,
-        }).eq("id", run_id).eq("user_id", user_id).execute().data
+        payload = {"runtime_id": runtime_id, "status": status}
+        if session_id is not None:
+            payload["upstream_session_id"] = session_id
+        rows = self._client.table("opencode_task_runs").update(payload).eq(
+            "id", run_id
+        ).eq("user_id", user_id).execute().data
         return bool(rows)
 
     def update_status(self, *, user_id: str, run_id: str, status: str, error_code: str | None = None) -> bool:
