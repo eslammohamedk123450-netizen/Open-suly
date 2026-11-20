@@ -10,7 +10,7 @@ from app.services.runtime_broker_contract import RuntimeLease, TaskScopedRuntime
 TASK_ID = str(uuid4())
 RUN_ID = str(uuid4())
 ENGINE_ID = "opencode"
-HOSTS = frozenset({"opencode-runtime.internal"})
+ORIGINS = frozenset({"https://opencode-runtime.internal:8443"})
 
 
 class FakeProvider:
@@ -32,7 +32,7 @@ def make_lease(**overrides) -> RuntimeLease:
         "task_id": TASK_ID,
         "engine_run_id": RUN_ID,
         "engine_id": ENGINE_ID,
-        "base_url": "https://opencode-runtime.internal",
+        "base_url": "https://opencode-runtime.internal:8443",
         "access_token": "x" * 48,
         "expires_at": 2_000_000_000.0,
     }
@@ -46,7 +46,7 @@ def test_runtime_lease_binds_one_task_attempt_and_allowlisted_host():
         task_id=TASK_ID,
         engine_run_id=RUN_ID,
         engine_id=ENGINE_ID,
-        allowed_hosts=HOSTS,
+        allowed_origins=ORIGINS,
         now=1_900_000_000.0,
     )
 
@@ -55,6 +55,7 @@ def test_runtime_lease_binds_one_task_attempt_and_allowlisted_host():
     "https://169.254.169.254",
     "http://localhost:2375",
     "https://untrusted.example",
+    "https://opencode-runtime.internal:2375",
     "https://opencode-runtime.internal/path",
     "https://user:pass@opencode-runtime.internal",
 ])
@@ -65,7 +66,7 @@ def test_runtime_lease_rejects_untrusted_or_ambiguous_endpoint(base_url):
             task_id=TASK_ID,
             engine_run_id=RUN_ID,
             engine_id=ENGINE_ID,
-            allowed_hosts=HOSTS,
+            allowed_origins=ORIGINS,
             now=1_900_000_000.0,
         )
 
@@ -77,7 +78,7 @@ def test_runtime_lease_rejects_task_attempt_or_engine_mismatch():
             task_id=str(uuid4()),
             engine_run_id=RUN_ID,
             engine_id=ENGINE_ID,
-            allowed_hosts=HOSTS,
+            allowed_origins=ORIGINS,
             now=1_900_000_000.0,
         )
 
@@ -90,7 +91,7 @@ def test_runtime_lease_rejects_expired_or_excessively_long_credential_lease():
                 task_id=TASK_ID,
                 engine_run_id=RUN_ID,
                 engine_id=ENGINE_ID,
-                allowed_hosts=HOSTS,
+                allowed_origins=ORIGINS,
                 now=1_900_000_000.0,
             )
 
@@ -98,7 +99,7 @@ def test_runtime_lease_rejects_expired_or_excessively_long_credential_lease():
 def test_runtime_broker_acquires_once_and_always_attempts_release():
     lease = make_lease()
     provider = FakeProvider(lease)
-    broker = TaskScopedRuntimeBroker(provider, allowed_hosts=HOSTS)
+    broker = TaskScopedRuntimeBroker(provider, allowed_origins=ORIGINS)
 
     with broker.session(TASK_ID, RUN_ID, ENGINE_ID) as acquired:
         assert acquired is lease
@@ -111,7 +112,7 @@ def test_runtime_broker_acquires_once_and_always_attempts_release():
 def test_runtime_broker_rejects_reuse_of_runtime_identity():
     lease = make_lease()
     provider = FakeProvider(lease)
-    broker = TaskScopedRuntimeBroker(provider, allowed_hosts=HOSTS)
+    broker = TaskScopedRuntimeBroker(provider, allowed_origins=ORIGINS)
 
     first = broker.acquire(TASK_ID, RUN_ID, ENGINE_ID)
     with pytest.raises(RuntimeError, match="already_leased"):
@@ -134,4 +135,4 @@ def test_runtime_broker_releases_invalid_provider_lease():
 
 def test_runtime_broker_requires_explicit_host_allowlist():
     with pytest.raises(ValueError, match="allowed_hosts"):
-        TaskScopedRuntimeBroker(FakeProvider(make_lease()), allowed_hosts=frozenset())
+        TaskScopedRuntimeBroker(FakeProvider(make_lease()), allowed_origins=frozenset())
