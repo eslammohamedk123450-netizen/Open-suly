@@ -197,3 +197,20 @@ def test_finish_stop_reconciliation_rejects_invalid_input():
         EngineRunStore(FakeRpc(True)).finish_stop_reconciliation(
             object(), stop_confirmed=True,
         )
+
+
+@pytest.mark.parametrize("value", ["false", 1, None, {"ok": True}])
+def test_finish_stop_reconciliation_rejects_non_boolean_rpc_result(value):
+    from app.services.engine_run_store import EngineStopClaim
+
+    claim = EngineStopClaim(
+        run_id=RUN_ID,
+        engine_id="hermes-agent",
+        upstream_run_id="run_native_123",
+        reconcile_token=UUID("00000000-0000-0000-0000-000000000088"),
+        attempt_count=1,
+    )
+    with pytest.raises(RuntimeError, match="engine_stop_reconciliation_invalid_response"):
+        EngineRunStore(FakeRpc(value)).finish_stop_reconciliation(
+            claim, stop_confirmed=True,
+        )
