@@ -87,3 +87,14 @@ The current immutable Hermes source pin in `engines/hermes/compose.yaml` and `en
 - Added tests for immutable provenance, duplicate IDs, and fail-closed defaults.
 - OpenHands is not selected as the coding runtime from the current candidate snapshot: its repository README currently describes Agent Canvas/control-center functionality and multiple agent backends, so OpenCode is the clearer dedicated coding-agent candidate for the first integration.
 - Next gates: verify exact upstream server/API entry points, audit dependency licenses and vulnerabilities, build task-scoped sandbox images, implement narrow adapters, and add cancellation/event/lease-loss contract tests before any runtime activation.
+
+
+## Worker registry integration snapshot — 2026-11-20
+
+- Hermes, OpenCode, and Browser Use are now loaded into the actual worker engine registry from the immutable engine catalogue.
+- The existing Hermes adapter is retained and remains gated by worker enabled, Hermes enabled, isolation attestation, internal URL, and server API credential.
+- OpenCode and Browser Use are registered but disabled with no adapter. Their native runtimes are not launched.
+- Five agent roles are now built from the canonical role catalogue: general, coding, research, browser, workflow. A role is routable only when an enabled engine provides one of its requested capabilities.
+- Added worker-level tests proving that configured Hermes is the only engine enabled by the current runtime builder and that all engines remain disabled when the worker flag is off.
+- Commits: `c4f995fbb1fc`, `cbae5c145a54`, `4c592edc1b09`, `9db260180421`, `2cd2d33777ca`, `de8146717886`, `2f15ec98f5e5`.
+- Tests have been authored but not confirmed by CI yet.
