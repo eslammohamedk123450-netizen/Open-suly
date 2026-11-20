@@ -155,3 +155,14 @@ For every engine:
 - Commits: `937bb987dc1d` (manager), `e1d9d4b7bb31` (tests).
 - CI على HEAD `e1d9d4b7bb3128c0ab60754aaadf8a1b195880c9` كان queued عند كتابة هذا checkpoint؛ لا يُسجل نجاح قبل اكتماله.
 - هذا أساس إدارة وتوجيه فقط، وليس وكيلًا يعمل أو محركًا مدمجًا/مفعّلًا. ما زالت مراجعة مصادر upstream وتثبيت إصداراتها وترخيصها وعزلها واختبار تشغيلها مطلوبة.
+
+
+## Session checkpoint — 2026-11-20 (Orphan engine-run reconciliation)
+
+- أضيفت migration `20261120190000_reconcile_orphan_engine_runs.sql` لإنشاء RPC محدودة الدفعة (1–500) تغلق سجلات المحركات التي بقيت running بينما الخطوة ملغاة/نهائية أو انتهى lease الخاص بها.
+- تستخدم المصالحة `FOR UPDATE SKIP LOCKED` لتجنب تنازع أكثر من عامل مصالحة، وتخزن رموز أخطاء عامة فقط، وتقتصر صلاحية RPC على service_role.
+- أضيف `EngineRunStore.reconcile_orphans` مع التحقق من حجم الدفعة والتحقق الصارم من استجابة RPC.
+- أضيفت اختبارات لحجم الدفعة، والاستجابات الطبيعية/المغلفة، ورفض القيم غير الصالحة.
+- Commits: `4b2631294ff6` (migration)، `fabebc485b09` (store)، `c5fe327594ed` (tests).
+- CI على HEAD `c5fe327594ed6630c7e4b2406908f8721f3a983d` كان queued عند التوثيق؛ لم يتم ادعاء نجاحه.
+- حد مهم: RPC تغلق سجل SULY فقط، ولا توقف العملية الخارجية بنفسها. ما زال يلزم reconciler آمن يسترجع معرف upstream ويطلب الإيقاف بعد التحقق من lease/runtime ownership. لم تُطبق migration على أي قاعدة بيانات.
