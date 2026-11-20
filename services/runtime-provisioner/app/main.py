@@ -66,8 +66,12 @@ def _db() -> sqlite3.Connection:
     db.execute("""CREATE TABLE IF NOT EXISTS runtimes (
         runtime_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, engine_run_id TEXT NOT NULL,
         engine_id TEXT NOT NULL, container_id TEXT NOT NULL, host_port INTEGER NOT NULL,
-        token_hash TEXT NOT NULL, expires_at REAL NOT NULL, created_at REAL NOT NULL
+        token_hash TEXT NOT NULL, expires_at REAL NOT NULL, created_at REAL NOT NULL,
+        baseline_json TEXT NOT NULL DEFAULT '{}'
     )""")
+    columns = {row[1] for row in db.execute("PRAGMA table_info(runtimes)")}
+    if "baseline_json" not in columns:
+        db.execute("ALTER TABLE runtimes ADD COLUMN baseline_json TEXT NOT NULL DEFAULT '{}'")
     db.execute("CREATE INDEX IF NOT EXISTS idx_runtime_expiry ON runtimes(expires_at)")
     return db
 
@@ -137,11 +141,12 @@ def create_runtime(body: CreateRuntime, authorization: str | None = Header(defau
     try:
         with _db() as db:
             db.execute(
-                "INSERT INTO runtimes VALUES(?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO runtimes (runtime_id,task_id,engine_run_id,engine_id,container_id,host_port,token_hash,expires_at,created_at,baseline_json) VALUES(?,?,?,?,?,?,?,?,?,?)",
                 (result["runtime_id"], task_id, run_id, body.engine_id,
                  result["container_id"], result["host_port"],
                  hashlib.sha256(result["access_token"].encode()).hexdigest(),
-                 result["expires_at"], time.time()),
+                 result["expires_at"], time.time(),
+                 json.dumps({item.path: item.sha256 or hashlib.sha256(item.content.encode()).hexdigest() for item in body.files}, separators=(",", ":"))),
             )
     except Exception:
         _manager().destroy(runtime_id=result["runtime_id"], task_id=task_id, engine_run_id=run_id)
@@ -261,6 +266,7 @@ def runtime_results(runtime_id: str, authorization: str | None = Header(default=
         stream, _stat = container.get_archive("/workspace")
         archive = BytesIO(b"".join(stream))
         files, total = [], 0
+        baseline = json.loads(row["baseline_json"] or "{}")
         with tarfile.open(fileobj=archive, mode="r:*") as tar:
             members = tar.getmembers()
             if len(members) > MAX_RESULT_FILES + 1:
@@ -289,7 +295,11 @@ def runtime_results(runtime_id: str, authorization: str | None = Header(default=
                     continue
                 files.append({"path": "/".join(parts), "content": text,
                               "sha256": hashlib.sha256(data).hexdigest()})
-        return {"runtime_id": runtime_id, "file_count": len(files), "total_bytes": total, "files": files}
+        current = {item["path"]: item["sha256"] for item in files}
+        changed = [item for item in files if baseline.get(item["path"]) != item["sha256"]]
+        deleted = sorted(set(baseline) - set(current))
+        return {"runtime_id": runtime_id, "file_count": len(files), "changed_count": len(changed),
+                "deleted_paths": deleted, "total_bytes": total, "files": files, "changed_files": changed}
     except HTTPException:
         raise
     except Exception as exc:
