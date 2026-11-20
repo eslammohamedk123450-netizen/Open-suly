@@ -172,11 +172,11 @@ class OpenCodeHTTPClient:
             raise OpenCodeTransportError("opencode_response_too_large")
 
     async def submit_prompt_async(self, *, session_id: str, prompt: str) -> None:
-        """Submit one bounded text prompt to the exact task-owned session.
+        """Durably admit one bounded text prompt to the exact task-owned session.
 
-        This method is intentionally transport-only. Callers must verify the
-        durable SULY session/task/lease mapping immediately before invoking it.
-        The runtime must already be an isolated, task-attempt-scoped lease.
+        OpenCode 2.x uses POST /api/session/:sessionID/prompt with a PromptInput
+        body (text/files/agents/skills), not the legacy prompt_async route.
+        Callers must validate the durable SULY session/task/lease mapping first.
         """
         if not _SESSION_ID.fullmatch(session_id):
             raise ValueError("opencode_session_id_invalid")
@@ -184,31 +184,35 @@ class OpenCodeHTTPClient:
             raise ValueError("opencode_prompt_invalid")
         if any(ord(char) < 32 and char not in "\\n\\r\\t" for char in prompt):
             raise ValueError("opencode_prompt_invalid")
-        path = f"/api/session/{session_id}/prompt_async"
-        if not re.fullmatch(r"/api/session/ses[A-Za-z0-9_-]{1,128}/prompt_async", path):
+        path = f"/api/session/{session_id}/prompt"
+        if not re.fullmatch(r"/api/session/ses[A-Za-z0-9_-]{1,128}/prompt", path):
             raise ValueError("opencode_route_not_allowed")
-        body = {"parts": [{"type": "text", "text": prompt.strip()}]}
         try:
-            response = await self._client.post(path, json=body)
+            response = await self._client.post(path, json={"text": prompt.strip()})
         except httpx.HTTPError as exc:
             raise OpenCodeTransportError("opencode_runtime_unreachable") from exc
         if 300 <= response.status_code < 400:
             raise OpenCodeTransportError("opencode_redirect_rejected")
-        if response.status_code != 204:
-            # Do not include upstream body or headers in errors.
+        if response.status_code != 200:
             raise OpenCodeTransportError(f"opencode_upstream_status_{response.status_code}")
-        if len(response.content) > 4096:
+        if len(response.content) > 16_384:
             raise OpenCodeTransportError("opencode_response_too_large")
+        try:
+            value = response.json()
+        except (ValueError, json.JSONDecodeError) as exc:
+            raise OpenCodeTransportError("opencode_invalid_json") from exc
+        if not isinstance(value, dict) or not isinstance(value.get("data"), dict):
+            raise OpenCodeTransportError("opencode_prompt_not_accepted")
 
-    async def abort_session(self, *, session_id: str) -> None:
-        """Request cancellation for the exact upstream session; SULY owns task state."""
+    async def abort_session(self, *, session_id: str) -> bool:
+        """Interrupt execution for the exact session; SULY remains task-state authority."""
         if not _SESSION_ID.fullmatch(session_id):
             raise ValueError("opencode_session_id_invalid")
-        path = f"/api/session/{session_id}/abort"
-        if not re.fullmatch(r"/api/session/ses[A-Za-z0-9_-]{1,128}/abort", path):
+        path = f"/api/session/{session_id}/interrupt"
+        if not re.fullmatch(r"/api/session/ses[A-Za-z0-9_-]{1,128}/interrupt", path):
             raise ValueError("opencode_route_not_allowed")
         try:
-            response = await self._client.post(path)
+            response = await self._client.post(path, params={"resume": "false"})
         except httpx.HTTPError as exc:
             raise OpenCodeTransportError("opencode_runtime_unreachable") from exc
         if 300 <= response.status_code < 400:
@@ -221,8 +225,9 @@ class OpenCodeHTTPClient:
             value = response.json()
         except (ValueError, json.JSONDecodeError) as exc:
             raise OpenCodeTransportError("opencode_invalid_json") from exc
-        if value is not True:
-            raise OpenCodeTransportError("opencode_abort_not_confirmed")
+        if not isinstance(value, dict) or not isinstance(value.get("interrupted"), bool):
+            raise OpenCodeTransportError("opencode_interrupt_not_confirmed")
+        return value["interrupted"]
 
     async def list_skills(self) -> list[dict[str, Any]]:
         result = await self._request_json("GET", "/api/skill")
