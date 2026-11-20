@@ -77,13 +77,20 @@ def _release_runtime_for_run(request: Request, client, user_id: str, run_id: str
     if broker is None:
         return
     rows = client.table("opencode_task_runs").select(
-        "task_id,engine_run_id"
+        "task_id,engine_run_id,runtime_id"
     ).eq("id", run_id).eq("user_id", user_id).limit(1).execute().data
     if rows:
         released = broker.release_attempt(rows[0]["task_id"], rows[0]["engine_run_id"], "opencode")
-        if not released:
-            # Provisioner TTL cleanup remains the fallback after worker restart.
-            pass
+        if not released and rows[0].get("runtime_id"):
+            try:
+                lease = broker.recover(
+                    rows[0]["runtime_id"], rows[0]["task_id"],
+                    rows[0]["engine_run_id"], "opencode",
+                )
+                broker.release(lease)
+            except Exception:
+                # Provisioner TTL cleanup remains the final fallback.
+                pass
 
 
 def _active_runtime_lease(request: Request, run_row: dict[str, Any]):
@@ -94,7 +101,15 @@ def _active_runtime_lease(request: Request, run_row: dict[str, Any]):
         run_row["task_id"], run_row["engine_run_id"], "opencode"
     )
     if lease is None:
-        raise HTTPException(status_code=409, detail="OpenCode runtime is no longer active.")
+        runtime_id = run_row.get("runtime_id")
+        if not runtime_id:
+            raise HTTPException(status_code=409, detail="OpenCode runtime is no longer active.")
+        try:
+            lease = broker.recover(
+                runtime_id, run_row["task_id"], run_row["engine_run_id"], "opencode"
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=409, detail="OpenCode runtime could not be recovered.") from exc
     return lease
 
 
@@ -116,7 +131,7 @@ def decide_permission(
         if not rows:
             raise HTTPException(status_code=404, detail="Pending permission request not found.")
         run_rows = client.table("opencode_task_runs").select(
-            "task_id,engine_run_id"
+            "task_id,engine_run_id,runtime_id"
         ).eq("id", rows[0]["run_id"]).eq("user_id", user.id).limit(1).execute().data
         if not run_rows:
             raise HTTPException(status_code=404, detail="OpenCode task run not found.")
@@ -147,15 +162,19 @@ def list_run_approvals(
     try:
         client = _client()
         run_rows = client.table("opencode_task_runs").select(
-            "task_id,engine_run_id,upstream_session_id"
+            "task_id,engine_run_id,runtime_id,upstream_session_id"
         ).eq("id", str(run_id)).eq("user_id", user.id).limit(1).execute().data
         if not run_rows:
             raise HTTPException(status_code=404, detail="OpenCode task run not found.")
         run = run_rows[0]
         broker = getattr(request.app.state, "runtime_broker", None)
         if broker is not None and run.get("upstream_session_id"):
-            lease = broker.lease_for_attempt(run["task_id"], run["engine_run_id"], "opencode")
-            if lease is not None:
+            try:
+                lease = _active_runtime_lease(request, run)
+            except HTTPException as exc:
+                if exc.status_code != 409:
+                    raise
+            else:
                 OpenCodeApprovalManager(store=OpenCodeLifecycleStore(client)).collect_pending(
                     user_id=user.id, run_id=str(run_id),
                     session_id=run["upstream_session_id"], base_url=lease.base_url,
