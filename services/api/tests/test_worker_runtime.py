@@ -622,3 +622,32 @@ def test_hermes_engine_requires_isolation_even_when_feature_flag_is_enabled(monk
             ToolExecutionContext(engine_run_store=store),
         )
     assert store.events == []
+
+
+
+def test_hermes_adapter_forwards_metadata_event_callback(monkeypatch):
+    import app.worker_runtime as runtime_module
+    from app.services.engine_contract import EngineRequest
+
+    received = {}
+    callback = lambda event: True
+
+    def fake_run(prompt, **kwargs):
+        received.update(kwargs)
+        return {"engine": "hermes-agent", "content": "safe result"}
+
+    monkeypatch.setattr(runtime_module, "run_agent_turn", fake_run)
+    adapter = runtime_module.HermesAgentAdapter(
+        Event(),
+        idempotency_key="suly-test-event-callback",
+        on_run_started=lambda _run_id: True,
+        on_event=callback,
+    )
+    result = adapter.execute(EngineRequest(
+        task_id="00000000-0000-0000-0000-000000000001",
+        capability="agent.general",
+        input_payload={"prompt": "safe task"},
+        timeout_seconds=30,
+    ))
+    assert result.output["content"] == "safe result"
+    assert received["on_event"] is callback
