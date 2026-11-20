@@ -36,3 +36,11 @@ OpenCode وBrowser Use لا يمكن تشغيلهما داخل عملية API م
 ## قرار التفعيل
 
 OpenCode وBrowser Use يظلان disabled. لا تنشئ الخدمة حاويات ولا تفتح منافذ ولا تفعل أي worker تلقائيًا. يلزم Provider حقيقي واختبارات عزل قبل بناء adapters أو تفعيل المحركات.
+
+## تشديدات إضافية
+
+- الـallowlist أصبحت قائمة origins كاملة ومطابقة حرفيًا (scheme + hostname + port)، وليست suffix أو host pattern.
+- كل origin يجب أن يستخدم HTTPS، ولا يقبل IP literals أو localhost حتى لو أضيفت بالخطأ إلى القائمة.
+- بيانات access token يجب أن تكون طويلة وASCII وآمنة للاستخدام في Authorization header؛ لا تسجلها ولا تعرضها في الأخطاء.
+- release يتطلب نفس كائن lease الذي أعاده acquire، وليس مجرد كائن جديد بنفس القيم؛ هذا يمنع release مزيفًا.
+- إذا أعاد provider runtime_id سبق إصداره، لا يحاول broker إيقاف ذلك runtime مرة أخرى لأنه قد يكون مملوكًا لتشغيل آخر. يجب على provider فرض uniqueness عالميًا عبر جميع worker processes.
