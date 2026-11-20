@@ -191,7 +191,7 @@ class OpenCodeLifecycleStore:
     ) -> bool:
         _uuid(user_id, "opencode_task_identity_invalid")
         _uuid(approval_id, "opencode_approval_identity_invalid")
-        if decision not in {"once", "always", "reject"}:
+        if decision not in {"once", "reject"}:
             raise ValueError("opencode_approval_decision_invalid")
         row = self._client.table("opencode_approvals").select(
             "id,run_id,session_id,upstream_permission_id,status"
@@ -211,7 +211,7 @@ class OpenCodeLifecycleStore:
                 "status": "pending",
             }).eq("id", approval_id).eq("user_id", user_id).eq("status", "processing").execute()
             raise
-        status = {"once": "approved_once", "always": "approved_always", "reject": "rejected"}[decision]
+        status = {"once": "approved_once", "reject": "rejected"}[decision]
         updated = self._client.table("opencode_approvals").update({
             "status": status, "decided_at": datetime.now(timezone.utc).isoformat(),
         }).eq("id", approval_id).eq("user_id", user_id).eq("status", "processing").execute().data
