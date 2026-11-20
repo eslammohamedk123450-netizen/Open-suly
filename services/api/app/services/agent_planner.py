@@ -6,6 +6,8 @@ an explicitly requested operation that the worker runtime can execute.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+import re
 from typing import Any
 
 
@@ -19,7 +21,7 @@ class UnsupportedTaskRequest(ValueError):
     pass
 
 
-_STEP_KEY = __import__("re").compile(r"^[a-z][a-z0-9_-]{1,63}$")
+_STEP_KEY = re.compile(r"^[a-z][a-z0-9_-]{1,63}$")
 
 
 def validate_agent_plan(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -33,6 +35,8 @@ def validate_agent_plan(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for step in steps:
         if not isinstance(step, dict):
             raise UnsupportedTaskRequest("Agent plan step must be an object.")
+        if set(step) - {"step_key", "title", "description", "depends_on", "input"}:
+            raise UnsupportedTaskRequest("Agent plan step contains unsupported fields.")
         key = step.get("step_key")
         title = step.get("title")
         description = step.get("description", "")
@@ -60,7 +64,6 @@ def validate_agent_plan(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if unexpected or tool.required_input_fields - set(payload):
             raise UnsupportedTaskRequest("Agent plan input fields violate the tool contract.")
         try:
-            import json
             encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
         except (TypeError, ValueError) as exc:
             raise UnsupportedTaskRequest("Agent plan input is not valid JSON.") from exc
