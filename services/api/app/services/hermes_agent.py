@@ -31,7 +31,6 @@ class HermesAgentCancelled(RuntimeError):
 
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled", "interrupted"})
 _MAX_PROMPT_CHARS = 20_000
-_MAX_RUN_ID_CHARS = 128
 _RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 
