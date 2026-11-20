@@ -10,7 +10,7 @@ from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.config import get_settings
 from app.core.supabase import get_supabase_admin_client
 from app.services.agent_planner import UnsupportedTaskRequest, plan_request, validate_agent_plan
-from app.services.hermes_agent import HermesAgentError, HermesAgentUnavailable, steer_agent_run
+from app.services.hermes_agent import HermesAgentError, HermesAgentUnavailable, resolve_agent_approval, steer_agent_run
 
 router = APIRouter(prefix="/v1/tasks", tags=["tasks"])
 logger = logging.getLogger("suly.api.tasks")
@@ -36,6 +36,11 @@ class CreateTaskPlanRequest(BaseModel):
 
 class SteerEngineRunRequest(BaseModel):
     input: str = Field(min_length=1, max_length=20000)
+
+
+class ResolveEngineApprovalRequest(BaseModel):
+    request_id: str = Field(min_length=1, max_length=256, pattern=r"^[A-Za-z0-9_.:@-]+$")
+    choice: str = Field(pattern=r"^(once|deny)$")
 
 
 def _admin_client():
@@ -377,6 +382,131 @@ def steer_task_engine_run(
         if "task_not_found" in str(exc):
             raise HTTPException(status_code=404, detail="Task not found.") from exc
         raise HTTPException(status_code=503, detail="Could not steer the engine run.") from exc
+
+
+@router.post("/{task_id}/engine-runs/{run_id}/approvals")
+def resolve_task_engine_approval(
+    task_id: UUID,
+    run_id: UUID,
+    request: ResolveEngineApprovalRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Resolve one exact pending Hermes approval; SULY exposes once/deny only."""
+    client = _admin_client()
+    try:
+        with client:
+            task = _owned_task(client, task_id, user.id)
+            if task.get("status") != "running":
+                raise HTTPException(status_code=409, detail="Only a running task can receive an approval response.")
+
+            runs = (
+                client.table("engine_runs")
+                .select("id,step_id,engine_id,status,upstream_run_id")
+                .eq("id", str(run_id))
+                .eq("task_id", str(task_id))
+                .eq("user_id", user.id)
+                .limit(1)
+                .execute()
+                .data
+            )
+            if not runs:
+                raise HTTPException(status_code=404, detail="Engine run not found.")
+            engine_run = runs[0]
+            upstream_run_id = engine_run.get("upstream_run_id")
+            if (
+                engine_run.get("engine_id") != "hermes-agent"
+                or engine_run.get("status") != "running"
+                or not isinstance(upstream_run_id, str)
+            ):
+                raise HTTPException(status_code=409, detail="This Hermes run is not active.")
+
+            request_events = (
+                client.table("engine_run_events")
+                .select("id,approval_request_id")
+                .eq("engine_run_id", str(run_id))
+                .eq("event_name", "approval.request")
+                .eq("approval_request_id", request.request_id)
+                .limit(1)
+                .execute()
+                .data
+            )
+            if not request_events:
+                raise HTTPException(status_code=404, detail="Pending approval request not found.")
+
+            prior_responses = (
+                client.table("engine_run_events")
+                .select("id")
+                .eq("engine_run_id", str(run_id))
+                .eq("event_name", "approval.responded")
+                .eq("approval_request_id", request.request_id)
+                .limit(1)
+                .execute()
+                .data
+            )
+            if prior_responses:
+                raise HTTPException(status_code=409, detail="This approval request has already been answered.")
+
+            settings = get_settings()
+            if (
+                not settings.worker_enabled
+                or not settings.hermes_agent_enabled
+                or not settings.hermes_agent_isolation_confirmed
+                or not settings.hermes_agent_base_url
+                or settings.hermes_agent_api_key is None
+            ):
+                raise HTTPException(status_code=503, detail="Hermes approvals are not available.")
+
+            steps = (
+                client.table("task_steps")
+                .select("id,lease_token,status")
+                .eq("id", str(engine_run["step_id"]))
+                .eq("task_id", str(task_id))
+                .eq("user_id", user.id)
+                .limit(1)
+                .execute()
+                .data
+            )
+            if not steps or steps[0].get("status") != "running" or not steps[0].get("lease_token"):
+                raise HTTPException(status_code=409, detail="The task worker no longer owns this run.")
+
+            try:
+                resolve_agent_approval(upstream_run_id, request.request_id, request.choice)
+            except HermesAgentUnavailable as exc:
+                raise HTTPException(status_code=503, detail="Hermes approvals are unavailable.") from exc
+            except HermesAgentError as exc:
+                raise HTTPException(status_code=409, detail="Hermes could not resolve this approval request.") from exc
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail="The approval response is invalid.") from exc
+
+            try:
+                persisted = client.rpc("append_engine_run_event", {
+                    "p_run_id": str(run_id),
+                    "p_step_id": str(engine_run["step_id"]),
+                    "p_lease_token": str(steps[0]["lease_token"]),
+                    "p_event_name": "approval.responded",
+                    "p_event_seq": None,
+                    "p_event_timestamp": None,
+                    "p_approval_request_id": request.request_id,
+                    "p_approval_choice": request.choice,
+                }).execute().data
+                if persisted is not True:
+                    logger.warning("Hermes approval was resolved after task lease loss for engine run %s", run_id)
+            except Exception:
+                logger.warning("Could not persist Hermes approval metadata for engine run %s", run_id)
+
+        return {
+            "task_id": str(task_id),
+            "engine_run_id": str(run_id),
+            "request_id": request.request_id,
+            "choice": request.choice,
+            "accepted": True,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        if "task_not_found" in str(exc):
+            raise HTTPException(status_code=404, detail="Task not found.") from exc
+        raise HTTPException(status_code=503, detail="Could not resolve the engine approval.") from exc
 
 
 @router.post("/{task_id}/retry")
