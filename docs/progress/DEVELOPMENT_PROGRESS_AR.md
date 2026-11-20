@@ -412,3 +412,12 @@ undefined
 - GitHub Platform CI على commit 06c46b4d: اختبارات API نجحت، 427 passed و2 warnings. فحص Client typecheck/Expo compatibility/Web export كان ما زال جاريًا وقت التحقق.
 - ملاحظة: run سابق على commit 17889cf7 فشل بسبب اختبارات قديمة كانت تتوقع الاحتفاظ بحدث approval ناقص؛ تم تحديث الاختبارات لتتوافق مع fail-closed behavior، ثم نجح API CI على 06c46b4d.
 - لا توجد موافقات Hermes حية أو runtime مفعّل؛ هذه اختبارات وحدات/API mock.
+
+
+## تشديد أخير لسياسات التصفح والموافقات — 2026-11-20
+
+- BrowserNetworkPolicy يرفض الآن أيضًا صيغ IPv4 القديمة مثل 127.1 والأعداد الصحيحة/hex التي قد تتجاوز فحص IP التقليدي، كما تم تصحيح التعامل مع المنفذ الصريح 0 حتى لا يُعامل كمنفذ HTTPS افتراضي.
+- Hermes SSE أصبح يسقط حدث approval.responded بالكامل إذا كان request_id أو choice غير صالح؛ لا يسمح بحدث جزئي قد يُفسر كطلب معلق. تم تحديث الاختبارات لتتوافق مع fail-closed behavior.
+- مسارات عرض تفاصيل الموافقة وحلها تتحقق من lease ما زال حيًا قبل إظهار command أو إرسال القرار؛ تم إضافة no-store headers لرد تفاصيل الموافقة.
+- API tests على commit 06c46b4d نجحت: **427 passed, 2 warnings**. TypeScript typecheck وExpo compatibility نجحا، وكان Web export قيد التنفيذ عند آخر فحص. تغييرات المنفذ 0 واختباره على HEAD a858ea69 تنتظر CI.
+- ما زال Browser Use مجرد policy helper بلا egress proxy أو runtime provider، وOpenCode بلا adapter/runtime. لا توجد محركات مفعلة أو migrations مطبقة أو deployment حي.
