@@ -356,3 +356,118 @@ def test_auto_plan_refuses_general_agent_without_isolation(monkeypatch):
 
     assert response.status_code == 422
     assert admin.rpc_calls == []
+
+
+
+class _SteerQuery:
+    def __init__(self, rows):
+        self.rows = rows
+    def select(self, *_args): return self
+    def eq(self, key, value):
+        self.rows = [row for row in self.rows if row.get(key) == value]
+        return self
+    def limit(self, count):
+        self.rows = self.rows[:count]
+        return self
+    def execute(self): return SimpleNamespace(data=self.rows)
+
+
+class _SteerAdmin:
+    def __init__(self):
+        self.tables = {
+            "tasks": [{
+                "id": "00000000-0000-0000-0000-000000000001",
+                "user_id": "test-user",
+                "status": "running",
+            }],
+            "engine_runs": [{
+                "id": "00000000-0000-0000-0000-000000000099",
+                "task_id": "00000000-0000-0000-0000-000000000001",
+                "user_id": "test-user",
+                "step_id": "00000000-0000-0000-0000-000000000002",
+                "engine_id": "hermes-agent",
+                "status": "running",
+                "upstream_run_id": "run_native_123",
+            }],
+            "task_steps": [{
+                "id": "00000000-0000-0000-0000-000000000002",
+                "task_id": "00000000-0000-0000-0000-000000000001",
+                "user_id": "test-user",
+                "status": "running",
+                "lease_token": "00000000-0000-0000-0000-000000000004",
+            }],
+        }
+        self.rpc_calls = []
+    def __enter__(self): return self
+    def __exit__(self, *_args): return False
+    def table(self, name): return _SteerQuery(self.tables[name])
+    def rpc(self, name, args):
+        self.rpc_calls.append((name, args))
+        return SimpleNamespace(execute=lambda: SimpleNamespace(data=True))
+
+
+def test_task_owner_can_steer_only_their_active_hermes_run(monkeypatch):
+    from types import SimpleNamespace
+
+    admin = _SteerAdmin()
+    steered = []
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    monkeypatch.setattr(tasks_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
+        hermes_agent_enabled=True,
+        hermes_agent_isolation_confirmed=True,
+        hermes_agent_base_url="http://hermes:8642",
+        hermes_agent_api_key=object(),
+    ))
+    monkeypatch.setattr(
+        tasks_module, "steer_agent_run",
+        lambda upstream_id, text: steered.append((upstream_id, text)) or True,
+    )
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    try:
+        response = client.post(
+            "/v1/tasks/00000000-0000-0000-0000-000000000001/engine-runs/00000000-0000-0000-0000-000000000099/steer",
+            json={"input": "Continue with the next safe step"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["accepted"] is True
+    assert steered == [("run_native_123", "Continue with the next safe step")]
+    assert admin.rpc_calls == [("append_engine_run_event", {
+        "p_run_id": "00000000-0000-0000-0000-000000000099",
+        "p_step_id": "00000000-0000-0000-0000-000000000002",
+        "p_lease_token": "00000000-0000-0000-0000-000000000004",
+        "p_event_name": "run.steered",
+        "p_event_seq": None,
+        "p_event_timestamp": None,
+    })]
+
+
+def test_task_steering_rejects_non_running_engine_before_upstream_call(monkeypatch):
+    from types import SimpleNamespace
+
+    admin = _SteerAdmin()
+    admin.tables["engine_runs"][0]["status"] = "succeeded"
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    monkeypatch.setattr(tasks_module, "steer_agent_run", lambda *_args: (_ for _ in ()).throw(
+        AssertionError("Upstream must not be called for a terminal run")
+    ))
+    monkeypatch.setattr(tasks_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
+        hermes_agent_enabled=True,
+        hermes_agent_isolation_confirmed=True,
+        hermes_agent_base_url="http://hermes:8642",
+        hermes_agent_api_key=object(),
+    ))
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    try:
+        response = client.post(
+            "/v1/tasks/00000000-0000-0000-0000-000000000001/engine-runs/00000000-0000-0000-0000-000000000099/steer",
+            json={"input": "Do not run"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 409
