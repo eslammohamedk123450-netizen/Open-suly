@@ -68,6 +68,8 @@ class ToolRegistry:
     ) -> dict[str, Any]:
         if not isinstance(step.input, dict):
             raise ValueError("invalid_tool_input: input must be an object")
+        if any(not isinstance(key, str) for key in step.input):
+            raise ValueError("invalid_tool_input: object keys must be strings")
         operation = step.input.get("operation")
         if not isinstance(operation, str):
             raise ValueError("unsupported_operation: operation must be a string")
@@ -80,7 +82,9 @@ class ToolRegistry:
         if tool.required_input_fields - set(step.input):
             raise ValueError("invalid_tool_input: required input field is missing")
         try:
-            encoded = json.dumps(step.input, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+            encoded = json.dumps(
+                step.input, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+            ).encode("utf-8")
         except (TypeError, ValueError) as exc:
             raise ValueError("invalid_tool_input: input must be JSON serializable") from exc
         if len(encoded) > tool.max_input_bytes:
