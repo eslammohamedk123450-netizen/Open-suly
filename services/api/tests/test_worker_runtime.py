@@ -219,7 +219,11 @@ def test_hermes_agent_task_calls_bridge_only_after_approval(monkeypatch):
     from types import SimpleNamespace
 
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
-        hermes_agent_enabled=True, hermes_agent_timeout_seconds=90.0,
+        hermes_agent_enabled=True,
+        hermes_agent_isolation_confirmed=True,
+        hermes_agent_base_url="http://hermes:8642",
+        hermes_agent_api_key=object(),
+        hermes_agent_timeout_seconds=90.0,
     ))
     monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: object())
     monkeypatch.setattr(runtime_module, "EngineRunStore", FakeEngineRunStore)
@@ -277,7 +281,11 @@ def test_hermes_operation_routes_through_registry_after_approval(monkeypatch):
             return frozenset({"agent.hermes.run"})
 
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
-        hermes_agent_enabled=True, hermes_agent_timeout_seconds=90.0,
+        hermes_agent_enabled=True,
+        hermes_agent_isolation_confirmed=True,
+        hermes_agent_base_url="http://hermes:8642",
+        hermes_agent_api_key=object(),
+        hermes_agent_timeout_seconds=90.0,
     ))
     monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: object())
     monkeypatch.setattr(runtime_module, "EngineRunStore", FakeEngineRunStore)
@@ -322,7 +330,11 @@ def test_cancel_aware_dispatch_passes_event_to_hermes_adapter(monkeypatch):
             return frozenset({"agent.hermes.run"})
 
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
-        hermes_agent_enabled=True, hermes_agent_timeout_seconds=90.0,
+        hermes_agent_enabled=True,
+        hermes_agent_isolation_confirmed=True,
+        hermes_agent_base_url="http://hermes:8642",
+        hermes_agent_api_key=object(),
+        hermes_agent_timeout_seconds=90.0,
     ))
     monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: object())
     monkeypatch.setattr(runtime_module, "EngineRunStore", FakeEngineRunStore)
@@ -352,7 +364,11 @@ def test_hermes_run_is_recorded_as_succeeded(monkeypatch):
 
     store = FakeEngineRunStore()
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
-        hermes_agent_enabled=True, hermes_agent_timeout_seconds=90.0,
+        hermes_agent_enabled=True,
+        hermes_agent_isolation_confirmed=True,
+        hermes_agent_base_url="http://hermes:8642",
+        hermes_agent_api_key=object(),
+        hermes_agent_timeout_seconds=90.0,
     ))
     monkeypatch.setattr(runtime_module, "run_agent_turn", lambda *_args, **_kwargs: {
         "engine": "hermes-agent", "content": "finished",
@@ -376,7 +392,11 @@ def test_hermes_run_records_failure_without_raw_error(monkeypatch):
 
     store = FakeEngineRunStore()
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
-        hermes_agent_enabled=True, hermes_agent_timeout_seconds=90.0,
+        hermes_agent_enabled=True,
+        hermes_agent_isolation_confirmed=True,
+        hermes_agent_base_url="http://hermes:8642",
+        hermes_agent_api_key=object(),
+        hermes_agent_timeout_seconds=90.0,
     ))
     monkeypatch.setattr(runtime_module, "run_agent_turn", lambda *_args, **_kwargs: (_ for _ in ()).throw(
         RuntimeError("sensitive prompt and upstream response")
@@ -398,7 +418,11 @@ def test_hermes_run_records_cooperative_cancellation(monkeypatch):
 
     store = FakeEngineRunStore()
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
-        hermes_agent_enabled=True, hermes_agent_timeout_seconds=90.0,
+        hermes_agent_enabled=True,
+        hermes_agent_isolation_confirmed=True,
+        hermes_agent_base_url="http://hermes:8642",
+        hermes_agent_api_key=object(),
+        hermes_agent_timeout_seconds=90.0,
     ))
     monkeypatch.setattr(runtime_module, "run_agent_turn", lambda *_args, **_kwargs: (_ for _ in ()).throw(
         HermesAgentCancelled("cancelled")
@@ -474,7 +498,11 @@ def test_hermes_execution_is_routed_through_agent_manager(monkeypatch):
             return Route()
 
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
-        hermes_agent_enabled=True, hermes_agent_timeout_seconds=90.0,
+        hermes_agent_enabled=True,
+        hermes_agent_isolation_confirmed=True,
+        hermes_agent_base_url="http://hermes:8642",
+        hermes_agent_api_key=object(),
+        hermes_agent_timeout_seconds=90.0,
     ))
     monkeypatch.setattr(runtime_module, "build_agent_manager", lambda _registry: Manager())
     monkeypatch.setattr(runtime_module, "run_agent_turn", lambda *_args, **_kwargs: {
