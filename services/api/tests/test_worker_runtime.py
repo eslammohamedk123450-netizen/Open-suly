@@ -360,6 +360,8 @@ def test_hermes_run_is_recorded_as_succeeded(monkeypatch):
     assert store.events[0][0] == "start"
     assert store.events[1][0] == "finish"
     assert store.events[1][3] == "succeeded"
+    assert store.events[0][2] == "hermes-agent"
+    assert store.events[1][1] == store.events[0][1]
 
 
 def test_hermes_run_records_failure_without_raw_error(monkeypatch):
