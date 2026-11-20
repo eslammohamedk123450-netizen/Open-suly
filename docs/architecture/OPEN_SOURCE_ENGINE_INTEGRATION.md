@@ -134,3 +134,22 @@ Every integration batch must list:
 4. Files changed and adapters implemented.
 5. Tests run with exact results, including security/cancellation cases.
 6. What is genuinely operational versus still disabled or blocked.
+
+
+## Hermes integration implementation status — 2026-11-20
+
+### Added to SULY main
+- Upstream Hermes source is pinned for reproducible remote Docker builds at `NousResearch/hermes-agent@9f47677483d1b4de4d1a88d37b3b7ca18b18b215`.
+- The upstream MIT license applies at the inspected revision; its upstream Dockerfile is used rather than copying source into the FastAPI environment.
+- `engines/hermes/compose.yaml` defines a separate, opt-in container profile with a persistent Hermes data volume and no published host port.
+- Hermes API server is disabled by default. Its API exposes the complete Hermes toolset, including terminal execution; it must not be enabled until sandbox and tool policy are independently reviewed.
+- `services/api/app/services/hermes_agent.py` adds a narrow, disabled-by-default HTTP bridge using the documented OpenAI-compatible Chat Completions API. It bounds prompts, timeouts, and output and redacts upstream errors.
+- `services/api/app/core/config.py` adds server-only Hermes settings. No API key, provider key, or Supabase secret is committed or passed to Hermes.
+- `services/api/tests/test_hermes_agent.py` covers disabled mode, missing config, request shape, prompt bounds, output bounds, and error redaction.
+
+### Deliberately not enabled yet
+- The Hermes bridge is not registered in the task tool registry and cannot be invoked by user tasks yet.
+- The current bridge is synchronous chat-completions; it does not yet bind Hermes run IDs to SULY cancellation/lease-loss events. Registering it as a task tool before that lifecycle bridge exists could leave orphaned agent runs.
+- The Hermes container has not been built or started in this environment.
+- No provider/model has been configured; no real inference or agent tool execution has been tested.
+- API server activation is blocked until terminal/browser/filesystem tool policy, container resource limits, network egress policy, and cancellation propagation are verified.
