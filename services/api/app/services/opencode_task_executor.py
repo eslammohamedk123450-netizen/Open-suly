@@ -6,6 +6,8 @@ canonical project files automatically.
 from __future__ import annotations
 
 from typing import Any
+from threading import Event, Thread
+import logging
 from difflib import unified_diff
 import hashlib
 
@@ -13,6 +15,10 @@ from app.services.opencode_session_store import OpenCodeSessionStore
 from app.services.project_workspace_store import ProjectWorkspaceStore
 from app.services.runtime_broker_contract import TaskScopedRuntimeBroker
 from app.services.opencode_lifecycle_store import OpenCodeLifecycleStore
+from app.services.opencode_event_consumer import OpenCodeEventConsumer
+
+
+logger = logging.getLogger("suly.opencode.executor")
 
 
 class OpenCodeTaskExecutor:
@@ -23,11 +29,15 @@ class OpenCodeTaskExecutor:
         session_store: OpenCodeSessionStore,
         runtime_broker: TaskScopedRuntimeBroker,
         lifecycle_store: OpenCodeLifecycleStore | None = None,
+        event_consumer: OpenCodeEventConsumer | None = None,
     ) -> None:
         self._workspace = workspace_store
         self._sessions = session_store
         self._broker = runtime_broker
         self._lifecycle = lifecycle_store
+        self._event_consumer = event_consumer or (
+            OpenCodeEventConsumer(store=lifecycle_store) if lifecycle_store is not None else None
+        )
 
     def execute(
         self,
@@ -53,6 +63,8 @@ class OpenCodeTaskExecutor:
                 event_type="task.started", payload={"task_id": task_id},
             )
         session_holder: dict[str, Any] = {}
+        event_stop = Event()
+        event_thread: Thread | None = None
 
         def persist_runtime_lease(lease) -> None:
             if lifecycle_run is None:
@@ -68,6 +80,7 @@ class OpenCodeTaskExecutor:
                 raise RuntimeError("opencode_runtime_persistence_failed")
 
         def persist_upstream_session(lease, session_id: str) -> None:
+            nonlocal event_thread
             if lifecycle_run is not None:
                 persisted = self._lifecycle.set_runtime(
                     user_id=user_id,
@@ -87,6 +100,32 @@ class OpenCodeTaskExecutor:
                 engine_run_id=engine_run_id,
                 workspace_revision=snapshot["revision"],
             )
+            if lifecycle_run is not None and self._event_consumer is not None:
+                def consume_events() -> None:
+                    try:
+                        self._event_consumer.consume(
+                            user_id=user_id,
+                            run_id=lifecycle_run["id"],
+                            session_id=session_id,
+                            base_url=lease.base_url,
+                            gateway_path=lease.gateway_path,
+                            runtime_token=lease.access_token,
+                            sequence_start=10,
+                            max_events=500,
+                            max_seconds=1800,
+                            stop_event=event_stop,
+                        )
+                    except Exception:
+                        logger.warning(
+                            "OpenCode event stream stopped for run %s",
+                            lifecycle_run["id"],
+                        )
+                event_thread = Thread(
+                    target=consume_events,
+                    name=f"suly-opencode-events-{lifecycle_run['id']}",
+                    daemon=True,
+                )
+                event_thread.start()
 
         try:
             result = self._broker.run_task(
@@ -105,6 +144,9 @@ class OpenCodeTaskExecutor:
                 raise RuntimeError("opencode_execution_result_invalid")
             if not isinstance(results, dict) or not isinstance(results.get("changed_files"), list):
                 raise RuntimeError("opencode_workspace_result_invalid")
+            event_stop.set()
+            if event_thread is not None:
+                event_thread.join(timeout=3.0)
             if session_holder and session_holder["session"].get("upstream_session_id") != execution["session_id"]:
                 raise RuntimeError("opencode_session_identity_mismatch")
             if not session_holder:
@@ -126,6 +168,9 @@ class OpenCodeTaskExecutor:
                     workspace_revision=snapshot["revision"],
                 )
         except Exception:
+            event_stop.set()
+            if event_thread is not None:
+                event_thread.join(timeout=1.0)
             self._broker.release_attempt(task_id, engine_run_id, "opencode")
             if lifecycle_run is not None:
                 self._lifecycle.update_status(
