@@ -112,7 +112,11 @@ class EngineRunStore:
             if approval_request_id is None or approval_choice is not None:
                 raise ValueError("invalid_engine_run_approval_metadata")
         elif event_name == "approval.responded":
-            if approval_request_id is None or approval_choice not in {"once", "deny"}:
+            if (
+                approval_request_id is None
+                or not isinstance(approval_choice, str)
+                or approval_choice not in {"once", "deny"}
+            ):
                 raise ValueError("invalid_engine_run_approval_metadata")
         elif approval_request_id is not None or approval_choice is not None:
             raise ValueError("invalid_engine_run_approval_metadata")
