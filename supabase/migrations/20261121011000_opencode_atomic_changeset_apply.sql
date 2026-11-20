@@ -136,6 +136,26 @@ begin
   set status = 'applied', decided_at = now()
   where id = v_set.id and user_id = p_user_id and status = 'applying';
 
+  perform 1 from public.opencode_task_runs
+  where id = v_set.run_id and user_id = p_user_id
+  for update;
+
+  update public.opencode_task_runs
+  set status = 'completed', finished_at = now(), updated_at = now()
+  where id = v_set.run_id and user_id = p_user_id
+    and status in ('review_ready', 'applying');
+  get diagnostics v_rows = row_count;
+  if v_rows <> 1 then
+    raise exception 'opencode_task_state_conflict';
+  end if;
+
+  insert into public.opencode_task_events(run_id, user_id, sequence, event_type, payload)
+  select v_set.run_id, p_user_id, coalesce(max(sequence), 0) + 1,
+         'changes.approved',
+         jsonb_build_object('change_set_id', v_set.id)
+  from public.opencode_task_events
+  where run_id = v_set.run_id;
+
   return jsonb_build_object('applied', true, 'change_set_id', v_set.id);
 end;
 $$;
