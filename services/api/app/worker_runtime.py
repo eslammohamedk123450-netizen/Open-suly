@@ -119,7 +119,6 @@ def build_engine_registry(
 
 def build_agent_manager(engines: EngineRegistry) -> AgentManager:
     """Build SULY's role catalog; only the configured Hermes general role can be enabled."""
-    settings = get_settings()
     return AgentManager(
         engines,
         [
