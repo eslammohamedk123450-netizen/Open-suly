@@ -73,7 +73,7 @@ def test_run_once_records_handler_failure():
     assert client.calls[2][0] == "fail_task_step"
     assert client.calls[2][1]["p_error_code"] == "tool_execution_failed"
     assert client.calls[2][1]["p_error_message"] == (
-        "Step execution failed. Sensitive diagnostic details were not stored."
+        "Step execution failed. Sensitive diagnostic details were not stored"
     )
 
 
