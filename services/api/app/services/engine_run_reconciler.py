@@ -6,9 +6,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import logging
 
 from app.services.engine_run_store import EngineRunStore
 
+
+logger = logging.getLogger(__name__)
 
 StopHandler = Callable[[str], bool]
 
@@ -35,6 +38,13 @@ class EngineRunReconciler:
 
     def run_once(self) -> int:
         """Return the number of external stops confirmed in this bounded batch."""
+        # راقب نافذة الانقطاع النادرة بين إنشاء التشغيل الخارجي وحفظ معرفه في SULY.
+        missing_identity_count = self._store.count_missing_upstream_identity(30)
+        if missing_identity_count:
+            logger.error(
+                "External engine runs are stop_pending without an upstream identity: %s",
+                missing_identity_count,
+            )
         # أولاً نحول أي run انتهى lease مالكه إلى stop_pending، ثم نحجزه للإيقاف.
         self._store.reconcile_orphans(self._batch_size)
         claims = self._store.claim_pending_stops(
