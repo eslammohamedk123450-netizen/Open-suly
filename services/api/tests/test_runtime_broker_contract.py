@@ -133,6 +133,54 @@ def test_runtime_broker_releases_invalid_provider_lease():
     assert provider.released == [lease.runtime_id]
 
 
+def test_runtime_lease_rejects_http_even_when_host_is_allowlisted():
+    lease = make_lease(base_url="http://opencode-runtime.internal")
+    with pytest.raises(ValueError, match="base_url"):
+        lease.validate(
+            task_id=TASK_ID,
+            engine_run_id=RUN_ID,
+            engine_id=ENGINE_ID,
+            allowed_hosts=HOSTS,
+            now=1_900_000_000.0,
+        )
+
+
+def test_runtime_lease_rejects_ip_literal_even_if_allowlisted():
+    lease = make_lease(base_url="https://169.254.169.254")
+    with pytest.raises(ValueError, match="ip_literal"):
+        lease.validate(
+            task_id=TASK_ID,
+            engine_run_id=RUN_ID,
+            engine_id=ENGINE_ID,
+            allowed_hosts=frozenset({"169.254.169.254"}),
+            now=1_900_000_000.0,
+        )
+
+
+def test_runtime_lease_requires_exact_host_not_an_allowlisted_parent_domain():
+    lease = make_lease(base_url="https://other.opencode-runtime.internal")
+    with pytest.raises(ValueError, match="host_not_allowlisted"):
+        lease.validate(
+            task_id=TASK_ID,
+            engine_run_id=RUN_ID,
+            engine_id=ENGINE_ID,
+            allowed_hosts=frozenset({"opencode-runtime.internal"}),
+            now=1_900_000_000.0,
+        )
+
+
+def test_runtime_lease_rejects_oversized_access_token():
+    lease = make_lease(access_token="x" * 513)
+    with pytest.raises(ValueError, match="credential"):
+        lease.validate(
+            task_id=TASK_ID,
+            engine_run_id=RUN_ID,
+            engine_id=ENGINE_ID,
+            allowed_hosts=HOSTS,
+            now=1_900_000_000.0,
+        )
+
+
 def test_runtime_broker_requires_explicit_host_allowlist():
     with pytest.raises(ValueError, match="allowed_hosts"):
         TaskScopedRuntimeBroker(FakeProvider(make_lease()), allowed_origins=frozenset())
