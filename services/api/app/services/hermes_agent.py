@@ -51,16 +51,20 @@ def _safe_run_event(payload: object, expected_run_id: str) -> dict[str, str | in
     if not isinstance(name, str) or name not in _SSE_EVENT_NAMES:
         return None
     summary: dict[str, str | int | float] = {"event": name}
-    if name == "approval.request":
+    if name in {"approval.request", "approval.responded"}:
         request_id = payload.get("request_id")
-        if isinstance(request_id, str) and 1 <= len(request_id) <= 256 and request_id.isascii() and all(ch.isalnum() or ch in "_-.:@" for ch in request_id):
-            summary["approval_request_id"] = request_id
-    elif name == "approval.responded":
-        request_id = payload.get("request_id")
-        choice = payload.get("choice")
-        if isinstance(request_id, str) and 1 <= len(request_id) <= 256 and request_id.isascii() and all(ch.isalnum() or ch in "_-.:@" for ch in request_id):
-            summary["approval_request_id"] = request_id
-        if isinstance(choice, str) and choice in {"once", "deny"}:
+        if not (
+            isinstance(request_id, str)
+            and 1 <= len(request_id) <= 256
+            and request_id.isascii()
+            and all(ch.isalnum() or ch in "_-.:@" for ch in request_id)
+        ):
+            return None
+        summary["approval_request_id"] = request_id
+        if name == "approval.responded":
+            choice = payload.get("choice")
+            if not isinstance(choice, str) or choice not in {"once", "deny"}:
+                return None
             summary["approval_choice"] = choice
     seq = payload.get("seq")
     if isinstance(seq, int) and not isinstance(seq, bool) and seq >= 0:
