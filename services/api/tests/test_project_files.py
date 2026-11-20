@@ -84,18 +84,72 @@ def test_project_file_history_path_rejects_traversal_before_database(monkeypatch
 
 
 
-def test_project_file_save_requires_version_for_existing_file(monkeypatch):
+
+class _FakeQuery:
+    def __init__(self, table_name, project_id):
+        self.table_name = table_name
+        self.project_id = project_id
+        self.action = "select"
+        self.filters = {}
+
+    def select(self, *_args):
+        return self
+
+    def eq(self, key, value):
+        self.filters[key] = value
+        return self
+
+    def limit(self, *_args):
+        return self
+
+    def update(self, _values):
+        self.action = "update"
+        return self
+
+    def insert(self, _values):
+        self.action = "insert"
+        return self
+
+    def execute(self):
+        if self.table_name == "projects":
+            return type("Result", (), {"data": [{"id": self.project_id}]})()
+        if self.table_name == "project_files" and self.action == "select":
+            return type("Result", (), {"data": [{
+                "id": "00000000-0000-0000-0000-000000000003",
+                "updated_at": "2026-11-20T10:00:00+00:00",
+            }]})()
+        if self.table_name == "project_files" and self.action == "update":
+            # Simulate compare-and-swap: no row matches the stale timestamp.
+            return type("Result", (), {"data": []})()
+        raise AssertionError(f"Unexpected query: {self.table_name}/{self.action}")
+
+
+class _FakeAdminClient:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def table(self, name):
+        return _FakeQuery(name, PROJECT_ID)
+
+
+def test_project_file_stale_save_returns_conflict(monkeypatch):
     app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="user-a", email=None)
+    monkeypatch.setattr(files_module, "get_supabase_admin_client", _FakeAdminClient)
     try:
         response = client.put(
             f"/v1/projects/{PROJECT_ID}/file?path=src/main.py",
-            json={"content": "print(2)"},
+            json={
+                "content": "print('new')",
+                "expected_updated_at": "2026-11-20T09:00:00+00:00",
+            },
         )
     finally:
         app.dependency_overrides.clear()
-    # The database is intentionally not configured in this test; request validation
-    # and authentication are exercised in the dedicated API integration suite.
-    assert response.status_code in (503, 428)
+    assert response.status_code == 409
+    assert "changed elsewhere" in response.json()["detail"]
 
 
 def test_project_file_restore_requires_expected_version():
