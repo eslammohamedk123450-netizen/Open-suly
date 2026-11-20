@@ -7,7 +7,7 @@ from uuid import UUID
 
 import pytest
 
-from app.services.task_worker import TaskWorker
+from app.services.task_worker import ClaimedStep, TaskWorker
 
 
 STEP = {
@@ -229,9 +229,7 @@ def test_claim_rejects_input_over_64_kibibytes():
 def test_complete_rejects_invalid_or_oversized_outputs_without_rpc(bad_output):
     client = FakeRpc([])
     worker = TaskWorker(client, "worker-invalid-output")
-    step = worker.claim if False else None
     # Construct a typed claim without requiring a network/RPC claim.
-    from app.services.task_worker import ClaimedStep
     claimed = ClaimedStep(
         step_id=UUID(STEP["step_id"]),
         task_id=UUID(STEP["task_id"]),
@@ -261,7 +259,6 @@ def test_lease_renewal_requires_literal_boolean_true(rpc_value):
 
 @pytest.mark.parametrize("rpc_value", ["true", 1, {"ok": True}, False, None])
 def test_completion_requires_literal_boolean_true(rpc_value):
-    from app.services.task_worker import ClaimedStep
     client = FakeRpc([rpc_value])
     worker = TaskWorker(client, "worker-strict-complete")
     claimed = ClaimedStep(
