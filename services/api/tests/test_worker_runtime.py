@@ -209,6 +209,9 @@ class FakeEngineRunStore:
     def attach_upstream_run_id(self, run_id, step, upstream_run_id):
         self.events.append(("attach", run_id, step.step_id, upstream_run_id))
         return True
+    def append_event(self, run_id, step, event):
+        self.events.append(("event", run_id, step.step_id, dict(event)))
+        return True
     def finish(self, run_id, step, status, error_code=None):
         self.events.append(("finish", run_id, step.step_id, status, error_code))
         return True
@@ -652,3 +655,110 @@ def test_hermes_adapter_forwards_metadata_event_callback(monkeypatch):
     ))
     assert result.output["content"] == "safe result"
     assert received["on_event"] is callback
+
+
+
+def test_hermes_agent_turn_persists_metadata_events_and_never_logs_payload(monkeypatch, caplog):
+    import logging
+    import app.worker_runtime as runtime_module
+    from types import SimpleNamespace
+    from app.services.engine_contract import EngineResult
+    from app.services.tool_registry import ToolExecutionContext
+
+    store = FakeEngineRunStore()
+    callbacks = {}
+
+    class Registry:
+        def execute(self, _engine_id, _request):
+            callbacks["on_event"]({
+                "event": "tool.started",
+                "seq": 7,
+                "command": "sensitive command must not be stored",
+            })
+            return EngineResult(engine_id="hermes-agent", output={
+                "engine": "hermes-agent",
+                "content": "safe output",
+            })
+
+    class Manager:
+        def route(self, *_args):
+            return SimpleNamespace(engines=[SimpleNamespace(engine_id="hermes-agent")])
+
+    def registry_factory(*_args, **kwargs):
+        callbacks["on_event"] = kwargs["on_event"]
+        return Registry()
+
+    monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
+        hermes_agent_enabled=True,
+        hermes_agent_isolation_confirmed=True,
+        hermes_agent_base_url="http://hermes:8642",
+        hermes_agent_api_key=object(),
+        hermes_agent_timeout_seconds=90.0,
+    ))
+    monkeypatch.setattr(runtime_module, "build_engine_registry", registry_factory)
+    monkeypatch.setattr(runtime_module, "build_agent_manager", lambda _registry: Manager())
+    caplog.set_level(logging.WARNING, logger="suly.worker")
+
+    result = runtime_module.hermes_agent_turn(
+        make_step({"operation": "hermes.agent.turn", "prompt": "safe"}),
+        ToolExecutionContext(engine_run_store=store),
+    )
+
+    assert result["content"] == "safe output"
+    saved = [entry for entry in store.events if entry[0] == "event"]
+    assert len(saved) == 1
+    assert saved[0][3] == {"event": "tool.started", "seq": 7, "command": "sensitive command must not be stored"}
+    assert "sensitive command" not in caplog.text
+
+
+def test_hermes_agent_turn_logs_only_metadata_when_event_persistence_fails(monkeypatch, caplog):
+    import logging
+    import app.worker_runtime as runtime_module
+    from types import SimpleNamespace
+    from app.services.engine_contract import EngineResult
+    from app.services.tool_registry import ToolExecutionContext
+
+    class FailingStore(FakeEngineRunStore):
+        def append_event(self, *_args):
+            raise RuntimeError("secret database password must not be logged")
+
+    store = FailingStore()
+    callbacks = {}
+
+    class Registry:
+        def execute(self, _engine_id, _request):
+            callbacks["on_event"]({"event": "approval.request", "seq": 8})
+            return EngineResult(engine_id="hermes-agent", output={
+                "engine": "hermes-agent",
+                "content": "safe output",
+            })
+
+    class Manager:
+        def route(self, *_args):
+            return SimpleNamespace(engines=[SimpleNamespace(engine_id="hermes-agent")])
+
+    def registry_factory(*_args, **kwargs):
+        callbacks["on_event"] = kwargs["on_event"]
+        return Registry()
+
+    monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
+        hermes_agent_enabled=True,
+        hermes_agent_isolation_confirmed=True,
+        hermes_agent_base_url="http://hermes:8642",
+        hermes_agent_api_key=object(),
+        hermes_agent_timeout_seconds=90.0,
+    ))
+    monkeypatch.setattr(runtime_module, "build_engine_registry", registry_factory)
+    monkeypatch.setattr(runtime_module, "build_agent_manager", lambda _registry: Manager())
+    caplog.set_level(logging.WARNING, logger="suly.worker")
+
+    result = runtime_module.hermes_agent_turn(
+        make_step({"operation": "hermes.agent.turn", "prompt": "safe"}),
+        ToolExecutionContext(engine_run_store=store),
+    )
+    assert result["content"] == "safe output"
+    assert "persistence failed" in caplog.text
+    assert "approval.request" in caplog.text
+    assert "secret database password" not in caplog.text
