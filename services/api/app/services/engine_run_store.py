@@ -81,7 +81,7 @@ class EngineRunStore:
         لا يوقف هذا الإجراء عملية خارجية؛ إيقاف الـruntime مسؤولية reconciler
         منفصل يستخدم معرف التشغيل الخارجي بعد التحقق من سياسة العزل.
         """
-        if not isinstance(batch_size, int) or not 1 <= batch_size <= 500:
+        if isinstance(batch_size, bool) or not isinstance(batch_size, int) or not 1 <= batch_size <= 500:
             raise ValueError("invalid_reconciliation_batch_size")
         response = self._client.rpc(
             "reconcile_orphan_engine_runs",
