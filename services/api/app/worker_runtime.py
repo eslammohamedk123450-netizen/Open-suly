@@ -9,6 +9,7 @@ import asyncio
 import logging
 import os
 import signal
+from time import monotonic
 from threading import Event
 from typing import Any, Callable
 
@@ -18,8 +19,9 @@ from app.services.ai_gateway import generate_reply
 from app.services.engine_contract import EngineRequest, EngineResult
 from app.services.engine_registry import EngineDefinition, EngineRegistry
 from app.services.agent_manager import AgentDefinition, AgentManager
-from app.services.hermes_agent import HermesAgentCancelled, run_agent_turn
+from app.services.hermes_agent import HermesAgentCancelled, run_agent_turn, stop_agent_run
 from app.services.engine_run_store import EngineRunStore
+from app.services.engine_run_reconciler import EngineRunReconciler
 from app.services.task_worker import ClaimedStep, TaskWorker
 from app.services.tool_registry import ToolDefinition, ToolExecutionContext, ToolRegistry
 from app.services.tool_approvals import ToolApprovalStore
@@ -302,6 +304,8 @@ class WorkerRuntime:
         idle_backoff_max_seconds: float = 15.0,
         handler: Callable[[ClaimedStep], dict[str, Any]] = dispatch,
         cancel_aware_handler: Callable[[ClaimedStep, Event], dict[str, Any]] | None = None,
+        reconciler: EngineRunReconciler | None = None,
+        reconcile_interval_seconds: int = 30,
     ) -> None:
         if not 0.1 <= poll_interval_seconds <= 60:
             raise ValueError("poll interval must be between 0.1 and 60 seconds")
@@ -312,10 +316,24 @@ class WorkerRuntime:
         self.idle_backoff_max_seconds = idle_backoff_max_seconds
         self.handler = handler
         self.cancel_aware_handler = cancel_aware_handler
+        if not 10 <= reconcile_interval_seconds <= 600:
+            raise ValueError("reconcile interval must be between 10 and 600 seconds")
+        self.reconciler = reconciler
+        self.reconcile_interval_seconds = reconcile_interval_seconds
 
     def run(self, stop: Event) -> None:
         idle_delay = self.poll_interval_seconds
+        next_reconcile_at = monotonic()
         while not stop.is_set():
+            if self.reconciler is not None and monotonic() >= next_reconcile_at:
+                try:
+                    reconciled = self.reconciler.run_once()
+                    if reconciled:
+                        logger.info("Confirmed external engine stops: %s", reconciled)
+                except Exception:
+                    # لا نطبع تفاصيل استثناءات RPC أو المحرك في سجل التشغيل العام.
+                    logger.error("Engine stop reconciliation iteration failed")
+                next_reconcile_at = monotonic() + self.reconcile_interval_seconds
             try:
                 result = self.worker.run_once(
                     self.handler,
@@ -352,6 +370,16 @@ def main() -> None:
     logging.basicConfig(level=settings.log_level.upper())
     logger.info("Worker starting: %s", worker_id)
     approval_store = ToolApprovalStore(client)
+    reconciler = None
+    if (
+        settings.engine_reconciler_enabled
+        and settings.hermes_agent_enabled
+        and settings.hermes_agent_isolation_confirmed
+    ):
+        reconciler = EngineRunReconciler(
+            EngineRunStore(client),
+            stop_handlers={"hermes-agent": stop_agent_run},
+        )
     WorkerRuntime(
         worker,
         poll_interval_seconds=settings.worker_poll_interval_seconds,
@@ -359,6 +387,8 @@ def main() -> None:
         cancel_aware_handler=lambda step, cancel_event: dispatch_cancel_aware(
             step, cancel_event, approval_store
         ),
+        reconciler=reconciler,
+        reconcile_interval_seconds=settings.engine_reconciler_interval_seconds,
     ).run(stop)
     logger.info("Worker stopped")
 
