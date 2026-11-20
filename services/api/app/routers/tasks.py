@@ -256,7 +256,23 @@ def get_task(
                 .execute()
                 .data
             )
-        return {"task": task, "steps": steps or [], "engine_runs": engine_runs or []}
+            engine_events = (
+                client.table("engine_run_events")
+                .select("id,engine_run_id,task_id,event_name,event_seq,event_timestamp,received_at")
+                .eq("task_id", str(task_id))
+                .eq("user_id", user.id)
+                .order("received_at")
+                .order("id")
+                .limit(500)
+                .execute()
+                .data
+            )
+        return {
+            "task": task,
+            "steps": steps or [],
+            "engine_runs": engine_runs or [],
+            "engine_events": engine_events or [],
+        }
     except HTTPException:
         raise
     except Exception as exc:
