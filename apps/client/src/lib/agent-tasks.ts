@@ -12,6 +12,7 @@ export type AgentTask = {
   error_code?: string | null;
   error_message?: string | null;
   result?: Record<string, unknown>;
+  created_at?: string;
 };
 
 export type AgentTaskStep = {
@@ -129,6 +130,11 @@ export async function createAgentTask(
     body: JSON.stringify({ steps: [step] }),
   });
   return task;
+}
+
+export async function listAgentTasks(limit = 30): Promise<AgentTask[]> {
+  const payload = await request<{ items: AgentTask[] }>("/v1/tasks?limit=" + encodeURIComponent(String(limit)));
+  return payload.items ?? [];
 }
 
 export async function getAgentTask(taskId: string): Promise<AgentTaskSnapshot> {
