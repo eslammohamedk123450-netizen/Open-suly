@@ -93,11 +93,14 @@ def test_executor_persists_run_and_reviewable_change_set():
         user_id=user_id, project_id=project_id, task_id=task_id,
         engine_run_id=run_id, prompt="Change the file",
     )
-    assert result["task_run"]["status"] == "queued"
+    assert result["task_run"]["status"] == "review_ready"
     assert result["change_set"]["status"] == "review_ready"
     assert result["requires_review"] is True
     change_call = next(call for call in lifecycle.calls if call[0] == "change_set")
     assert change_call[1]["base_revision"] == "a" * 64
     assert change_call[1]["changes"][0]["action"] == "update"
-    assert change_call[1]["changes"][1] == {"action": "delete", "path": "old.py"}
+    assert change_call[1]["changes"][1]["action"] == "delete"
+    assert change_call[1]["changes"][1]["path"] == "old.py"
+    assert "--- a/src/main.py" in change_call[1]["changes"][0]["diff"]
+    assert "+++ b/src/main.py" in change_call[1]["changes"][0]["diff"]
     assert any(call[0] == "event" and call[1]["event_type"] == "changes.collected" for call in lifecycle.calls)
