@@ -10,6 +10,10 @@ Reuse complete, upstream-maintained systems where they provide a distinct capabi
 
 "Integrate the full system" means preserve the upstream engine's meaningful runtime, tools, and lifecycle in its own bounded component, not merely imitate a few features. It does not mean enabling every privileged capability by default.
 
+## Explicit product exclusions
+
+HIMS belongs to a discontinued legacy application and is not part of this SULY product. No engine, adapter, tool, workflow, database object, API route, UI surface, or roadmap item may depend on or integrate HIMS. Engine selection and integration must be driven only by SULY's current product requirements.
+
 ## Non-negotiable SULY control plane
 
 SULY remains authoritative for:
