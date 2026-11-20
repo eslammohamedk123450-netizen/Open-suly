@@ -1,0 +1,60 @@
+name: SULY Free Test Worker
+
+on:
+  schedule:
+    # GitHub may delay scheduled runs; this is best-effort queue polling.
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: suly-free-test-worker
+  cancel-in-progress: false
+
+jobs:
+  worker:
+    name: Process queued tasks for up to 3m 50s
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      WORKER_ENABLED: "true"
+      HERMES_AGENT_ENABLED: "false"
+      AI_PROVIDER: disabled
+      LOG_LEVEL: INFO
+      SULY_WORKER_ID: github-actions-free-test
+    steps:
+      - name: Checkout production branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          if [[ -z "$SUPABASE_URL" || -z "$SUPABASE_SECRET_KEY" ]]; then
+            echo "::error::Add SUPABASE_URL and SUPABASE_SECRET_KEY as GitHub Actions repository secrets."
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/api/requirements.txt
+
+      - name: Install API dependencies
+        run: python -m pip install -r services/api/requirements.txt
+
+      - name: Run bounded worker
+        working-directory: services/api
+        env:
+          PYTHONPATH: .
+        shell: bash
+        run: |
+          # TERM lets the worker stop cleanly before the hosted runner limit.
+          timeout --signal=TERM --kill-after=10s 230s python -m app.worker_runtime
