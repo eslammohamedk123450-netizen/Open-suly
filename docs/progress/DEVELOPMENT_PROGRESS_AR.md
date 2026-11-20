@@ -463,3 +463,13 @@ undefined
 - Repository baseline على commit 782e08a4 نجح أيضًا.
 - تعديلات إضافية بعد هذا التحقق على browser_network_policy.py واختباراته (commits b70ea81f وa4b584dc) قيد CI؛ لا ننسب إليها نتيجة 440 حتى يكتمل CI على أحدث HEAD.
 - Browser Use لا يزال disabled؛ لا يوجد browser process أو MCP server أو egress proxy فعلي، ولا يُعد preflight وحده حماية SSRF كاملة.
+
+## دفعة OpenCode protocol contract — 2026-11-20
+
+- أضفت opencode_contract.py كطبقة pure لتضييق بروتوكول OpenCode قبل بناء أي اتصال فعلي.
+- جلسة OpenCode المستقبلية تبدأ بقاعدة صلاحيات عامة ask لكل action/resource.
+- طلبات الصلاحية ترتبط بمعرف الجلسة المحدد، وتُختزل إلى request ID + action + resources فقط؛ لا يتم تمرير message أو metadata أو save rules أو source payload.
+- الردود المسموحة مرة واحدة فقط أو رفض؛ لا يوجد مسار لـalways.
+- أحداث OpenCode تُختزل إلى lifecycle وpermission metadata المسموحة فقط، مع رفض session mismatch، وعدم تمرير reasoning أو text deltas أو tool input/output.
+- أضيفت اختبارات حدود البروتوكول، بما فيها malformed/unhashable decisions وtimestamps الكبيرة.
+- لا يوجد OpenCode HTTP client أو runtime provisioner أو session persistence حتى الآن؛ المحرك يظل disabled.
