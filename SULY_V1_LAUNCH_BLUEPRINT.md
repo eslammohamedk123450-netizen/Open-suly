@@ -254,6 +254,7 @@ The task database foundation is live, but it must not be described as autonomous
 - `20261120003441_persisted_tool_approvals_audit`
 - `20261120003603_tool_approval_audit_immutability`
 - `20261120003623_index_tool_approval_audit_fk`
+- `20261120003706_allow_audit_account_cascade`
 
 ### Verification and limits
 - Live SQL permission check: both tables have RLS; authenticated can SELECT but cannot INSERT approvals or UPDATE audit events; authenticated cannot execute grant RPC; `service_role` can; grant RPC is not SECURITY DEFINER; immutable audit trigger exists.
