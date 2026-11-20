@@ -29,3 +29,17 @@ A production provisioner must create a **fresh container for each task attempt**
 ## Current limitation
 
 This image is a reproducible build recipe, **not a runtime provisioner**. SULY still needs a durable session-to-task/run/lease mapping and a Docker/runtime provider that enforces globally unique runtime identity, process-tree teardown, network policy, and crash cleanup. Do not enable OpenCode for end-user tasks until those controls and the end-to-end tests exist.
+
+## Pinned 2.x API operations currently exposed by the SULY transport
+
+The adapter follows the pinned 2.3.0 protocol shapes:
+
+- `GET /api/info`: bounded server version probe.
+- `POST /api/session`: create a session with all permissions defaulting to `ask`.
+- `GET /api/session/:sessionID/permission`: list pending session-owned approvals.
+- `POST /api/session/:sessionID/permission/:requestID/reply`: only one-time approval or rejection is expressible.
+- `POST /api/session/:sessionID/prompt`: durably admit a text-only prompt (`{ "text": ... }`).
+- `POST /api/session/:sessionID/interrupt?resume=false`: request interruption without automatically resuming queued work.
+- `GET /api/skill` and `GET /api/provider`: bounded metadata catalogues only.
+
+Prompt admission and interrupt transport are not yet exposed through user-facing API routes. They must be called only after a durable SULY mapping proves the session belongs to the current user, task, engine run, and unexpired runtime lease. The response is untrusted and must be correlated to the same task attempt before persistence.
