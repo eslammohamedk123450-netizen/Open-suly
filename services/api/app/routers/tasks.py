@@ -271,7 +271,7 @@ def get_task(
             )
             engine_events = (
                 client.table("engine_run_events")
-                .select("id,engine_run_id,task_id,event_name,event_seq,event_timestamp,received_at")
+                .select("id,engine_run_id,task_id,event_name,event_seq,event_timestamp,approval_request_id,approval_choice,received_at")
                 .eq("task_id", str(task_id))
                 .eq("user_id", user.id)
                 .order("received_at")
