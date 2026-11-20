@@ -111,7 +111,14 @@ class TaskWorker:
             output = handler(step)
             if not isinstance(output, dict):
                 raise TypeError("A task handler must return a JSON object.")
-        except Exception as exc:
-            self.fail(step, type(exc).__name__, str(exc))
+        except Exception:
+            # Exception text can contain user content, provider payloads, or secrets.
+            # Persist a stable public-safe failure marker; keep raw diagnostics out
+            # of task records and client-visible error fields.
+            self.fail(
+                step,
+                "tool_execution_failed",
+                "Step execution failed. Sensitive diagnostic details were not stored.",
+            )
             return "failed_or_retry_scheduled"
         return "completed" if self.complete(step, output) else "lease_lost"
