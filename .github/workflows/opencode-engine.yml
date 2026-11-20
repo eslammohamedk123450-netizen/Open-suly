@@ -49,7 +49,7 @@ jobs:
 
       - name: Test OpenCode bridge and protocol guards
         working-directory: services/api
-        run: python -m pytest -q tests/test_opencode_http.py tests/test_opencode_contract.py tests/test_opencode_sessions.py tests/test_runtime_broker_contract.py
+        run: python -m pytest -q tests/test_opencode_http.py tests/test_opencode_contract.py tests/test_opencode_sessions.py tests/test_runtime_broker_contract.py tests/test_runtime_provisioner_http.py
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
