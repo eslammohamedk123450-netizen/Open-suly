@@ -294,7 +294,7 @@ class OpenCodeHTTPClient:
                 async for line in response.aiter_lines():
                     if line == "":
                         if data_lines:
-                            raw = "\\n".join(data_lines)
+                            raw = "\n".join(data_lines)
                             data_lines.clear()
                             event_size = 0
                             try:
