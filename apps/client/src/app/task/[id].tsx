@@ -12,7 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { colors } from "@/theme/tokens";
 import { useAuth } from "@/providers/AuthProvider";
-import { cancelAgentTask, getAgentTask, resolveAgentApproval, retryAgentTask, steerAgentRun, type AgentTaskSnapshot } from "@/lib/agent-tasks";
+import { cancelAgentTask, getAgentApprovalDetails, getAgentTask, resolveAgentApproval, retryAgentTask, steerAgentRun, type AgentApprovalDetails, type AgentTaskSnapshot } from "@/lib/agent-tasks";
 
 const terminalStatuses = new Set(["completed", "failed", "cancelled"]);
 
@@ -78,6 +78,8 @@ export default function TaskDetailsScreen() {
   const [steerDraft, setSteerDraft] = useState("");
   const [steeringRunId, setSteeringRunId] = useState<string | null>(null);
   const [approvalBusyId, setApprovalBusyId] = useState<string | null>(null);
+  const [approvalDetailsLoadingId, setApprovalDetailsLoadingId] = useState<string | null>(null);
+  const [approvalDetails, setApprovalDetails] = useState<Record<string, AgentApprovalDetails>>({});
 
   const load = useCallback(async () => {
     if (!id || !user) return;
@@ -125,6 +127,20 @@ export default function TaskDetailsScreen() {
       setNotice(error instanceof Error ? error.message : "تعذر طلب إلغاء المهمة.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const showApprovalDetails = async (engineRunId: string, requestId: string) => {
+    if (!snapshot || approvalDetailsLoadingId) return;
+    setApprovalDetailsLoadingId(requestId);
+    setNotice("");
+    try {
+      const details = await getAgentApprovalDetails(snapshot.task.id, engineRunId, requestId);
+      setApprovalDetails((current) => ({ ...current, [requestId]: details }));
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "تعذر تحميل تفاصيل العملية.");
+    } finally {
+      setApprovalDetailsLoadingId(null);
     }
   };
 
@@ -307,25 +323,47 @@ export default function TaskDetailsScreen() {
                   {pendingApprovals.map((event) => (
                     <View key={event.id} style={styles.approvalCard}>
                       <Text style={styles.approvalTitle}>المحرك ينتظر قرارك</Text>
-                      <Text style={styles.muted}>اختر السماح بهذه العملية مرة واحدة أو رفضها. لن يتم منح صلاحية دائمة.</Text>
-                      <View style={styles.approvalActions}>
+                      <Text style={styles.muted}>اعرض تفاصيل العملية أولًا. لن تتم الموافقة قبل عرض ما أرسله Hermes بعد تنقيح بياناته.</Text>
+                      {approvalDetails[event.approval_request_id!] ? (
+                        <View style={styles.approvalDetails}>
+                          {!!approvalDetails[event.approval_request_id!].description && (
+                            <Text style={styles.body}>{approvalDetails[event.approval_request_id!].description}</Text>
+                          )}
+                          {!!approvalDetails[event.approval_request_id!].command && (
+                            <Text selectable style={styles.approvalCommand}>{approvalDetails[event.approval_request_id!].command}</Text>
+                          )}
+                        </View>
+                      ) : (
                         <Pressable
-                          style={[styles.approveButton, approvalBusyId !== null && styles.disabledButton]}
-                          disabled={approvalBusyId !== null}
-                          onPress={() => void resolveApproval(event.engine_run_id, event.approval_request_id!, "once")}
+                          style={[styles.detailsButton, approvalDetailsLoadingId !== null && styles.disabledButton]}
+                          disabled={approvalDetailsLoadingId !== null}
+                          onPress={() => void showApprovalDetails(event.engine_run_id, event.approval_request_id!)}
                         >
-                          {approvalBusyId === event.approval_request_id
-                            ? <ActivityIndicator color={colors.background} />
-                            : <Text style={styles.approveText}>موافقة لمرة واحدة</Text>}
+                          {approvalDetailsLoadingId === event.approval_request_id
+                            ? <ActivityIndicator color={colors.gold} />
+                            : <Text style={styles.steerText}>عرض تفاصيل العملية</Text>}
                         </Pressable>
-                        <Pressable
-                          style={[styles.denyButton, approvalBusyId !== null && styles.disabledButton]}
-                          disabled={approvalBusyId !== null}
-                          onPress={() => void resolveApproval(event.engine_run_id, event.approval_request_id!, "deny")}
-                        >
-                          <Text style={styles.denyText}>رفض</Text>
-                        </Pressable>
-                      </View>
+                      )}
+                      {!!approvalDetails[event.approval_request_id!] && (
+                        <View style={styles.approvalActions}>
+                          <Pressable
+                            style={[styles.approveButton, approvalBusyId !== null && styles.disabledButton]}
+                            disabled={approvalBusyId !== null}
+                            onPress={() => void resolveApproval(event.engine_run_id, event.approval_request_id!, "once")}
+                          >
+                            {approvalBusyId === event.approval_request_id
+                              ? <ActivityIndicator color={colors.background} />
+                              : <Text style={styles.approveText}>موافقة لمرة واحدة</Text>}
+                          </Pressable>
+                          <Pressable
+                            style={[styles.denyButton, approvalBusyId !== null && styles.disabledButton]}
+                            disabled={approvalBusyId !== null}
+                            onPress={() => void resolveApproval(event.engine_run_id, event.approval_request_id!, "deny")}
+                          >
+                            <Text style={styles.denyText}>رفض</Text>
+                          </Pressable>
+                        </View>
+                      )}
                     </View>
                   ))}
                 </>
@@ -391,6 +429,9 @@ const styles = StyleSheet.create({
   retryText: { color: colors.gold, fontSize: 13, fontWeight: "700" },
   approvalCard: { backgroundColor: colors.surface, borderColor: colors.goldDark, borderWidth: 1, borderRadius: 14, padding: 15, gap: 10 },
   approvalTitle: { color: colors.gold, fontSize: 14, fontWeight: "800", textAlign: "right" },
+  approvalDetails: { backgroundColor: colors.background, borderRadius: 9, padding: 10, gap: 8 },
+  approvalCommand: { color: colors.text, fontSize: 12, lineHeight: 19, textAlign: "left" },
+  detailsButton: { alignSelf: "flex-start", borderWidth: 1, borderColor: colors.goldDark, borderRadius: 9, paddingHorizontal: 13, paddingVertical: 9 },
   approvalActions: { flexDirection: "row", gap: 9, justifyContent: "flex-start" },
   approveButton: { backgroundColor: colors.gold, borderRadius: 9, paddingHorizontal: 13, paddingVertical: 10, alignItems: "center" },
   approveText: { color: colors.background, fontSize: 12, fontWeight: "800" },
