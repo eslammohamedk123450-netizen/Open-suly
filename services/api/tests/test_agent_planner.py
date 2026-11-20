@@ -38,6 +38,7 @@ def test_planner_creates_general_agent_step_only_when_isolated_runtime_is_enable
     import app.core.config as config
 
     monkeypatch.setattr(config, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
         hermes_agent_enabled=True,
         hermes_agent_isolation_confirmed=True,
         hermes_agent_base_url="http://hermes:8642",
@@ -70,6 +71,7 @@ def test_planner_supports_arabic_general_agent_prefix_when_enabled(monkeypatch):
     import app.core.config as config
 
     monkeypatch.setattr(config, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
         hermes_agent_enabled=True,
         hermes_agent_isolation_confirmed=True,
         hermes_agent_base_url="http://hermes:8642",
