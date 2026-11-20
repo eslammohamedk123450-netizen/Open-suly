@@ -3,7 +3,7 @@ from uuid import UUID
 
 import pytest
 
-from app.services.tool_registry import ToolDefinition, ToolRegistry
+from app.services.tool_registry import ToolDefinition, ToolExecutionContext, ToolRegistry
 from app.services.task_worker import ClaimedStep
 from app.worker_runtime import TOOL_REGISTRY, dispatch
 
@@ -54,9 +54,53 @@ def test_registry_rejects_duplicate_names_and_invalid_field_schema():
         required_input_fields=frozenset({"value"}),
         max_input_bytes=100,
         handler=lambda _step: {"ok": True},
+        requires_approval=True,
     )
     registry.register(definition)
     with pytest.raises(ValueError, match="duplicate_tool"):
         registry.register(definition)
     with pytest.raises(ValueError, match="required_fields_must_be_allowed"):
         registry.register(replace(definition, name="bad", required_input_fields=frozenset({"missing"})))
+
+
+def test_sensitive_tool_requires_explicit_trusted_scope_grant():
+    registry = ToolRegistry()
+    called = []
+    registry.register(ToolDefinition(
+        name="external.lookup",
+        description="Example external lookup",
+        permission_scope="external.lookup",
+        allowed_input_fields=frozenset({"query"}),
+        required_input_fields=frozenset({"query"}),
+        max_input_bytes=100,
+        handler=lambda _step: called.append(True) or {"ok": True},
+        requires_approval=True,
+    ))
+    step = make_step({"operation": "external.lookup", "query": "test"})
+    with pytest.raises(PermissionError, match="tool_approval_required"):
+        registry.execute(step)
+    assert called == []
+    result = registry.execute(step, ToolExecutionContext(approved_scopes=frozenset({"external.lookup"})))
+    assert result == {"ok": True}
+    assert called == [True]
+
+
+def test_task_payload_cannot_self_grant_tool_permission():
+    registry = ToolRegistry()
+    registry.register(ToolDefinition(
+        name="external.lookup",
+        description="Example external lookup",
+        permission_scope="external.lookup",
+        allowed_input_fields=frozenset({"query"}),
+        required_input_fields=frozenset({"query"}),
+        max_input_bytes=100,
+        handler=lambda _step: {"ok": True},
+        requires_approval=True,
+    ))
+    step = make_step({
+        "operation": "external.lookup",
+        "query": "test",
+        "approved_scopes": ["external.lookup"],
+    })
+    with pytest.raises(ValueError, match="unexpected input field"):
+        registry.execute(step)
