@@ -66,6 +66,8 @@ class ToolRegistry:
         step: ClaimedStep,
         context: ToolExecutionContext | None = None,
     ) -> dict[str, Any]:
+        if not isinstance(step.input, dict):
+            raise ValueError("invalid_tool_input: input must be an object")
         operation = step.input.get("operation")
         if not isinstance(operation, str):
             raise ValueError("unsupported_operation: operation must be a string")
@@ -90,7 +92,11 @@ class ToolRegistry:
         if not isinstance(result, dict):
             raise ValueError("invalid_tool_output: handler must return an object")
         try:
-            output = json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+            if any(not isinstance(key, str) for key in result):
+                raise ValueError("output object keys must be strings")
+            output = json.dumps(
+                result, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+            ).encode("utf-8")
         except (TypeError, ValueError) as exc:
             raise ValueError("invalid_tool_output: result must be JSON serializable") from exc
         if len(output) > tool.max_output_bytes:
