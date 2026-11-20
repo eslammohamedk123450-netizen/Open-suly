@@ -16,6 +16,7 @@ alter table public.engine_run_events
       event_name = 'approval.responded'
       and approval_request_id is not null
       and length(approval_request_id) between 1 and 256
+      and approval_choice is not null
       and approval_choice in ('once', 'deny')
     )
     or (
@@ -80,7 +81,7 @@ begin
       raise exception 'invalid_engine_run_approval_choice';
     end if;
     if p_event_name = 'approval.responded'
-       and p_approval_choice not in ('once', 'deny') then
+       and (p_approval_choice is null or p_approval_choice not in ('once', 'deny')) then
       raise exception 'invalid_engine_run_approval_choice';
     end if;
   elsif p_approval_request_id is not null or p_approval_choice is not null then
