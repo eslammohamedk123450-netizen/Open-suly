@@ -276,7 +276,13 @@ def runtime_results(runtime_id: str, authorization: str | None = Header(default=
     try:
         container = _manager().client.containers.get(row["container_id"])
         stream, _stat = container.get_archive("/workspace")
-        archive = BytesIO(b"".join(stream))
+        archive_parts, archive_size = [], 0
+        for chunk in stream:
+            archive_size += len(chunk)
+            if archive_size > MAX_RESULT_BYTES + 2 * 1024 * 1024:
+                raise HTTPException(413, "result_archive_too_large")
+            archive_parts.append(chunk)
+        archive = BytesIO(b"".join(archive_parts))
         files, total = [], 0
         baseline = json.loads(row["baseline_json"] or "{}")
         with tarfile.open(fileobj=archive, mode="r:*") as tar:
@@ -287,6 +293,8 @@ def runtime_results(runtime_id: str, authorization: str | None = Header(default=
                 if member.isdir():
                     continue
                 rel = PurePosixPath(member.name)
+                if rel.is_absolute() or any(part in {"", ".", ".."} for part in rel.parts):
+                    continue
                 parts = rel.parts[1:] if rel.parts and rel.parts[0] == "workspace" else rel.parts
                 if not parts or member.issym() or member.islnk() or not member.isfile():
                     continue
