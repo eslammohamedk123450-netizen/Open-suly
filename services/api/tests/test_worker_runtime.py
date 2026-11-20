@@ -486,3 +486,32 @@ def test_hermes_execution_is_routed_through_agent_manager(monkeypatch):
     )
     assert result["content"] == "agent routed"
     assert selected == [("general-agent", "agent.general")]
+
+
+def test_worker_runtime_runs_optional_reconciler_before_claiming_tasks():
+    class NeverClaimWorker:
+        def run_once(self, _handler, *, cancel_aware_handler=None):
+            stop.set()
+            return "idle"
+
+    class Reconciler:
+        def __init__(self):
+            self.calls = 0
+        def run_once(self):
+            self.calls += 1
+            return 1
+
+    stop = Event()
+    reconciler = Reconciler()
+    runtime = WorkerRuntime(
+        NeverClaimWorker(),
+        reconciler=reconciler,
+        reconcile_interval_seconds=10,
+    )
+    runtime.run(stop)
+    assert reconciler.calls == 1
+
+
+def test_worker_runtime_validates_reconciliation_interval():
+    with pytest.raises(ValueError, match="reconcile interval"):
+        WorkerRuntime(object(), reconcile_interval_seconds=5)
