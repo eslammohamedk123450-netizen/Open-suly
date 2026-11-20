@@ -121,7 +121,7 @@ class TaskScopedRuntimeBroker:
     def acquire(self, task_id: str, engine_run_id: str, engine_id: str) -> RuntimeLease:
         attempt = (task_id, engine_run_id, engine_id)
         with self._lock:
-            if attempt in self._active_by_attempt:
+            if attempt in self._seen_attempts:
                 raise RuntimeError('runtime_attempt_already_leased')
         lease = self._provider.acquire(task_id, engine_run_id, engine_id)
         if not isinstance(lease, RuntimeLease):
