@@ -241,3 +241,14 @@ For every engine:
 - Commits ذات الصلة: `233c2ee36c44` (DAG validator)، `b857d2778a5f` (server plan validation)، `21c24b3fea03` (اختبار رفض shell.exec)، `a05feb5d1226` (API readiness tests)، `6bede601c606` (.env example).
 - CI: على `a05feb5d1226` نجح API tests وClient typecheck/web export؛ Baseline checks على HEAD `6bede601c606` نجحت، وPlatform CI كان قيد التنفيذ وقت التوثيق.
 - ما زال تشغيل محركات coding/browser upstream معطلاً لحين اكتمال Docker runner وegress proxy واختبارات عزل فعلية.
+
+
+## Session checkpoint — 2026-11-20 (Orphan identity observability)
+
+- تمت مراجعة Hermes upstream عند pin الحالي: POST Runs يدعم idempotency ledger/replay، لكن لا يوجد endpoint مستقل للبحث عن run عبر Idempotency-Key.
+- لذلك لا نعيد POST لمجرد البحث، لأن ذلك قد ينشئ تشغيلًا جديدًا إذا لم يكن السجل موجودًا.
+- أضيفت migration `20261120230000_monitor_missing_engine_identity.sql` لعدّ `stop_pending` التي لا تحمل upstream ID بعد عمر محدد، مع index وRPC service_role-only.
+- أضيف `EngineRunStore.count_missing_upstream_identity` وتحذير error-level محدود التفاصيل داخل reconciler؛ لا نعلن توقف التشغيل ولا نغلق السجل دون تأكيد.
+- Commits: `38be788521c6` (monitor migration/reconciler logging), `66a59f207655` (strict count store/tests), `6c1145aeacc2` (upstream idempotency audit note).
+- فجوة معروفة: crash في النافذة بين استجابة Hermes وحفظ run_id قد يترك stop_pending بلا معرف؛ الحل الكامل يتطلب endpoint lookup upstream أو عقد admission مخصصًا. لا نستخدم إعادة POST غير آمنة.
+- لا migrations مطبقة، وCI على HEAD `66a59f207655` كان queued وقت التوثيق.
