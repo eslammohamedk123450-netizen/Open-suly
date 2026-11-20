@@ -112,3 +112,11 @@ Commit تحديث هذا السجل: يتم ربطه بعد إنشائه.
 - اختبارات الوحدة تغطي store claims، stop confirmation، عدم اعتبار HTTP acceptance نجاحًا، فشل المحرك، وعدم تسريب تفاصيل الاستثناء.
 - CI على commit `8080478aa8bb` نجح (API tests + client typecheck/web export). تغييرات لاحقة على stop guard وschedule لا تزال قيد CI.
 - migration `20261120210000` غير مطبقة، ولا توجد عملية Hermes فعلية قيد التشغيل في بيئة اختبار. يلزم disposable PostgreSQL/Supabase للتحقق من SQL semantics قبل تفعيلها.
+
+
+## جلسة تطوير — 2026-11-20 (أساس سياسة العزل)
+
+- أضيف مولّد Docker argv بسياسة fail-closed: image digest ثابت، شبكة none، rootfs read-only، cap-drop ALL، no-new-privileges، non-root، حدود CPU/RAM/PIDs/ulimits، وmount واحد لمساحة خاصة.
+- أضيف رفض symlinks والمسارات خارج الجذر والصلاحيات غير الخاصة وmutable image tags.
+- الاختبارات تغطي حدود الموارد، هوية non-root، workspace permissions، mount restrictions وعدم تمرير Docker socket.
+- لم يُنشأ Docker runner ولم يُبنَ image ولم تُشغّل حاوية؛ السياسة وحدها لا تثبت عزلًا فعليًا. نحتاج egress proxy آمن قبل السماح باتصال نماذج الذكاء الاصطناعي.
