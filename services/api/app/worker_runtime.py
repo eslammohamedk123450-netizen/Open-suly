@@ -98,7 +98,12 @@ def build_engine_registry(
             engine_id="hermes-agent",
             display_name="Hermes Agent",
             capabilities=frozenset({"agent.general"}),
-            enabled=settings.hermes_agent_enabled,
+            enabled=bool(
+                settings.hermes_agent_enabled
+                and settings.hermes_agent_isolation_confirmed
+                and settings.hermes_agent_base_url
+                and settings.hermes_agent_api_key is not None
+            ),
             requires_approval=True,
             max_input_bytes=20_100,
             max_output_bytes=52_000,
@@ -123,7 +128,7 @@ def build_agent_manager(engines: EngineRegistry) -> AgentManager:
                 display_name="SULY General Agent",
                 capabilities=frozenset({"agent.general"}),
                 preferred_engines=("hermes-agent",),
-                enabled=settings.hermes_agent_enabled,
+                enabled=bool(engines.candidates("agent.general")),
             ),
             AgentDefinition(
                 agent_id="coding-agent",
@@ -159,8 +164,13 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
     if not isinstance(prompt, str):
         raise ValueError("hermes.agent.turn requires a string input.prompt")
     settings = get_settings()
-    if not settings.hermes_agent_enabled:
-        raise RuntimeError("engine_disabled")
+    if (
+        not settings.hermes_agent_enabled
+        or not settings.hermes_agent_isolation_confirmed
+        or not settings.hermes_agent_base_url
+        or settings.hermes_agent_api_key is None
+    ):
+        raise RuntimeError("engine_disabled_or_unisolated")
 
     # نجهز طلب المحرك بحد أقصى زمني معروف من إعدادات الخادم.
     request = EngineRequest(
