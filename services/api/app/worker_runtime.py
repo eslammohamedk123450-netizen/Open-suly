@@ -13,6 +13,7 @@ from typing import Any, Callable
 
 from app.core.config import get_settings
 from app.core.supabase import get_supabase_admin_client
+from app.services.hermes_agent import run_agent_turn
 from app.services.task_worker import ClaimedStep, TaskWorker
 from app.services.tool_registry import ToolDefinition, ToolExecutionContext, ToolRegistry
 from app.services.tool_approvals import ToolApprovalStore
@@ -34,6 +35,18 @@ def text_analyze(step: ClaimedStep) -> dict[str, Any]:
     }
 
 
+def hermes_agent_turn(step: ClaimedStep) -> dict[str, Any]:
+    prompt = step.input.get("prompt")
+    if not isinstance(prompt, str):
+        raise ValueError("hermes.agent.turn requires a string input.prompt")
+    result = run_agent_turn(prompt)
+    return {
+        "operation": "hermes.agent.turn",
+        "engine": result["engine"],
+        "content": result["content"],
+    }
+
+
 def build_tool_registry() -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(ToolDefinition(
@@ -45,6 +58,17 @@ def build_tool_registry() -> ToolRegistry:
         max_input_bytes=24_000,
         handler=text_analyze,
         requires_approval=False,
+    ))
+    registry.register(ToolDefinition(
+        name="hermes.agent.turn",
+        description="Run one bounded user prompt through the optional Hermes Agent engine",
+        permission_scope="agent.hermes.run",
+        allowed_input_fields=frozenset({"prompt"}),
+        required_input_fields=frozenset({"prompt"}),
+        max_input_bytes=20_100,
+        handler=hermes_agent_turn,
+        requires_approval=True,
+        max_output_bytes=52_000,
     ))
     return registry
 
