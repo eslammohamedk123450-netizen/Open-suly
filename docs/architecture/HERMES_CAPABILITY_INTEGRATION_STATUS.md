@@ -45,7 +45,7 @@ SULY intends to reuse Hermes Agent as its primary general-purpose agent runtime.
 
 - Upstream Hermes is pinned to commit `9f47677483d1b4de4d1a88d37b3b7ca18b18b215`.
 - Compose profile is opt-in, no host port, and API server disabled.
-- SULY bridge settings and bounded synchronous chat bridge exist. The worker now registers `hermes.agent.turn` as an approval-gated task operation (`agent.hermes.run`) with strict input-field and input/output size limits. The operation reaches the bridge only after the worker loads persisted approval scopes.
+- SULY bridge settings and bounded synchronous chat bridge exist. Base URL parsing rejects non-HTTP(S), missing-host, embedded credentials, query strings, and fragments before requests; invalid settings are covered by new tests. The worker now registers `hermes.agent.turn` as an approval-gated task operation (`agent.hermes.run`) with strict input-field and input/output size limits. The operation reaches the bridge only after the worker loads persisted approval scopes.
 - Worker `run_once` accepts optional cancel-aware handlers. Lease loss/failure sets cancellation event and prevents result checkpoint.
 - WorkerRuntime forwards the optional cancellation-aware handler interface.
 - Unit tests for worker lease heartbeat and cancel-event behavior are authored but have not been executed in this environment.
