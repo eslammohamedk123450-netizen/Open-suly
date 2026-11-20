@@ -392,3 +392,23 @@ For every engine:
 - [ ] Confirm Web export completion on the same commit before marking Platform CI green.
 
 - [x] Platform CI على commit 61c194f8 اكتمل بنجاح: 456 API tests + TypeScript + Expo compatibility + Web export. Repository baseline نجح على نفس commit. Commits التوثيق اللاحقة لا تغير كود التطبيق.
+
+
+## خطة الإغلاق الموحدة — ثمانية مسارات متوازية منطقيًا، 2026-11-20
+
+> هذا سجل تنفيذ وتحقق، وليس إعلان اكتمال. لا يجوز اعتبار المسار منتهيًا بمجرد وجود interface أو mocked tests.
+
+1. **إغلاق CI وإصلاح التحذيرات:** [x] Platform CI وRepository baseline نجحا على `db9e5ba6109f073f81f93694fff86b9d2c81bef8`؛ [ ] إزالة تحذيرات Starlette deprecated؛ [ ] تفعيل lint/type/security/dependency/migration checks إن لم تكن ضمن workflows.
+2. **Runtime isolation:** [x] عقد RuntimeLease/Broker محلي؛ [ ] provider منفصل حقيقي مع OCI/container boundary، non-root، read-only FS، CPU/RAM/PID/disk/time limits؛ [ ] uniqueness durable وteardown بعد crash؛ [ ] اختبار cross-task isolation على staging.
+3. **OpenCode:** [x] protocol reducers والصلاحيات once/reject وmetadata sanitization؛ [ ] provisioner + client + durable session binding + output reducer؛ [ ] end-to-end tests على runtime معزول.
+4. **Browser Use:** [x] URL/DNS preflight؛ [ ] default-deny egress proxy يثبت DNS/IP عند الاتصال ويفحص redirects/subresources؛ [ ] per-task MCP/REPL/browser profile؛ [ ] credential isolation وside-effect approvals واختبارات عملية.
+5. **Hermes:** [x] bridge/events/steering ومراجعات المصدر؛ [ ] إكمال sessions/skills مع tenant scoping؛ [ ] approvals lifecycle end-to-end؛ [ ] process isolation وresource/egress controls واختبارات runtime.
+6. **Database/staging:** [x] migrations وRLS/RPC مكتوبة؛ [ ] تشغيل migration validation على disposable PostgreSQL؛ [ ] تطبيقها على Supabase staging بعد تصريح المستخدم فقط؛ [ ] cross-user/RLS/backup-restore drills؛ لا تغيير على production دون تصريح.
+7. **Reliability/security/scale:** [x] اختبارات وحدات أساسية؛ [ ] integration/failure/retry/cancel/lease-race/idempotency/billing tests؛ [ ] rate limits/quotas/observability/alerts؛ [ ] load test موثق وSAST/dependency/container scans؛ [ ] threat review مستقل.
+8. **Beta/production packaging:** [ ] build artifacts للمنصات المستهدفة؛ [ ] staging deploy + smoke tests؛ [ ] secrets manager + deployment/rollback/runbooks؛ [ ] privacy/data export/delete؛ [ ] قبول Beta؛ [ ] موافقة منفصلة قبل الإنتاج أو تفعيل أي worker/engine.
+
+### حدود هذه الجلسة
+- تم التحقق من Platform CI وRepository baseline على commit `db9e5ba6109f073f81f93694fff86b9d2c81bef8`: 456 API tests passed، Python compile، TypeScript، Expo compatibility، وWeb export كلها نجحت.
+- أضيف تشديد OpenCode ضد محارف control/format/bidi في permission metadata واختباراته.
+- لم يتم إنشاء provider أو proxy حقيقي، ولم يتم تشغيل محركات أو تطبيق migrations أو نشر خدمات. لا تتوفر في هذه الجلسة بيئة staging/OCI فعلية تثبت هذه الخصائص؛ إبقاء المحركات disabled هو القرار الآمن.
+- لا يجوز إعلان 100% أو Beta/Production readiness حتى تُغلق جميع مربعات التحقق أعلاه مع أدلة تشغيلية على commit محدد.
