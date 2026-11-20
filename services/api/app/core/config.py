@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     worker_lease_seconds: int = Field(default=90, ge=15, le=900)
     worker_poll_interval_seconds: float = Field(default=2.0, ge=0.1, le=60.0)
 
+    # External engine stop reconciliation is opt-in until its migration is applied and runtime isolation is verified.
+    engine_reconciler_enabled: bool = False
+    engine_reconciler_interval_seconds: int = Field(default=30, ge=10, le=600)
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
