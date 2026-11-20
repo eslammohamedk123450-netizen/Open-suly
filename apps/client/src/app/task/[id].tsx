@@ -276,7 +276,13 @@ export default function TaskDetailsScreen() {
                   {step.output && (
                     <>
                       <Text style={styles.sectionTitle}>الناتج</Text>
-                      <Text selectable style={styles.output}>{pretty(step.output)}</Text>
+                      {typeof step.output.content === "string" ? (
+                        <Text selectable style={styles.output}>{step.output.content}</Text>
+                      ) : typeof step.output.preview === "string" ? (
+                        <Text selectable style={styles.output}>{step.output.preview}</Text>
+                      ) : (
+                        <Text selectable style={styles.output}>{pretty(step.output)}</Text>
+                      )}
                     </>
                   )}
                 </View>
