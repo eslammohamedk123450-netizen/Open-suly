@@ -101,7 +101,7 @@ class RuntimeLease:
         ):
             raise ValueError('runtime_lease_host_invalid')
         if host not in allowed_hosts:
-            raise ValueError('runtime_lease_host_not_allowlisted')
+            raise ValueError('runtime_lease_base_url_host_not_allowlisted')
         current = time() if now is None else now
         if isinstance(self.expires_at, bool) or not isinstance(self.expires_at, (int, float)) or not current < self.expires_at <= current + 3600:
             raise ValueError('runtime_lease_expiry_invalid')
@@ -128,7 +128,7 @@ class TaskScopedRuntimeBroker:
             or not allowed_hosts
             or any(not isinstance(host, str) or not host or host != host.lower() for host in allowed_hosts)
         ):
-            raise ValueError('runtime_broker_host_allowlist_required')
+            raise ValueError('runtime_broker_allowed_hosts_required')
         self._provider = provider
         self._allowed_origins = allowed_origins
         self._lock = RLock()
