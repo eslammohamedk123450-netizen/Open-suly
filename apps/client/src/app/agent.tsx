@@ -321,6 +321,12 @@ export default function AgentScreen() {
               </View>
               <Text style={styles.taskTitle}>{snapshot.task.title}</Text>
               <Text style={styles.taskId}>ID: {snapshot.task.id}</Text>
+              <Pressable
+                style={styles.secondaryButton}
+                onPress={() => router.push({ pathname: "/task/[id]", params: { id: snapshot.task.id } })}
+              >
+                <Text style={styles.secondaryText}>عرض تفاصيل التنفيذ وسجل المحرك</Text>
+              </Pressable>
               {snapshot.steps.map((step) => (
                 <View key={step.id} style={styles.step}>
                   <View style={styles.taskHeader}>
