@@ -192,7 +192,7 @@ def create_runtime(body: CreateRuntime, authorization: str | None = Header(defau
                  json.dumps({item.path: item.sha256 or hashlib.sha256(item.content.encode()).hexdigest() for item in body.files}, separators=(",", ":"))),
             )
     except Exception as exc:
-        _manager().destroy(runtime_id=result["runtime_id"], task_id=task_id, engine_run_id=run_id)
+        _get_manager().destroy(runtime_id=result["runtime_id"], task_id=task_id, engine_run_id=run_id)
         if isinstance(exc, RuntimeErrorSafe):
             raise HTTPException(503, "opencode_startup_failed") from exc
         raise HTTPException(503, "runtime_registration_failed") from exc
@@ -217,7 +217,7 @@ def release_runtime(runtime_id: str, body: dict[str, str], authorization: str | 
     if row["task_id"] != task_id or row["engine_run_id"] != run_id:
         raise HTTPException(404, "runtime_not_found")
     try:
-        released = _manager().destroy(runtime_id=runtime_id, task_id=task_id, engine_run_id=run_id)
+        released = _get_manager().destroy(runtime_id=runtime_id, task_id=task_id, engine_run_id=run_id)
     except (ValueError, RuntimeErrorSafe) as exc:
         raise HTTPException(409, "runtime_release_rejected") from exc
     if released:
@@ -330,7 +330,7 @@ async def execute(runtime_id: str, body: ExecuteRequest, authorization: str | No
 def runtime_results(runtime_id: str, authorization: str | None = Header(default=None)):
     row = _runtime(runtime_id, _runtime_token_from_request(authorization))
     try:
-        container = _manager().client.containers.get(row["container_id"])
+        container = _get_manager().client.containers.get(row["container_id"])
         stream, _stat = container.get_archive("/workspace")
         archive_parts, archive_size = [], 0
         for chunk in stream:
@@ -385,7 +385,7 @@ def runtime_results(runtime_id: str, authorization: str | None = Header(default=
 @app.post("/internal/cleanup")
 def cleanup(authorization: str | None = Header(default=None)):
     _require_suly(authorization)
-    removed = _manager().cleanup_expired()
+    removed = _get_manager().cleanup_expired()
     with _db() as db:
         db.execute("DELETE FROM runtimes WHERE expires_at<=?", (time.time(),))
     return {"removed": removed}
