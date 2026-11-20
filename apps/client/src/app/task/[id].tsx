@@ -11,7 +11,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { colors } from "@/theme/tokens";
 import { useAuth } from "@/providers/AuthProvider";
-import { cancelAgentTask, getAgentTask, type AgentTaskSnapshot } from "@/lib/agent-tasks";
+import { cancelAgentTask, getAgentTask, retryAgentTask, type AgentTaskSnapshot } from "@/lib/agent-tasks";
 
 const terminalStatuses = new Set(["completed", "failed", "cancelled"]);
 
@@ -73,6 +73,21 @@ export default function TaskDetailsScreen() {
     const timer = setInterval(() => { void load(); }, 2500);
     return () => clearInterval(timer);
   }, [snapshot?.task.status, load]);
+
+
+  const retry = async () => {
+    if (!snapshot || busy || snapshot.task.status !== "failed") return;
+    setBusy(true);
+    setNotice("");
+    try {
+      await retryAgentTask(snapshot.task.id);
+      await load();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "تعذرت إعادة المحاولة.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const cancel = async () => {
     if (!snapshot || busy || terminalStatuses.has(snapshot.task.status)) return;
@@ -141,6 +156,20 @@ export default function TaskDetailsScreen() {
                     {busy ? <ActivityIndicator color="#E88787" /> : <Text style={styles.cancelText}>طلب إلغاء المهمة</Text>}
                   </Pressable>
                 )}
+                {snapshot.task.status === "failed" && (
+                  <View style={styles.retryBox}>
+                    <Text style={styles.muted}>
+                      المحاولات اليدوية المستخدمة: {snapshot.task.manual_retry_count ?? 0} من 2
+                    </Text>
+                    {(snapshot.task.manual_retry_count ?? 0) < 2 ? (
+                      <Pressable style={styles.retryButton} onPress={retry} disabled={busy}>
+                        {busy ? <ActivityIndicator color={colors.gold} /> : <Text style={styles.retryText}>إعادة محاولة المهمة</Text>}
+                      </Pressable>
+                    ) : (
+                      <Text style={styles.error}>وصلت المهمة إلى الحد الأقصى لإعادة المحاولة اليدوية.</Text>
+                    )}
+                  </View>
+                )}
               </View>
 
               <Text style={styles.sectionHeading}>خطوات التنفيذ ({snapshot.steps.length})</Text>
@@ -197,6 +226,9 @@ const styles = StyleSheet.create({
   output: { color: colors.text, fontSize: 11, lineHeight: 18, textAlign: "left", backgroundColor: colors.background, padding: 10, borderRadius: 8, overflow: "hidden" },
   cancelButton: { borderWidth: 1, borderColor: "#8D4444", borderRadius: 10, padding: 12, alignItems: "center", marginTop: 8 },
   cancelText: { color: "#E88787", fontSize: 13, fontWeight: "700" },
+  retryBox: { marginTop: 8, gap: 9 },
+  retryButton: { borderWidth: 1, borderColor: colors.goldDark, borderRadius: 10, padding: 12, alignItems: "center" },
+  retryText: { color: colors.gold, fontSize: 13, fontWeight: "700" },
   primaryButton: { backgroundColor: colors.gold, padding: 13, borderRadius: 10, marginTop: 12 },
   primaryText: { color: colors.background, fontWeight: "800" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24, gap: 12 },
