@@ -216,3 +216,16 @@ For every engine:
 - أصلحنا sandbox builder لتهيئة حدود الموارد قبل التحقق من ملكية workspace، وفرض `--pull=never` و`--memory-swap` مساويًا للذاكرة لمنع السحب التلقائي واستخدام swap.
 - CI: Platform CI وBaseline على `d7fe1543a41a` نجحا. API tests على `3598544eed8d` نجحت؛ Platform CI وBaseline للـHEAD الأحدث كانا قيد التنفيذ وقت التوثيق.
 - لا تزال كل migrations غير مطبقة. لا يوجد Docker runner أو image build أو egress proxy أو محرك coding/browser إضافي يعمل. sandbox policy builder لا يثبت العزل الفعلي.
+
+
+## Session checkpoint — 2026-11-20 (Agent catalog and client integration)
+
+- أضيف endpoint محمي بالمصادقة `GET /v1/agents` يعرض الأدوار والقدرات وحالة التوفر وأسماء المحركات فقط، دون أسرار أو مفاتيح.
+- أضيفت اختبارات لوظائف الكتالوج ورفض الطلب غير المصادق.
+- شاشة Agent تعرض أدوار الوكلاء وحالة كل دور.
+- عميل التطبيق يستخدم `/auto-plan` في تحليل النص وHermes بدل إرسال خطة جاهزة من العميل؛ يرسل prefix صريحًا ويترك التحقق من القدرة والتفعيل والعزل للخادم.
+- تم توحيد tool catalog ليعرض AI/Hermes/Task Engine متاحًا فقط عند تفعيل Worker، وHermes يتطلب isolation attestation وإعداداته كاملة.
+- واجهة التطبيق تعطل إرسال المهمة إذا كان worker أو المحرك المطلوب غير متاح.
+- Commits: `178c1be01802` (router), `2c8f7ad35966` (tests), `89957bf2fa5e` (auto-plan client), `477df523a12f` و`3050736ca0b1` (availability gates), `baf5bd807d83` و`288d2cd2130b` (client catalog/UI).
+- CI على HEAD `e99f0e1349d4` قيد التنفيذ وقت التوثيق؛ لا يُسجل نجاح قبل اكتماله.
+- لا يزال OpenHands/OpenCode/Aider/Browser Use غير مشغّل؛ لا يوجد Docker runner أو egress proxy. هذه المرحلة تبني catalog/route والحدود، وليست إعلان تشغيل المحركات.
