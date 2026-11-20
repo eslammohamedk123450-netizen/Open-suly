@@ -23,6 +23,7 @@ from uuid import UUID
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.docker_runtime import DockerTaskRuntimeManager, RuntimeErrorSafe
@@ -285,30 +286,66 @@ async def runtime_gateway(runtime_id: str, path: str, request: Request, authoriz
     headers = {"Accept": request.headers.get("accept", "application/json")}
     if body:
         headers["Content-Type"] = request.headers.get("content-type", "application/json")
+    client = httpx.AsyncClient(
+        base_url=f"http://127.0.0.1:{row['host_port']}",
+        auth=("opencode", _runtime_token_from_request(authorization)),
+        timeout=httpx.Timeout(60, connect=3, read=55),
+        follow_redirects=False, trust_env=False,
+    )
+    upstream = None
+    streaming = False
     try:
-        async with httpx.AsyncClient(
-            base_url=f"http://127.0.0.1:{row['host_port']}",
-            auth=("opencode", _runtime_token_from_request(authorization)),
-            timeout=httpx.Timeout(60, connect=3, read=55),
-            follow_redirects=False, trust_env=False,
-        ) as client:
-            async with client.stream(method, route, content=body, headers=headers) as upstream:
-                if 300 <= upstream.status_code < 400:
-                    raise HTTPException(502, "upstream_redirect_rejected")
-                chunks, total = [], 0
-                async for chunk in upstream.aiter_bytes():
-                    total += len(chunk)
-                    if total > 2 * 1024 * 1024:
-                        raise HTTPException(502, "upstream_response_too_large")
-                    chunks.append(chunk)
-                content = b"".join(chunks)
-                safe_headers = {}
-                for key in ("content-type", "cache-control"):
-                    if key in upstream.headers:
-                        safe_headers[key] = upstream.headers[key]
-                return Response(content, status_code=upstream.status_code, headers=safe_headers)
+        upstream_request = client.build_request(method, route, content=body, headers=headers)
+        upstream = await client.send(upstream_request, stream=True)
+        if 300 <= upstream.status_code < 400:
+            raise HTTPException(502, "upstream_redirect_rejected")
+        safe_headers = {}
+        for key in ("content-type", "cache-control"):
+            if key in upstream.headers:
+                safe_headers[key] = upstream.headers[key]
+
+        # OpenCode's event endpoint is an unbounded SSE stream. Buffering it
+        # until EOF deadlocks the event consumer and loses real-time updates.
+        if method == "GET" and route == "/api/event":
+            content_type = upstream.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+            if content_type != "text/event-stream":
+                raise HTTPException(502, "opencode_event_stream_invalid_content_type")
+            safe_headers["Cache-Control"] = "no-cache"
+            safe_headers["X-Accel-Buffering"] = "no"
+            streaming = True
+
+            async def forward_events():
+                try:
+                    async for chunk in upstream.aiter_bytes():
+                        yield chunk
+                finally:
+                    await upstream.aclose()
+                    await client.aclose()
+
+            return StreamingResponse(
+                forward_events(),
+                status_code=upstream.status_code,
+                headers=safe_headers,
+            )
+
+        chunks, total = [], 0
+        async for chunk in upstream.aiter_bytes():
+            total += len(chunk)
+            if total > 2 * 1024 * 1024:
+                raise HTTPException(502, "upstream_response_too_large")
+            chunks.append(chunk)
+        return Response(
+            b"".join(chunks),
+            status_code=upstream.status_code,
+            headers=safe_headers,
+        )
     except httpx.HTTPError as exc:
         raise HTTPException(502, "runtime_unreachable") from exc
+    finally:
+        if not streaming:
+            if upstream is not None:
+                await upstream.aclose()
+            await client.aclose()
 
 
 async def _read_bounded_request_body(request: Request, *, limit: int) -> bytes:
