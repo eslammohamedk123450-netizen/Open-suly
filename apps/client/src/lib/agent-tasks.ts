@@ -13,6 +13,7 @@ export type AgentTask = {
   error_message?: string | null;
   result?: Record<string, unknown>;
   created_at?: string;
+  manual_retry_count?: number;
 };
 
 export type AgentTaskStep = {
@@ -139,6 +140,20 @@ export async function listAgentTasks(limit = 30): Promise<AgentTask[]> {
 
 export async function getAgentTask(taskId: string): Promise<AgentTaskSnapshot> {
   return request<AgentTaskSnapshot>("/v1/tasks/" + encodeURIComponent(taskId));
+}
+
+
+export async function retryAgentTask(taskId: string): Promise<{
+  task_id: string;
+  status: string;
+  reset_steps: number;
+  manual_retry_count: number;
+  manual_retry_limit: number;
+}> {
+  return request("/v1/tasks/" + encodeURIComponent(taskId) + "/retry", {
+    method: "POST",
+    body: "{}",
+  });
 }
 
 export async function cancelAgentTask(taskId: string): Promise<AgentTask> {
