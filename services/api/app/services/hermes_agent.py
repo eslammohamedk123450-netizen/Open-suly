@@ -111,8 +111,24 @@ def run_agent_turn(
                     raise HermesAgentError("Hermes returned an invalid run identifier.")
 
                 # لا نكمل التنفيذ قبل حفظ المعرف الخارجي داخل سجل المحاولة في SULY.
-                if not on_run_started(run_id):
-                    await client.post(f"{base_url}/v1/runs/{run_id}/stop", headers=headers)
+                # إذا فشل RPC بسبب انقطاع مؤقت، نعيد محاولة الحفظ idempotently قبل إيقاف التشغيل.
+                try:
+                    persisted = on_run_started(run_id)
+                except Exception:
+                    try:
+                        persisted = on_run_started(run_id)
+                    except Exception:
+                        persisted = False
+                if not persisted:
+                    try:
+                        stop_response = await client.post(
+                            f"{base_url}/v1/runs/{run_id}/stop",
+                            headers=headers,
+                        )
+                        stop_response.raise_for_status()
+                    except httpx.HTTPError:
+                        # سجل stop_pending (إن تم حفظه متأخرًا) سيعيد محاولة الإيقاف من reconciler.
+                        pass
                     raise HermesAgentError("SULY could not persist the Hermes run reference.")
 
                 while True:
