@@ -86,7 +86,12 @@ class AgentManager:
 
     def route(self, agent_id: str, capability: str) -> AgentRoute:
         """يرفض الوكيل/القدرة غير المفعّلين ويعيد المحركات المؤهلة فقط."""
-        if not isinstance(agent_id, str) or not isinstance(capability, str):
+        if (
+            not isinstance(agent_id, str)
+            or not _AGENT_ID.fullmatch(agent_id)
+            or not isinstance(capability, str)
+            or not re.fullmatch(r"[a-z][a-z0-9_.-]{1,95}", capability)
+        ):
             raise ValueError("invalid_agent_route")
         agent = self.get(agent_id)
         if agent is None:
