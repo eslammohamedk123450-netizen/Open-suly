@@ -16,6 +16,7 @@ def test_project_files_require_authentication():
 
 def test_project_file_history_requires_authentication():
     assert client.get(f"/v1/projects/{PROJECT_ID}/file/history?path=main.py").status_code == 401
+    assert client.post(f"/v1/projects/{PROJECT_ID}/file/preview?path=main.py", json={"content": "x"}).status_code == 401
     assert client.get(f"/v1/projects/{PROJECT_ID}/file/history/{REVISION_ID}").status_code == 401
     assert client.post(f"/v1/projects/{PROJECT_ID}/file/history/{REVISION_ID}/restore").status_code == 401
 
@@ -158,6 +159,22 @@ def test_project_file_restore_requires_expected_version():
         response = client.post(
             f"/v1/projects/{PROJECT_ID}/file/history/{REVISION_ID}/restore",
             json={},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 422
+
+
+def test_project_file_preview_rejects_traversal_before_database(monkeypatch):
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="user-a", email=None)
+    monkeypatch.setattr(
+        files_module, "get_supabase_admin_client",
+        lambda: (_ for _ in ()).throw(AssertionError("Database must not be called")),
+    )
+    try:
+        response = client.post(
+            f"/v1/projects/{PROJECT_ID}/file/preview?path=../secrets.txt",
+            json={"content": "malicious"},
         )
     finally:
         app.dependency_overrides.clear()
