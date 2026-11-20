@@ -103,13 +103,16 @@ def list_available_tools(
         approved_scopes = _store().active_scopes(user.id)
         settings = get_settings()
         ai_provider_available = bool(
-            settings.ai_provider == "openai-compatible"
+            settings.worker_enabled
+            and settings.ai_provider == "openai-compatible"
             and settings.ai_base_url
             and settings.ai_api_key
             and settings.ai_model
         )
         hermes_available = bool(
-            settings.hermes_agent_enabled
+            settings.worker_enabled
+            and settings.hermes_agent_enabled
+            and settings.hermes_agent_isolation_confirmed
             and settings.hermes_agent_base_url
             and settings.hermes_agent_api_key
         )
