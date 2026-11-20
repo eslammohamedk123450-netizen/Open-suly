@@ -36,6 +36,7 @@ type ToolCatalogItem = {
   permission_scope: string;
   requires_approval: boolean;
   approved: boolean;
+  available: boolean;
 };
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
