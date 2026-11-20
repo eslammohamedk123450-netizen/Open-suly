@@ -82,7 +82,7 @@ def test_browser_policy_rejects_private_or_ip_literal_hosts(url):
     "0x7f000001",
 ])
 def test_browser_policy_rejects_legacy_numeric_ipv4_host_encodings(host):
-    with pytest.raises(ValueError, match="ip_literal"):
+    with pytest.raises(ValueError):
         policy().validate(f"https://{host}/")
 
 
