@@ -7,7 +7,7 @@ services:
   hermes-agent:
     image: suly-hermes-agent:2026-11-20
     build:
-      context: https://github.com/NousResearch/hermes-agent.git#9f47677483d1b4de4d1a88d37b3b7ca18b18b215
+      context: https://github.com/NousResearch/hermes-agent.git#2de9f51b8008a7d49a49221c184f2f11cbfc4af1
       dockerfile: Dockerfile
     profiles: ["agent-engines"]
     restart: unless-stopped
