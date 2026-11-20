@@ -17,6 +17,7 @@ from supabase import Client
 
 _STEP_KEY = re.compile(r"^[a-z][a-z0-9_-]{1,63}$")
 _MAX_CLAIM_INPUT_BYTES = 64 * 1024
+_MAX_OUTPUT_BYTES = 64 * 1024
 
 
 @dataclass(frozen=True)
@@ -137,9 +138,19 @@ class TaskWorker:
                 "p_lease_seconds": self.lease_seconds,
             },
         ).execute()
-        return bool(response.data)
+        return response.data is True
 
     def complete(self, step: ClaimedStep, output: dict[str, Any]) -> bool:
+        if not isinstance(output, dict):
+            raise ValueError("worker_output_invalid")
+        try:
+            output_bytes = json.dumps(
+                output, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+            ).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            raise ValueError("worker_output_invalid") from exc
+        if len(output_bytes) > _MAX_OUTPUT_BYTES:
+            raise ValueError("worker_output_too_large")
         response = self._client.rpc(
             "complete_task_step",
             {
@@ -148,7 +159,7 @@ class TaskWorker:
                 "p_output": output,
             },
         ).execute()
-        return bool(response.data)
+        return response.data is True
 
     def fail(self, step: ClaimedStep, error_code: str, error_message: str) -> dict[str, Any]:
         response = self._client.rpc(
