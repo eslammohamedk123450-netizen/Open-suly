@@ -165,6 +165,9 @@ def list_run_approvals(
             user_id=user.id, run_id=str(run_id), limit=limit
         )
         return {"items": rows}
+    except HTTPException:
+        # Preserve owner-scoped 404 responses instead of masking them as 503.
+        raise
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Could not load OpenCode approvals.") from exc
 
