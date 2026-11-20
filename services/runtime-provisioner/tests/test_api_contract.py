@@ -34,3 +34,17 @@ def test_create_rejects_other_engines():
         "engine_id": "shell",
     })
     assert response.status_code == 422
+
+
+
+def test_gateway_route_allowlist_is_task_scoped_and_rejects_arbitrary_routes():
+    from app.main import _allowed_opencode_route
+
+    assert _allowed_opencode_route("GET", "/api/info")
+    assert _allowed_opencode_route("POST", "/api/session")
+    assert _allowed_opencode_route("POST", "/api/session/sesABC123/prompt")
+    assert _allowed_opencode_route("GET", "/api/session/sesABC123/permission")
+    assert _allowed_opencode_route("POST", "/api/session/sesABC123/permission/perABC123/reply")
+    assert not _allowed_opencode_route("GET", "/api/event")
+    assert not _allowed_opencode_route("POST", "/api/session/sesABC123/shell")
+    assert not _allowed_opencode_route("GET", "/etc/passwd")
