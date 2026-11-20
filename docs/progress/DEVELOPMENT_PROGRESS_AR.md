@@ -70,3 +70,15 @@ Commit تحديث هذا السجل: يتم ربطه بعد إنشائه.
 
 ### نقطة المتابعة التالية
 - مراجعة نتائج CI النهائية للcommit `e341a1e6`، ثم معالجة أول نقطة أمان/موثوقية ذات أولوية في worker lifecycle أو engine reconciliation حسب الأدلة.
+
+
+## جلسة تطوير — 2026-11-20 (Agent Foundation)
+
+- تمت مراجعة HEAD والخطة وملفات worker وengine registry وHermes bridge والاختبارات.
+- تحقق CI السابق على commit `bb6c101c1e73` من نجاح baseline checks؛ كما أظهر Platform CI نجاحًا على commit `12f0aa5367fc`. لم تُنسب هذه النتائج إلى التغييرات الجديدة.
+- أضيف `services/api/app/services/agent_manager.py`: تعريف أدوار الوكلاء، التحقق من القدرات، ترتيب المحركات المفضلة، وعدم توجيه الوكيل إلا لمحرك مسجل ومفعّل.
+- أضيف `services/api/tests/test_agent_manager.py` بخمسة اختبارات لوظائف التوجيه والفشل الآمن.
+- Commits: `937bb987dc1d`, `e1d9d4b7bb31`.
+- CI على HEAD الجديد كان queued/in progress وقت التوثيق؛ لا يوجد ادعاء بأن الاختبارات نجحت قبل اكتمال CI.
+- لا يزال التنفيذ الحقيقي للمحركات غير متاح: لم يتم بناء/تشغيل runtime أو تفعيل Hermes أو أي provider، ولم تطبق migrations أو تنشر خدمات.
+- الخطوة التالية: انتظار CI وإصلاح أي فشل، ثم إكمال ربط Agent Manager مع task planning/execution، ومعالجة orphan engine runs/reconciliation، وبعدها intake فعلي للمحركات بمراجعة المصدر والترخيص والأمن.
