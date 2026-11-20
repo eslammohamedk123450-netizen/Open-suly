@@ -5,6 +5,7 @@ create table if not exists public.project_files (
   user_id uuid not null references auth.users(id) on delete cascade,
   path text not null check (char_length(path) between 1 and 512),
   content text not null default '' check (octet_length(content) <= 262144),
+  size_bytes integer not null default 0 check (size_bytes between 0 and 262144),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (project_id, path)
