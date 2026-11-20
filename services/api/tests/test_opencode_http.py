@@ -342,3 +342,40 @@ async def test_abort_session_fails_closed_when_upstream_does_not_confirm():
     ) as client:
         with pytest.raises(OpenCodeTransportError, match="interrupt_not_confirmed"):
             await client.abort_session(session_id="ses_taskrun_123456789")
+
+
+
+@pytest.mark.asyncio
+async def test_prompt_stream_rejects_non_json_and_oversized_body():
+    async def html_handler(request):
+        return httpx.Response(200, text="<html>unexpected</html>", headers={"content-type": "text/html"})
+
+    async with OpenCodeHTTPClient(
+        lease(), task_id=TASK_ID, engine_run_id=RUN_ID,
+        allowed_origins=ORIGINS, transport=httpx.MockTransport(html_handler),
+    ) as client:
+        with pytest.raises(OpenCodeTransportError, match="content_type"):
+            await client.submit_prompt_async(session_id="ses_taskrun_123456789", prompt="Run tests")
+
+    async def huge_handler(request):
+        return httpx.Response(200, content=b" " * 16_385, headers={"content-type": "application/json"})
+
+    async with OpenCodeHTTPClient(
+        lease(), task_id=TASK_ID, engine_run_id=RUN_ID,
+        allowed_origins=ORIGINS, transport=httpx.MockTransport(huge_handler),
+    ) as client:
+        with pytest.raises(OpenCodeTransportError, match="too_large"):
+            await client.submit_prompt_async(session_id="ses_taskrun_123456789", prompt="Run tests")
+
+
+@pytest.mark.asyncio
+async def test_interrupt_stream_rejects_oversized_response():
+    async def huge_handler(request):
+        return httpx.Response(200, content=b" " * 4097, headers={"content-type": "application/json"})
+
+    async with OpenCodeHTTPClient(
+        lease(), task_id=TASK_ID, engine_run_id=RUN_ID,
+        allowed_origins=ORIGINS, transport=httpx.MockTransport(huge_handler),
+    ) as client:
+        with pytest.raises(OpenCodeTransportError, match="too_large"):
+            await client.abort_session(session_id="ses_taskrun_123456789")
