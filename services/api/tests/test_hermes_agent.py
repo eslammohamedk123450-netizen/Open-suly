@@ -287,3 +287,57 @@ def test_hermes_bridge_rejects_non_object_status_payload(monkeypatch):
 
     with pytest.raises(hermes_agent.HermesAgentError, match="invalid run status"):
         invoke(monkeypatch, Client())
+
+
+def test_hermes_stop_reconciliation_confirms_terminal_state(monkeypatch):
+    calls = []
+    class Client:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+        async def post(self, url, **_kwargs):
+            calls.append(("POST", url))
+            return Response({"status": "stopping"})
+        async def get(self, url, **_kwargs):
+            calls.append(("GET", url))
+            return Response({"status": "cancelled"})
+
+    monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
+    monkeypatch.setattr(hermes_agent.httpx, "AsyncClient", lambda **_kw: Client())
+    assert hermes_agent.stop_agent_run("run_orphan_123", timeout_seconds=5) is True
+    assert calls[0][1].endswith("/run_orphan_123/stop")
+    assert calls[1][1].endswith("/run_orphan_123")
+
+
+def test_hermes_stop_reconciliation_does_not_assume_stop_was_successful(monkeypatch):
+    class Client:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+        async def post(self, *_args, **_kwargs):
+            return Response({"status": "stopping"})
+        async def get(self, *_args, **_kwargs):
+            return Response({"status": "running"})
+
+    monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
+    monkeypatch.setattr(hermes_agent.httpx, "AsyncClient", lambda **_kw: Client())
+    monkeypatch.setattr(hermes_agent.asyncio, "sleep", lambda *_args: None)
+    assert hermes_agent.stop_agent_run("run_orphan_123", timeout_seconds=1) is False
+
+
+@pytest.mark.parametrize("run_id", ["../escape", "run/other", "é", ""])
+def test_hermes_stop_reconciliation_rejects_unsafe_run_ids(monkeypatch, run_id):
+    monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
+    with pytest.raises(ValueError, match="identifier"):
+        hermes_agent.stop_agent_run(run_id)
+
+
+def test_hermes_stop_reconciliation_requires_isolation(monkeypatch):
+    monkeypatch.setattr(
+        hermes_agent, "get_settings",
+        lambda: settings(hermes_agent_isolation_confirmed=False),
+    )
+    with pytest.raises(hermes_agent.HermesAgentUnavailable, match="not enabled"):
+        hermes_agent.stop_agent_run("run_orphan_123")
