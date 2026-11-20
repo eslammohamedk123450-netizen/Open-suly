@@ -13,6 +13,7 @@ from typing import Any
 import httpx
 
 from app.services.runtime_broker_contract import RuntimeLease
+from app.services import opencode_contract
 
 _SESSION_ID = re.compile(r"^ses[A-Za-z0-9_-]{1,128}$")
 _PERMISSION_ID = re.compile(r"^per[A-Za-z0-9_-]{1,128}$")
@@ -82,7 +83,11 @@ class OpenCodeHTTPClient:
         *,
         body: dict[str, Any] | None = None,
     ) -> Any:
-        if (method, path) not in _ALLOWED_ROUTES:
+        fixed_route = (method, path) in _ALLOWED_ROUTES
+        permission_list = method == "GET" and re.fullmatch(
+            r"/api/session/(ses[A-Za-z0-9_-]{1,128})/permission", path
+        )
+        if not (fixed_route or permission_list):
             raise ValueError("opencode_route_not_allowed")
         try:
             async with self._client.stream(method, path, json=body) as response:
@@ -136,6 +141,35 @@ class OpenCodeHTTPClient:
         title_value = session.get("title")
         safe_title = title_value[:120] if isinstance(title_value, str) else title.strip()
         return {"id": session["id"], "title": safe_title}
+
+    async def list_pending_permissions(self, *, session_id: str) -> list[dict[str, Any]]:
+        """Fetch and reduce pending approvals for this exact upstream session."""
+        if not _SESSION_ID.fullmatch(session_id):
+            raise ValueError("opencode_session_id_invalid")
+        result = await self._request_json("GET", f"/api/session/{session_id}/permission")
+        items = result.get("data") if isinstance(result, dict) else None
+        if not isinstance(items, list) or len(items) > 100:
+            raise OpenCodeTransportError("opencode_invalid_permission_catalog")
+        return [opencode_contract.normalize_permission_request(item, session_id) for item in items]
+
+    async def reply_permission(self, *, session_id: str, request_id: str, decision: str) -> None:
+        """Resolve one session-owned request; permanent approvals are impossible."""
+        if not _SESSION_ID.fullmatch(session_id):
+            raise ValueError("opencode_session_id_invalid")
+        body = opencode_contract.permission_reply_body(request_id, decision)
+        path = f"/api/session/{session_id}/permission/{request_id}/reply"
+        if not re.fullmatch(r"/api/session/ses[A-Za-z0-9_-]{1,128}/permission/per[A-Za-z0-9_-]{1,128}/reply", path):
+            raise ValueError("opencode_route_not_allowed")
+        try:
+            response = await self._client.post(path, json=body)
+        except httpx.HTTPError as exc:
+            raise OpenCodeTransportError("opencode_runtime_unreachable") from exc
+        if 300 <= response.status_code < 400:
+            raise OpenCodeTransportError("opencode_redirect_rejected")
+        if response.status_code not in (200, 204):
+            raise OpenCodeTransportError(f"opencode_upstream_status_{response.status_code}")
+        if len(response.content) > 4096:
+            raise OpenCodeTransportError("opencode_response_too_large")
 
     async def list_skills(self) -> list[dict[str, Any]]:
         result = await self._request_json("GET", "/api/skill")
