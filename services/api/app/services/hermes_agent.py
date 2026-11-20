@@ -8,6 +8,7 @@ SULY never sends Supabase credentials or trusted approval scopes to Hermes.
 from __future__ import annotations
 
 import httpx
+from urllib.parse import urlsplit
 
 from app.core.config import get_settings
 
@@ -30,8 +31,16 @@ def run_agent_turn(prompt: str, *, timeout_seconds: float | None = None) -> dict
         raise ValueError("Hermes prompt must contain 1–20000 characters.")
 
     base_url = settings.hermes_agent_base_url.rstrip("/")
-    if not base_url.startswith("http://") and not base_url.startswith("https://"):
-        raise HermesAgentUnavailable("Hermes agent base URL must use HTTP or HTTPS.")
+    parsed_base = urlsplit(base_url)
+    if (
+        parsed_base.scheme not in {"http", "https"}
+        or not parsed_base.hostname
+        or parsed_base.username is not None
+        or parsed_base.password is not None
+        or parsed_base.query
+        or parsed_base.fragment
+    ):
+        raise HermesAgentUnavailable("Hermes agent base URL is invalid.")
     url = f"{base_url}/v1/chat/completions"
     token = settings.hermes_agent_api_key.get_secret_value()
     timeout = timeout_seconds or settings.hermes_agent_timeout_seconds
