@@ -6,11 +6,17 @@ small execution boundary a separately hosted worker process can call.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+import re
 from threading import Event, Thread
 from typing import Any, Callable
 from uuid import UUID
 
 from supabase import Client
+
+
+_STEP_KEY = re.compile(r"^[a-z][a-z0-9_-]{1,63}$")
+_MAX_CLAIM_INPUT_BYTES = 64 * 1024
 
 
 @dataclass(frozen=True)
@@ -63,20 +69,45 @@ class TaskWorker:
             return None
         if not isinstance(data, dict):
             raise ValueError("worker_claim_invalid_payload")
-        raw_input = data.get("input") or {}
+        raw_input = data.get("input")
         if not isinstance(raw_input, dict):
             raise ValueError("worker_claim_invalid_input")
-        attempt_count = int(data["attempt_count"])
-        max_attempts = int(data["max_attempts"])
-        if not 1 <= attempt_count <= max_attempts <= 10:
+        # نرفض الأعداد المنطقية والتحويلات النصية بدل قبولها كعداد محاولات.
+        attempt_count = data.get("attempt_count")
+        max_attempts = data.get("max_attempts")
+        if (
+            isinstance(attempt_count, bool)
+            or not isinstance(attempt_count, int)
+            or isinstance(max_attempts, bool)
+            or not isinstance(max_attempts, int)
+            or not 1 <= attempt_count <= max_attempts <= 10
+        ):
             raise ValueError("worker_claim_invalid_attempt_bounds")
-        step_key = str(data["step_key"])
-        title = str(data["title"])
-        description = str(data.get("description") or "")
-        if not step_key or len(step_key) > 100 or not title.strip() or len(title) > 200:
+        step_key = data.get("step_key")
+        title = data.get("title")
+        description = data.get("description", "")
+        lease_expires_at = data.get("lease_expires_at")
+        if (
+            not isinstance(step_key, str)
+            or not _STEP_KEY.fullmatch(step_key)
+            or not isinstance(title, str)
+            or not title.strip()
+            or len(title) > 200
+            or not isinstance(description, str)
+            or len(description) > 4000
+            or not isinstance(lease_expires_at, str)
+            or not 1 <= len(lease_expires_at) <= 100
+        ):
             raise ValueError("worker_claim_invalid_step_metadata")
-        if len(description) > 4000:
-            raise ValueError("worker_claim_invalid_step_metadata")
+        # نتحقق أن المدخل JSON محدود الحجم وقابل للتسلسل قبل تسليمه لأي engine.
+        try:
+            input_bytes = json.dumps(
+                raw_input, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+            ).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            raise ValueError("worker_claim_invalid_input") from exc
+        if len(input_bytes) > _MAX_CLAIM_INPUT_BYTES:
+            raise ValueError("worker_claim_input_too_large")
         return ClaimedStep(
             step_id=UUID(str(data["step_id"])),
             task_id=UUID(str(data["task_id"])),
@@ -88,7 +119,7 @@ class TaskWorker:
             attempt_count=attempt_count,
             max_attempts=max_attempts,
             lease_token=UUID(str(data["lease_token"])),
-            lease_expires_at=str(data["lease_expires_at"]),
+            lease_expires_at=lease_expires_at,
         )
 
     def renew(self, step: ClaimedStep) -> bool:
