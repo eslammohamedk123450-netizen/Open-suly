@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -6,11 +7,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.core.auth import AuthenticatedUser, get_current_user
+from app.core.config import get_settings
 from app.core.supabase import get_supabase_admin_client
 from app.services.agent_planner import UnsupportedTaskRequest, plan_request, validate_agent_plan
 from app.services.hermes_agent import HermesAgentError, HermesAgentUnavailable, steer_agent_run
 
 router = APIRouter(prefix="/v1/tasks", tags=["tasks"])
+logger = logging.getLogger("suly.api.tasks")
 
 
 class CreateTaskRequest(BaseModel):
@@ -365,7 +368,7 @@ def steer_task_engine_run(
                     "p_event_timestamp": None,
                 }).execute()
             except Exception:
-                pass
+                logger.warning("Could not persist Hermes steering metadata for engine run %s", run_id)
 
         return {"task_id": str(task_id), "engine_run_id": str(run_id), "accepted": True}
     except HTTPException:
