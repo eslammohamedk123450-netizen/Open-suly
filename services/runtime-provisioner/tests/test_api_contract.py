@@ -116,3 +116,55 @@ def test_gateway_rejects_oversized_declared_body_before_reading():
     with pytest.raises(HTTPException) as error:
         asyncio.run(_read_bounded_request_body(FakeRequest(), limit=64))
     assert error.value.status_code == 413
+
+
+def test_event_gateway_forwards_sse_without_buffering(monkeypatch):
+    import asyncio
+
+    class FakeUpstream:
+        status_code = 200
+        headers = {"content-type": "text/event-stream", "cache-control": "no-cache"}
+
+        async def aiter_bytes(self):
+            yield b"data: {\\"event\\":\\"session.execution.started\\"}\\n\\n"
+
+        async def aclose(self):
+            self.closed = True
+
+    upstream = FakeUpstream()
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.closed = False
+
+        def build_request(self, method, route, content, headers):
+            return (method, route)
+
+        async def send(self, request, stream=False):
+            assert stream is True
+            return upstream
+
+        async def aclose(self):
+            self.closed = True
+
+    clients = []
+
+    def make_client(**kwargs):
+        instance = FakeClient(**kwargs)
+        clients.append(instance)
+        return instance
+
+    monkeypatch.setattr(runtime_api, "_runtime", lambda runtime_id, token: {"host_port": 4096})
+    monkeypatch.setattr(runtime_api.httpx, "AsyncClient", make_client)
+
+    response = client.get(
+        "/v1/runtime-gateway/00000000-0000-4000-8000-000000000001/api/event",
+        headers={"Authorization": "Bearer runtime-token", "Accept": "text/event-stream"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert response.headers["x-accel-buffering"] == "no"
+    assert "session.execution.started" in response.text
+    assert getattr(upstream, "closed", False)
+    assert clients and clients[0].closed
