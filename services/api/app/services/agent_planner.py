@@ -61,8 +61,8 @@ def plan_request(request: str) -> PlannedTask:
     prefix = next((item for item in _PREFIXES if lowered.startswith(item)), None)
     if prefix is None:
         raise UnsupportedTaskRequest(
-            "This request needs a supported operation. Use analyze: for deterministic text analysis "
-            "or agent: for the explicitly enabled general agent."
+            "This request needs a supported operation. Current planner supports text analysis only; "
+            "use agent: for the explicitly enabled general agent."
         )
     text = normalized[len(prefix):].strip()
     if not text:
