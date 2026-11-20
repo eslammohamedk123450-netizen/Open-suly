@@ -288,3 +288,60 @@ def test_task_plan_rejects_unregistered_operations_before_database(monkeypatch):
 
     assert response.status_code == 422
     assert "unregistered operation" in response.json()["detail"]
+
+
+def test_auto_plan_routes_general_agent_only_when_isolated_runtime_is_ready(monkeypatch):
+    from types import SimpleNamespace
+    import app.core.config as config
+
+    admin = _FakeAdmin({
+        "id": "00000000-0000-0000-0000-000000000001",
+        "user_id": "test-user",
+        "status": "queued",
+        "request": "agent: Review this task",
+    })
+    monkeypatch.setattr(config, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
+        hermes_agent_enabled=True,
+        hermes_agent_isolation_confirmed=True,
+        hermes_agent_base_url="http://hermes:8642",
+        hermes_agent_api_key=object(),
+    ))
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    try:
+        response = client.post("/v1/tasks/00000000-0000-0000-0000-000000000001/auto-plan")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["planner"] == "agent-routing-v1"
+    assert response.json()["steps"][0]["input"]["operation"] == "hermes.agent.turn"
+
+
+def test_auto_plan_refuses_general_agent_without_isolation(monkeypatch):
+    from types import SimpleNamespace
+    import app.core.config as config
+
+    admin = _FakeAdmin({
+        "id": "00000000-0000-0000-0000-000000000001",
+        "user_id": "test-user",
+        "status": "queued",
+        "request": "agent: Review this task",
+    })
+    monkeypatch.setattr(config, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
+        hermes_agent_enabled=True,
+        hermes_agent_isolation_confirmed=False,
+        hermes_agent_base_url="http://hermes:8642",
+        hermes_agent_api_key=object(),
+    ))
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    try:
+        response = client.post("/v1/tasks/00000000-0000-0000-0000-000000000001/auto-plan")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422
+    assert admin.rpc_calls == []
