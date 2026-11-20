@@ -252,3 +252,11 @@ For every engine:
 - Commits: `38be788521c6` (monitor migration/reconciler logging), `66a59f207655` (strict count store/tests), `6c1145aeacc2` (upstream idempotency audit note).
 - فجوة معروفة: crash في النافذة بين استجابة Hermes وحفظ run_id قد يترك stop_pending بلا معرف؛ الحل الكامل يتطلب endpoint lookup upstream أو عقد admission مخصصًا. لا نستخدم إعادة POST غير آمنة.
 - لا migrations مطبقة، وCI على HEAD `66a59f207655` كان queued وقت التوثيق.
+
+
+## Follow-up — 2026-11-20 (Orphan alert quality)
+
+- أضيف deduplication لتنبيه عدد السجلات التي تفتقد upstream ID؛ لا يعيد نفس الخطأ كل 30 ثانية ما دام العدد لم يتغير.
+- أضيف اختبار يثبت عدم تكرار التنبيه عبر دورات reconciler متتالية.
+- Commits: `cd3dc4858a64` (deduplication), `61dc3432b595` (test).
+- Baseline على `cd3dc4858a64` نجح؛ CI للـHEAD الأحدث queued وقت التوثيق.
