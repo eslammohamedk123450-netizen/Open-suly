@@ -258,7 +258,7 @@ The task database foundation is live, but it must not be described as autonomous
 
 ### Verification and limits
 - Live SQL permission check: both tables have RLS; authenticated can SELECT but cannot INSERT approvals or UPDATE audit events; authenticated cannot execute grant RPC; `service_role` can; grant RPC is not SECURITY DEFINER; immutable audit trigger exists.
-- Supabase security advisor: zero findings after these migrations.
+- Supabase security advisor: zero findings after these migrations. Audit immutability rejects direct updates/deletes while allowing referential cascades during account deletion.
 - Performance advisor's foreign-key index finding was fixed and indexed in the final migration. Existing unused-index notices remain informational and are expected before production traffic.
 - The current registry still contains only local `text.analyze`, which does not require approval. No sensitive external tool is registered yet, so the new API correctly refuses grants for unknown/unavailable scopes. This is the consent infrastructure, not a claim that web, browser, files, shell, or integrations are already available.
 - API/worker code changes require CI confirmation; no live authenticated consent round-trip or deployed worker execution is claimed.
