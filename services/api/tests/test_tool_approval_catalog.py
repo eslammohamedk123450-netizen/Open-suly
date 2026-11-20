@@ -36,7 +36,7 @@ def test_catalog_lists_registered_tools_and_user_approval(monkeypatch):
     assert by_name["ai.respond"]["available"] is False
     assert by_name["ai.respond"]["permission_scope"] == "ai.provider.run"
     assert by_name["text.analyze"]["requires_approval"] is False
-    assert by_name["text.analyze"]["available"] is True
+    assert by_name["text.analyze"]["available"] is False
     assert by_name["hermes.agent.turn"]["available"] is False
     assert by_name["hermes.agent.turn"]["approved"] is True
     assert by_name["hermes.agent.turn"]["permission_scope"] == "agent.hermes.run"
@@ -157,6 +157,6 @@ def test_catalog_does_not_advertise_hermes_when_worker_or_isolation_is_off(monke
 
     assert response.status_code == 200
     by_name = {item["name"]: item for item in response.json()["items"]}
-    assert by_name["text.analyze"]["available"] is True
+    assert by_name["text.analyze"]["available"] is False
     assert by_name["ai.respond"]["available"] is False
     assert by_name["hermes.agent.turn"]["available"] is False
