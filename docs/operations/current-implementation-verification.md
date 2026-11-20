@@ -68,3 +68,15 @@ Anonymous SELECT access is not granted to these tables. Profile owners can updat
 - This migration is committed to GitHub but has NOT been applied to Supabase. A PostgreSQL integration test against a disposable database is still required before production use.
 - CI verification for commit `78a8b22949b3165d262ba139f2dc8f6c754aabdd`: Repository baseline checks passed; Platform CI passed both API tests and client typecheck/web export. The newly added migration and guide still need their own post-commit CI run.
 - No worker, Hermes runtime, provider, or production service was enabled or deployed by this change.
+
+
+## Hermes native Runs API integration update (2026-11-20)
+
+- The Compose build context and runtime README now use the audited immutable Hermes revision `2de9f51b8008a7d49a49221c184f2f11cbfc4af1`; the earlier unresolved pin was replaced.
+- The SULY bridge now uses native `POST /v1/runs`, bounded status polling through `GET /v1/runs/{run_id}`, and cooperative stop through `POST /v1/runs/{run_id}/stop`.
+- Each SULY engine attempt supplies a stable `Idempotency-Key` derived from its engine-run UUID. The returned opaque Hermes run ID is stored through the lease-guarded `attach_engine_upstream_run` RPC.
+- Added migration `20261120173000_engine_upstream_run_identity.sql`; it is committed but NOT applied to the live Supabase project.
+- Added `HERMES_AGENT_ISOLATION_CONFIRMED=false`. The bridge refuses to run unless explicitly attested, but this flag is not a sandbox and must remain false until a per-task runtime manager and its isolation controls are implemented and verified.
+- Added `docs/learning/HERMES_RUN_LIFECYCLE_AR.md` with the Arabic explanation of the flow and file responsibilities.
+- Verification on commit `f7ab085f2d7d69c7bd41dea4c3e4c486864eddc9`: API compile and tests passed. Client typecheck/web export was still running at the time of this snapshot; check the latest Actions run before claiming full CI success.
+- No live Hermes runtime, provider, Worker, or production API was enabled. SSE forwarding, remote-run recovery after SULY restart, per-task runtime orchestration, and real container security testing remain pending.
