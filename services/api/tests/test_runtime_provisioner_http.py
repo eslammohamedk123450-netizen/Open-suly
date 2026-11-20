@@ -76,3 +76,37 @@ def test_release_requires_confirmed_boolean():
             client.release(lease)
     finally:
         client.close()
+
+
+def test_acquire_rejects_oversized_streamed_response_before_json_parse():
+    task, run = str(uuid4()), str(uuid4())
+    payload = (
+        b'{"runtime_id":"' + str(uuid4()).encode() +
+        b'","task_id":"' + task.encode() +
+        b'","engine_run_id":"' + run.encode() +
+        b'","engine_id":"opencode","base_url":"https://opencode.internal:8443",'
+        b'"access_token":"' + (b"t" * 48) +
+        b'","expires_at":' + str(time() + 300).encode() +
+        b',"padding":"' + (b"x" * 20_000) + b'"}'
+    )
+    client = provider(lambda request: httpx.Response(
+        201, content=payload, headers={"content-type": "application/json"}
+    ))
+    try:
+        with pytest.raises(RuntimeProvisionerError, match="response_too_large"):
+            client.acquire(task, run, "opencode")
+    finally:
+        client.close()
+
+
+def test_acquire_rejects_invalid_content_length_header():
+    client = provider(lambda request: httpx.Response(
+        201, content=b"{}", headers={
+            "content-type": "application/json", "content-length": "not-a-number"
+        }
+    ))
+    try:
+        with pytest.raises(RuntimeProvisionerError, match="invalid_response"):
+            client.acquire(str(uuid4()), str(uuid4()), "opencode")
+    finally:
+        client.close()
