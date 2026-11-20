@@ -66,6 +66,8 @@ def test_create_enforces_container_hardening_and_unique_workspace_network(tmp_pa
     assert options["security_opt"] == ["no-new-privileges:true"]
     assert options["mem_limit"] == options["memswap_limit"]
     assert options["pids_limit"] == 256
+    assert "/var/lib/opencode/config" in options["tmpfs"]
+    assert "/var/lib/opencode/data" in options["tmpfs"]
     assert options["ports"]["4096/tcp"] == ("127.0.0.1", None)
     assert result["host_port"] == 43123
     assert Path(result["workspace_path"], "src/main.py").read_text() == "print('ok')"
@@ -108,3 +110,13 @@ def test_create_rejects_non_loopback_port_binding_and_cleans_up(tmp_path):
     )
     with pytest.raises(RuntimeErrorSafe, match="loopback"):
         mgr.create(task_id=str(uuid4()), engine_run_id=str(uuid4()), engine_id="opencode", files=[])
+
+
+
+def test_image_must_use_a_full_sha256_digest(tmp_path):
+    with pytest.raises(ValueError, match="digest_pinned"):
+        DockerTaskRuntimeManager(
+            image="registry.example/opencode:latest",
+            workspace_root=str(tmp_path),
+            client=FakeDocker(),
+        )
