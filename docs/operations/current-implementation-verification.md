@@ -37,7 +37,7 @@ Anonymous SELECT access is not granted to these tables. Profile owners can updat
 
 - The authenticated API route `POST /v1/chat/respond` verifies conversation and message ownership before processing a request.
 - Assistant messages are inserted only by the server-side Supabase secret client; authenticated client roles cannot set the message role column.
-- An OpenAI-compatible adapter exists, but `AI_PROVIDER=disabled` is the default. No AI provider or paid service has been activated.
+- An OpenAI-compatible adapter exists, but `AI_PROVIDER=disabled` is the default. Both `/v1/chat/respond` and the worker `ai.respond` operation require the user's persisted `ai.provider.run` approval before a provider call. The tool catalog reports whether the provider is configured separately from whether the user approved it. No AI provider or paid service has been activated.
 - A server-only `SUPABASE_SECRET_KEY` and optional `AI_API_KEY` are documented as environment variables; neither is committed to the repository or bundled into the client.
 
 ## Verification limits
@@ -46,4 +46,5 @@ Anonymous SELECT access is not granted to these tables. Profile owners can updat
 - A real-user end-to-end auth/chat test has not been performed; no test user was created on the owner's behalf.
 - Supabase email delivery and redirect allow-list have not been verified.
 - Backend gateway tests were added, but the GitHub connector did not return a check/status record for the latest commits, so no new CI pass is claimed here.
+- The Agent Workspace supports deterministic text analysis, approval-gated `ai.respond`, and the separately gated Hermes bridge. The Activity screen reads the authenticated task history API.
 - Provider configuration, API deployment, streaming, durable worker execution, and native production builds remain pending.
