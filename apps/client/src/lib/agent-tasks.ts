@@ -116,8 +116,7 @@ export async function createAgentTask(
         description: "تشغيل طلب المستخدم عبر Hermes بعد التحقق من موافقته وحدود التنفيذ.",
         depends_on: [],
         input: { operation, prompt: cleanPrompt },
-      }
-;
+      };
   await request("/v1/tasks/" + encodeURIComponent(task.id) + "/plan", {
     method: "POST",
     body: JSON.stringify({ steps: [step] }),
