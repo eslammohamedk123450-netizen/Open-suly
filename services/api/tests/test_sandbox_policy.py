@@ -23,6 +23,8 @@ def test_sandbox_command_has_hardened_defaults_and_one_workspace_mount(tmp_path)
     root = tmp_path / "workspaces"
     workspace = root / str(uuid4())
     workspace.mkdir(parents=True)
+    root.chmod(0o700)
+    workspace.chmod(0o700)
     argv = builder(root).build(str(uuid4()), workspace, ["aider", "--help"])
     assert argv[0:3] == ("docker", "run", "--rm")
     assert "--network" in argv and argv[argv.index("--network") + 1] == "none"
@@ -47,6 +49,7 @@ def test_sandbox_command_has_hardened_defaults_and_one_workspace_mount(tmp_path)
 def test_sandbox_rejects_mutable_or_invalid_image_refs(tmp_path, image):
     root = tmp_path / "workspaces"
     root.mkdir()
+    root.chmod(0o700)
     with pytest.raises(ValueError, match="sha256"):
         DockerSandboxCommandBuilder(workspace_root=root, image_ref=image)
 
@@ -54,6 +57,7 @@ def test_sandbox_rejects_mutable_or_invalid_image_refs(tmp_path, image):
 def test_sandbox_rejects_workspace_outside_root(tmp_path):
     root = tmp_path / "workspaces"
     root.mkdir()
+    root.chmod(0o700)
     outside = tmp_path / "outside"
     outside.mkdir()
     with pytest.raises(ValueError, match="outside_root"):
@@ -64,6 +68,8 @@ def test_sandbox_rejects_invalid_task_and_command(tmp_path):
     root = tmp_path / "workspaces"
     workspace = root / str(uuid4())
     workspace.mkdir(parents=True)
+    root.chmod(0o700)
+    workspace.chmod(0o700)
     sandbox = builder(root)
     with pytest.raises(ValueError, match="task_id"):
         sandbox.build("not-a-uuid", workspace, ["aider"])
@@ -74,6 +80,7 @@ def test_sandbox_rejects_invalid_task_and_command(tmp_path):
 def test_sandbox_rejects_symlinked_workspace(tmp_path):
     root = tmp_path / "workspaces"
     root.mkdir()
+    root.chmod(0o700)
     outside = tmp_path / "outside"
     outside.mkdir()
     link = root / "linked"
@@ -95,5 +102,6 @@ def test_sandbox_rejects_symlinked_workspace(tmp_path):
 def test_sandbox_rejects_unsafe_resource_limits(tmp_path, limits):
     root = tmp_path / "workspaces"
     root.mkdir()
+    root.chmod(0o700)
     with pytest.raises(ValueError):
         builder(root, limits=limits)
