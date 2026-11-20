@@ -77,6 +77,13 @@ class OpenCodeHTTPClient:
     async def aclose(self) -> None:
         await self._client.aclose()
 
+    def _gateway_route(self, path: str) -> str:
+        prefix = self._lease.gateway_path
+        if prefix:
+            return prefix + path
+        return path
+
+
     async def _request_json(
         self,
         method: str,
@@ -91,7 +98,7 @@ class OpenCodeHTTPClient:
         if not (fixed_route or permission_list):
             raise ValueError("opencode_route_not_allowed")
         try:
-            async with self._client.stream(method, path, json=body) as response:
+            async with self._client.stream(method, self._gateway_route(path), json=body) as response:
                 if 300 <= response.status_code < 400:
                     raise OpenCodeTransportError("opencode_redirect_rejected")
                 if response.status_code < 200 or response.status_code >= 300:
@@ -130,7 +137,7 @@ class OpenCodeHTTPClient:
         if not (path.startswith("/api/session/") and len(path) <= 512):
             raise ValueError("opencode_route_not_allowed")
         try:
-            async with self._client.stream(method, path, json=body, params=params) as response:
+            async with self._client.stream(method, self._gateway_route(path), json=body, params=params) as response:
                 if 300 <= response.status_code < 400:
                     raise OpenCodeTransportError("opencode_redirect_rejected")
                 if response.status_code not in allowed_statuses:
@@ -200,7 +207,7 @@ class OpenCodeHTTPClient:
         if not re.fullmatch(r"/api/session/ses[A-Za-z0-9_-]{1,128}/permission/per[A-Za-z0-9_-]{1,128}/reply", path):
             raise ValueError("opencode_route_not_allowed")
         try:
-            async with self._client.stream("POST", path, json=body) as response:
+            async with self._client.stream("POST", self._gateway_route(path), json=body) as response:
                 if 300 <= response.status_code < 400:
                     raise OpenCodeTransportError("opencode_redirect_rejected")
                 if response.status_code not in (200, 204):
@@ -282,7 +289,7 @@ class OpenCodeHTTPClient:
         line_buffer = bytearray()
         try:
             async with self._client.stream(
-                "GET", "/api/event", headers={"Accept": "text/event-stream"},
+                "GET", self._gateway_route("/api/event"), headers={"Accept": "text/event-stream"},
                 timeout=httpx.Timeout(60.0, connect=5.0, read=30.0),
             ) as response:
                 if 300 <= response.status_code < 400:
