@@ -154,6 +154,34 @@ def test_runtime_broker_releases_invalid_provider_lease():
     assert provider.released == [lease.runtime_id]
 
 
+def test_runtime_broker_rejects_http_origin_allowlist():
+    with pytest.raises(ValueError, match="allowed_origins"):
+        TaskScopedRuntimeBroker(
+            FakeProvider([make_lease()]),
+            allowed_origins=frozenset({"http://opencode-runtime.internal:8443"}),
+        )
+
+
+def test_runtime_broker_rejects_ip_literal_origin_allowlist():
+    with pytest.raises(ValueError, match="allowed_origins"):
+        TaskScopedRuntimeBroker(
+            FakeProvider([make_lease()]),
+            allowed_origins=frozenset({"https://169.254.169.254"}),
+        )
+
+
+def test_runtime_lease_rejects_http_endpoint_even_with_matching_allowlist():
+    lease = make_lease(base_url="http://opencode-runtime.internal:8443")
+    with pytest.raises(ValueError, match="base_url"):
+        lease.validate(
+            task_id=TASK_ID,
+            engine_run_id=RUN_ID,
+            engine_id=ENGINE_ID,
+            allowed_origins=frozenset({"http://opencode-runtime.internal:8443"}),
+            now=time(),
+        )
+
+
 def test_runtime_broker_requires_explicit_exact_origin_allowlist():
     with pytest.raises(ValueError, match="allowed_origins"):
         TaskScopedRuntimeBroker(FakeProvider([make_lease()]), allowed_origins=frozenset())
