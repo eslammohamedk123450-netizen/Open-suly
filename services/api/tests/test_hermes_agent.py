@@ -574,10 +574,7 @@ def test_safe_approval_event_ignores_unhashable_choice_value():
         "request_id": "approval-req_123",
         "choice": {"unexpected": "object"},
     }, "run_approval_123")
-    assert event == {
-        "event": "approval.responded",
-        "approval_request_id": "approval-req_123",
-    }
+    assert event is None
 
 
 def test_safe_approval_event_drops_invalid_request_id_and_permanent_choice():
@@ -587,7 +584,7 @@ def test_safe_approval_event_drops_invalid_request_id_and_permanent_choice():
         "request_id": "bad request id",
         "choice": "always",
     }, "run_approval_123")
-    assert event == {"event": "approval.responded"}
+    assert event is None
 
 
 def test_hermes_approval_details_returns_only_upstream_redacted_display_fields(monkeypatch):
