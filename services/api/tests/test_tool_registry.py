@@ -26,7 +26,9 @@ def make_step(input_data):
 
 def test_registry_exposes_only_registered_tool_metadata():
     tools = TOOL_REGISTRY.describe()
-    assert [tool["name"] for tool in tools] == ["text.analyze"]
+    assert [tool["name"] for tool in tools] == ["hermes.agent.turn", "text.analyze"]
+    assert tools[0]["requires_approval"] is True
+    assert tools[1]["requires_approval"] is False
     assert tools[0]["permission_scope"] == "task.text.analyze"
 
 
