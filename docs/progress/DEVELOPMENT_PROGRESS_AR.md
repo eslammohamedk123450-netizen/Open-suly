@@ -226,3 +226,20 @@ undefined
 - فحوصات Railway ليست دليلًا على نجاح اختبارات Python. الاختبارات الجديدة موجودة في المستودع، لكنها غير مؤكدة التنفيذ حتى تظهر نتيجة CI فعلية.
 - تم تشديد كتالوج Hermes ليعلن فقط `agent.general` كقدرة SULY الموصولة حاليًا؛ قدرات التخطيط/المهارات/الذاكرة/البحث تظل غير قابلة للتوجيه المستقل حتى اكتمال تكاملاتها وصلاحياتها.
 - Commit تحديث توضيح تفعيل الأدوار: `b5d8fb9583f3`.
+
+
+## جلسة تطوير — 2026-11-20 (توصيل أحداث Hermes بالسجل الدائم)
+
+- تم استكمال فجوة كانت موثقة سابقًا: SSE كان يُستهلك اختياريًا لكن callback لم يكن موصولًا بسجل SULY.
+- أضيفت migration 20261120235000_engine_run_events.sql لإنشاء جدول أحداث metadata فقط، مع RLS لقراءة المالك، وكتابة service-role فقط، وRPC يتحقق من lease العامل وحالة سجل التشغيل قبل قبول الحدث.
+- الأحداث المسموح بتخزينها هي أسماء محددة ورقم تسلسل وتوقيت فقط؛ لا تُخزن prompts أو reasoning أو tool arguments أو previews أو outputs.
+- أضيف EngineRunStore.append_event بتحقق صارم من اسم الحدث والتسلسل والتوقيت، مع idempotency حسب upstream sequence وإرجاع false عند فقدان lease.
+- تم توصيل callback من Hermes adapter إلى RPC، وأصبح GET /v1/tasks/{task_id} يعرض engine_events ضمن سجل المهمة بفلترة owner وحد أقصى 500 حدث.
+- أضيفت اختبارات وحدة لـRPC/event validation، واختبار توصيل adapter، واختبار task detail owner-scoped.
+- Commits: ad925cf0dc13 (migration)، dbf21874127d (store)، 92b3daeca1b3 و2bc7c7b7f037 (worker adapter)، b47b5b69e6c4 (API)، bf706c53abcf و9c1ba64e2843 وd7c92fe9ea6d و9b23db3b3d2d (tests).
+- لم تُطبق migration على Supabase ولم يحدث deployment أو تشغيل Hermes. يجب تطبيق migration قبل نشر نسخة API التي تقرأ جدول الأحداث.
+- الاختبارات أضيفت فقط حتى الآن؛ لا أعتبرها ناجحة قبل ظهور نتائج CI على HEAD الحالي. لم يتم تشغيل pytest محليًا من بيئة هذه الجلسة.
+
+### الخطوة التالية
+- مراجعة نتائج CI، ثم إضافة contract tests للـevent persistence/ownership، والتحقق من واجهة العميل لعرض أحداث التشغيل دون تسريب بيانات حساسة.
+- بعد ذلك استكمال Hermes control endpoints التي يدعمها upstream (steer/approval/session/skills) واحدًا تلو الآخر بعد مراجعة API schema والربط مع موافقات SULY، ثم الانتقال إلى OpenCode runtime مع sandbox per-task.
