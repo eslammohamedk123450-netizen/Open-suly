@@ -332,3 +332,19 @@ For every engine:
 - [ ] process-tree teardown وإبطال الأسرار واختبارات منع الوصول المتبادل.
 
 ملف التدقيق: `docs/architecture/BROWSER_USE_INTEGRATION_AUDIT.md`. Browser Use ما زال disabled؛ لا يوجد MCP server أو browser runtime حي.
+
+
+## تحديث عقد Runtime لكل محاولة — 2026-11-20
+
+- [x] RuntimeLease يربط runtime/task/engine-run/engine IDs.
+- [x] token مخفي عن repr ومحدود الطول، والـlease محدود بساعة كحد أقصى.
+- [x] HTTPS + exact DNS host allowlist، ورفض IP literals وURL credentials/query/path.
+- [x] منع تكرار task attempt أو runtime ID داخل broker process، ومحاولة teardown في context manager.
+- [x] اختبارات العقد الأساسية.
+- [ ] مزود runtime فعلي يخلق runtime جديدًا لكل محاولة ويحفظ uniqueness عبر restart.
+- [ ] broker network/service حقيقي يربط task owner وlease وruntime identity في كل طلب.
+- [ ] teardown مؤكد عبر process tree/container runtime حتى بعد worker crash/restart.
+- [ ] اختبار DNS resolution/egress proxy وnetwork isolation في بيئة staging.
+- [ ] OpenCode adapter وBrowser Use MCP broker بعد إثبات العزل.
+
+هذا العقد لا يشغّل أي container أو process، ولا يجعل المحركات متاحة. تبقى جميع runtimes معطلة.
