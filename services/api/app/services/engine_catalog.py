@@ -7,7 +7,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+from typing import Mapping
 
+from app.services.engine_contract import EngineAdapter
 from app.services.engine_registry import EngineDefinition, EngineRegistry
 
 
@@ -36,7 +38,7 @@ ENGINE_MANIFESTS: tuple[EngineManifest, ...] = (
         role="primary general-purpose agent runtime",
         capabilities=frozenset({
             "agent.general", "agent.planning", "agent.skills",
-            "agent.memory", "agent.delegation",
+            "agent.memory", "agent.delegation", "research", "research.summarize",
         }),
     ),
     EngineManifest(
@@ -81,17 +83,31 @@ def validate_engine_manifests(
             raise ValueError("engine_manifest_metadata_required")
 
 
-def build_engine_registry() -> EngineRegistry:
-    """Register upstream identities without enabling or launching execution."""
+def build_engine_registry(
+    runtime_overrides: Mapping[str, tuple[bool, EngineAdapter | None]] | None = None,
+) -> EngineRegistry:
+    """Register pinned engines; only explicit server-side overrides may enable one."""
     validate_engine_manifests()
-    return EngineRegistry([
-        EngineDefinition(
+    overrides = dict(runtime_overrides or {})
+    known_ids = {item.engine_id for item in ENGINE_MANIFESTS}
+    if set(overrides) - known_ids:
+        raise ValueError("unknown_engine_runtime_override")
+
+    definitions = []
+    for item in ENGINE_MANIFESTS:
+        enabled, adapter = overrides.get(item.engine_id, (False, None))
+        if not isinstance(enabled, bool):
+            raise ValueError("invalid_engine_runtime_override")
+        if adapter is not None and not callable(getattr(adapter, "execute", None)):
+            raise ValueError("invalid_engine_runtime_adapter")
+        if enabled and adapter is None:
+            raise ValueError("enabled_engine_requires_adapter")
+        definitions.append(EngineDefinition(
             engine_id=item.engine_id,
             display_name=item.display_name,
             capabilities=item.capabilities,
-            enabled=False,
+            enabled=enabled,
             requires_approval=True,
-            adapter=None,
-        )
-        for item in ENGINE_MANIFESTS
-    ])
+            adapter=adapter,
+        ))
+    return EngineRegistry(definitions)
