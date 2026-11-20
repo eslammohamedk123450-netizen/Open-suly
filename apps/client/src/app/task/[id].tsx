@@ -28,6 +28,9 @@ function statusLabel(status: string): string {
     cancelled: "أُلغيت",
     pending: "في الانتظار",
     blocked: "متوقفة بانتظار خطوة أخرى",
+    succeeded: "اكتمل المحرك",
+    failed: "فشل المحرك",
+    cancelled: "أُلغي المحرك",
   };
   return labels[status] ?? status;
 }
@@ -191,6 +194,24 @@ export default function TaskDetailsScreen() {
                   )}
                 </View>
               ))}
+
+              {(snapshot.engine_runs?.length ?? 0) > 0 && (
+                <>
+                  <Text style={styles.sectionHeading}>سجل تشغيل المحركات ({snapshot.engine_runs.length})</Text>
+                  {snapshot.engine_runs.map((run) => (
+                    <View key={run.id} style={styles.card}>
+                      <View style={styles.stepHeader}>
+                        <Text style={styles.status}>{statusLabel(run.status)}</Text>
+                        <Text style={styles.stepTitle}>{run.engine_id}</Text>
+                      </View>
+                      <Text style={styles.muted}>المحاولة رقم {run.attempt_count}</Text>
+                      <Text style={styles.muted}>بدأت: {formatDate(run.started_at)}</Text>
+                      {!!run.completed_at && <Text style={styles.muted}>انتهت: {formatDate(run.completed_at)}</Text>}
+                      {!!run.error_code && <Text style={styles.error}>رمز الخطأ: {run.error_code}</Text>}
+                    </View>
+                  ))}
+                </>
+              )}
             </>
           ) : null}
           {!!notice && !!snapshot && <Text style={styles.error}>{notice}</Text>}
