@@ -76,6 +76,7 @@ class RuntimeLease:
     base_url: str
     access_token: str = field(repr=False)
     expires_at: float
+    gateway_path: str = ""
 
     def validate(
         self,
@@ -119,8 +120,13 @@ class RuntimeLease:
         except (TypeError, ValueError, AttributeError) as exc:
             raise ValueError("runtime_lease_base_url_invalid") from exc
 
+        gateway_path_valid = (
+            self.gateway_path == ""
+            or self.gateway_path == f"/v1/runtime-gateway/{self.runtime_id}"
+        )
         if (
-            parsed.scheme != "https"
+            not gateway_path_valid
+            or parsed.scheme != "https"
             or not parsed.hostname
             or parsed.username is not None
             or parsed.password is not None
