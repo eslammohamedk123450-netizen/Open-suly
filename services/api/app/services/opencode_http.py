@@ -25,6 +25,7 @@ _ALLOWED_ROUTES = frozenset({
     ("GET", "/api/skill"),
     ("GET", "/api/provider"),
 })
+_ALLOWED_SESSION_ACTIONS = frozenset({"prompt_async", "abort"})
 
 
 class OpenCodeTransportError(RuntimeError):
@@ -170,6 +171,59 @@ class OpenCodeHTTPClient:
             raise OpenCodeTransportError(f"opencode_upstream_status_{response.status_code}")
         if len(response.content) > 4096:
             raise OpenCodeTransportError("opencode_response_too_large")
+
+    async def submit_prompt_async(self, *, session_id: str, prompt: str) -> None:
+        """Submit one bounded text prompt to the exact task-owned session.
+
+        This method is intentionally transport-only. Callers must verify the
+        durable SULY session/task/lease mapping immediately before invoking it.
+        The runtime must already be an isolated, task-attempt-scoped lease.
+        """
+        if not _SESSION_ID.fullmatch(session_id):
+            raise ValueError("opencode_session_id_invalid")
+        if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > _MAX_PROMPT_CHARS:
+            raise ValueError("opencode_prompt_invalid")
+        if any(ord(char) < 32 and char not in "\\n\\r\\t" for char in prompt):
+            raise ValueError("opencode_prompt_invalid")
+        path = f"/api/session/{session_id}/prompt_async"
+        if not re.fullmatch(r"/api/session/ses[A-Za-z0-9_-]{1,128}/prompt_async", path):
+            raise ValueError("opencode_route_not_allowed")
+        body = {"parts": [{"type": "text", "text": prompt.strip()}]}
+        try:
+            response = await self._client.post(path, json=body)
+        except httpx.HTTPError as exc:
+            raise OpenCodeTransportError("opencode_runtime_unreachable") from exc
+        if 300 <= response.status_code < 400:
+            raise OpenCodeTransportError("opencode_redirect_rejected")
+        if response.status_code != 204:
+            # Do not include upstream body or headers in errors.
+            raise OpenCodeTransportError(f"opencode_upstream_status_{response.status_code}")
+        if len(response.content) > 4096:
+            raise OpenCodeTransportError("opencode_response_too_large")
+
+    async def abort_session(self, *, session_id: str) -> None:
+        """Request cancellation for the exact upstream session; SULY owns task state."""
+        if not _SESSION_ID.fullmatch(session_id):
+            raise ValueError("opencode_session_id_invalid")
+        path = f"/api/session/{session_id}/abort"
+        if not re.fullmatch(r"/api/session/ses[A-Za-z0-9_-]{1,128}/abort", path):
+            raise ValueError("opencode_route_not_allowed")
+        try:
+            response = await self._client.post(path)
+        except httpx.HTTPError as exc:
+            raise OpenCodeTransportError("opencode_runtime_unreachable") from exc
+        if 300 <= response.status_code < 400:
+            raise OpenCodeTransportError("opencode_redirect_rejected")
+        if response.status_code != 200:
+            raise OpenCodeTransportError(f"opencode_upstream_status_{response.status_code}")
+        if len(response.content) > 4096:
+            raise OpenCodeTransportError("opencode_response_too_large")
+        try:
+            value = response.json()
+        except (ValueError, json.JSONDecodeError) as exc:
+            raise OpenCodeTransportError("opencode_invalid_json") from exc
+        if value is not True:
+            raise OpenCodeTransportError("opencode_abort_not_confirmed")
 
     async def list_skills(self) -> list[dict[str, Any]]:
         result = await self._request_json("GET", "/api/skill")
