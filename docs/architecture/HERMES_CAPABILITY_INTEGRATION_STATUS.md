@@ -155,3 +155,11 @@ The authenticated tool catalog now publishes each registered tool's allowed and 
 - The task-owner approval-details endpoint now sends Cache-Control: private, no-store, max-age=0, Pragma: no-cache, and Vary: Authorization. Approval command text is a transient display response and must not be retained by intermediary caches.
 - Client-side approval detail/busy state is keyed by the pair (engine_run_id, request_id), preventing collisions if an upstream request identifier is reused by a later run.
 - The API test asserts the no-store headers. This is additive; no production setting or runtime toggle was changed.
+
+
+## Strict approval event validation — 2026-11-20
+
+- The SSE reducer now drops approval.request events without a valid bounded ASCII request_id.
+- It drops approval.responded events unless both the request_id is valid and the decision is exactly once or deny. Upstream session/always and malformed decisions cannot enter SULY's durable event path.
+- Added unit tests for missing IDs, control characters, unsupported permanent/session choices, and successful metadata-only event reduction.
+- This closes a failure mode where an invalid approval event could be emitted without its required request identity and then be rejected by the database RPC during persistence.
