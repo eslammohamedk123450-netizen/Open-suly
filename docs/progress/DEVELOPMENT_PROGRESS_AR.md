@@ -332,3 +332,13 @@ undefined
 - upstream يوضح أن allowed_domains/prohibited_domains لا تحمي cloud browser؛ هذه القواعد تخص local Chromium فقط. لذلك لا يمكن اعتبارها SSRF/egress boundary.
 - أضفت `docs/architecture/BROWSER_USE_INTEGRATION_AUDIT.md` وفيه عقد العزل المطلوب: MCP process/container لكل task attempt، egress proxy default-deny، فحص DNS/redirect/IPv4/IPv6، موافقة قبل side effects، وإنهاء process tree وإبطال credentials.
 - Browser Use يظل disabled metadata فقط. لم يتم تشغيل browser أو MCP server أو استخدام API key، ولا توجد أي browser side effects.
+
+
+## دفعة عقد Runtime لكل محاولة — 2026-11-20
+
+- أضيف `runtime_broker_contract.py` بعقد RuntimeLease مربوط بـtask UUID + engine_run UUID + engine ID + runtime UUID، مع token مخفي عن repr ومدة صلاحية لا تتجاوز ساعة.
+- أضيف TaskScopedRuntimeBroker لرفض إعادة استخدام نفس محاولة المهمة ونفس runtime ID، حتى بعد release داخل عمر العملية، مع context manager يحاول teardown دائمًا.
+- شددت التحقق: HTTPS فقط، host DNS مطابق تمامًا لقائمة allowlist، رفض IP literals بما فيها metadata IP، ورفض credentials/query/fragment/path داخل base URL، وحد token 32–512 ASCII.
+- أضيفت اختبارات للعزل بين المهام والمحاولات، endpoint allowlist، رفض HTTP وIP literal وsubdomain غير المطابق، انتهاء الصلاحية، تكرار المحاولة/runtime، invalid provider lease، وفشل teardown.
+- العقد لا ينشئ containers ولا يشغّل OpenCode أو Browser Use. لا يوجد concrete provider أو network broker أو Docker runtime؛ المحركات ما زالت disabled.
+- CI على commits السابقة: Platform CI وBaseline على `01e8e88b` نجحا (364 API tests + TypeScript + Expo compatibility + Web export). Baseline على commits `88927c93` و`3db6a8fd` نجح، لكن Platform CI لهما كان قيد التنفيذ عند آخر فحص. لا ننسب نجاح CI إلى HEAD الحالي قبل اكتماله.
