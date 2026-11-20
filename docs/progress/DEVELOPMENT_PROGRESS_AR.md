@@ -342,3 +342,15 @@ undefined
 - أضيفت اختبارات للعزل بين المهام والمحاولات، endpoint allowlist، رفض HTTP وIP literal وsubdomain غير المطابق، انتهاء الصلاحية، تكرار المحاولة/runtime، invalid provider lease، وفشل teardown.
 - العقد لا ينشئ containers ولا يشغّل OpenCode أو Browser Use. لا يوجد concrete provider أو network broker أو Docker runtime؛ المحركات ما زالت disabled.
 - CI على commits السابقة: Platform CI وBaseline على `01e8e88b` نجحا (364 API tests + TypeScript + Expo compatibility + Web export). Baseline على commits `88927c93` و`3db6a8fd` نجح، لكن Platform CI لهما كان قيد التنفيذ عند آخر فحص. لا ننسب نجاح CI إلى HEAD الحالي قبل اكتماله.
+
+
+## دفعة تدقيق إضافية — Hermes sessions وskills وtoolsets — 2026-11-20
+
+- راجعنا endpoints الأصلية في Hermes pinned revision: GET /v1/skills وGET /v1/toolsets وعمليات /api/sessions.
+- اكتشفنا أن skills وtoolsets محمية بـBearer auth، لكن skills list تشمل حتى disabled/editorial، وأن toolsets تعكس إعدادات عملية Hermes كاملة لا صلاحيات مستخدم SULY.
+- Sessions API تعمل على قاعدة جلسات Hermes المحلية وملف profile، ولا تربط session ID بمالك SULY أو task أو RLS. وهي تعرض messages وfork وchat وlifecycle داخل profile واحد؛ لذلك لن نمررها مباشرة للعميل أو نستخدم Hermes profile مشتركًا.
+- القرار: جلسات SULY ومحادثاته تظل المصدر الوحيد للسياق والملكية. لا نحفظ Hermes session IDs بين محاولات معمارية runtime المؤقت لكل task. Skill catalog مستقبلي يكون read-only، pinned ومراجع المصدر والرخصة، ولا يعني تفعيل الأدوات.
+- أضيف التدقيق في HERMES_SESSIONS_SKILLS_AUDIT.md.
+- أضيف runtime lease broker contract مع exact endpoint origin allowlist (scheme/host/port)، ربط lease بـtask/run/engine، صلاحية لا تتجاوز ساعة، ومنع إعادة استخدام runtime identity أو task attempt داخل العملية. أضيفت اختبارات unit تغطي origin/port، metadata/localhost، expiry، ownership mismatch، وإعادة الاستخدام والتنظيف.
+- CI كشف فشلًا في اختبارات lease لأن وقت انتهاء الاختبار كان أبعد من حد الساعة؛ أصلحنا الاختبارات لتستخدم وقتًا حاليًا وصلاحية 30 دقيقة. فحص CI على commit 3936f442 queued وقت آخر فحص؛ لا نعلن نجاحًا قبل اكتمال API tests وclient typecheck/export على أحدث HEAD.
+- لم يتم بناء provider فعلي أو تشغيل Docker أو Hermes أو Browser Use، ولم تُطبق أي migration أو deployment. كل المحركات تظل disabled.
