@@ -30,8 +30,11 @@ def test_catalog_lists_registered_tools_and_user_approval(monkeypatch):
     assert response.status_code == 200
     items = response.json()["items"]
     by_name = {item["name"]: item for item in items}
-    assert set(by_name) == {"text.analyze", "hermes.agent.turn"}
+    assert set(by_name) == {"text.analyze", "hermes.agent.turn", "ai.respond"}
     assert by_name["text.analyze"]["approved"] is True
+    assert by_name["ai.respond"]["approved"] is False
+    assert by_name["ai.respond"]["available"] is False
+    assert by_name["ai.respond"]["permission_scope"] == "ai.provider.run"
     assert by_name["text.analyze"]["requires_approval"] is False
     assert by_name["text.analyze"]["available"] is True
     assert by_name["hermes.agent.turn"]["available"] is False
