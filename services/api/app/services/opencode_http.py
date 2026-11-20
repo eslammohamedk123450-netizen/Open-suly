@@ -279,6 +279,7 @@ class OpenCodeHTTPClient:
         yielded = 0
         data_lines: list[str] = []
         event_size = 0
+        line_buffer = bytearray()
         try:
             async with self._client.stream(
                 "GET", "/api/event", headers={"Accept": "text/event-stream"},
@@ -291,31 +292,51 @@ class OpenCodeHTTPClient:
                 content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
                 if content_type != "text/event-stream":
                     raise OpenCodeTransportError("opencode_invalid_event_content_type")
-                async for line in response.aiter_lines():
-                    if line == "":
-                        if data_lines:
-                            raw = "\n".join(data_lines)
-                            data_lines.clear()
-                            event_size = 0
+
+                # Parse bounded byte chunks ourselves. aiter_lines() can allocate an
+                # arbitrarily large unterminated line before application limits run.
+                async for chunk in response.aiter_bytes(chunk_size=4096):
+                    line_buffer.extend(chunk)
+                    if len(line_buffer) > max_event_bytes and b"\\n" not in line_buffer:
+                        raise OpenCodeTransportError("opencode_event_too_large")
+                    while b"\\n" in line_buffer:
+                        raw_line, _, remainder = line_buffer.partition(b"\\n")
+                        line_buffer = bytearray(remainder)
+                        if raw_line.endswith(b"\\r"):
+                            raw_line = raw_line[:-1]
+                        if not raw_line:
+                            if data_lines:
+                                raw = "\\n".join(data_lines)
+                                data_lines.clear()
+                                event_size = 0
+                                try:
+                                    envelope = json.loads(raw)
+                                except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+                                    continue
+                                safe = opencode_contract.safe_event_metadata(envelope, session_id)
+                                if safe is not None:
+                                    yield safe
+                                    yielded += 1
+                                    if yielded >= max_events:
+                                        return
+                            continue
+                        if raw_line.startswith(b":"):
+                            continue
+                        if raw_line.startswith(b"data:"):
+                            value_bytes = raw_line[5:]
+                            if value_bytes.startswith(b" "):
+                                value_bytes = value_bytes[1:]
+                            event_size += len(value_bytes) + (1 if data_lines else 0)
+                            if event_size > max_event_bytes:
+                                raise OpenCodeTransportError("opencode_event_too_large")
                             try:
-                                envelope = json.loads(raw)
-                            except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+                                data_lines.append(value_bytes.decode("utf-8", errors="strict"))
+                            except UnicodeDecodeError:
+                                data_lines.clear()
+                                event_size = 0
                                 continue
-                            safe = opencode_contract.safe_event_metadata(envelope, session_id)
-                            if safe is not None:
-                                yield safe
-                                yielded += 1
-                                if yielded >= max_events:
-                                    return
-                        continue
-                    if line.startswith(":"):
-                        continue
-                    if line.startswith("data:"):
-                        value = line[5:].lstrip()
-                        event_size += len(value.encode("utf-8"))
-                        if event_size > max_event_bytes:
-                            raise OpenCodeTransportError("opencode_event_too_large")
-                        data_lines.append(value)
+                    if len(line_buffer) > max_event_bytes:
+                        raise OpenCodeTransportError("opencode_event_too_large")
         except OpenCodeTransportError:
             raise
         except httpx.HTTPError as exc:
