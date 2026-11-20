@@ -88,3 +88,10 @@ This is only a preflight policy helper. It does not make network requests, pin D
 - The preflight rejects Unicode control/format/surrogate characters, including bidi overrides, in the input URL.
 - It rejects legacy numeric IPv4 forms such as abbreviated, integer, and hexadecimal host encodings in addition to ordinary IPv4/IPv6 literals.
 - Explicit port zero is rejected rather than treated as an omitted/default port.
+
+
+## Host allowlist validation — 2026-11-20
+
+- BrowserNetworkPolicy now validates the configured allowlist itself, not only incoming URLs: entries must be lowercase ASCII DNS names in canonical form, with no wildcard, trailing dot, malformed labels, localhost, .local, or .internal suffixes.
+- Literal and legacy numeric IPv4 forms are rejected from configuration as well as from navigation URLs.
+- Added tests for malformed/case-variant/trailing-dot/local/private/IP allowlist entries. This reduces configuration mistakes but does not replace runtime network enforcement.
