@@ -112,12 +112,10 @@ export default function AgentScreen() {
     setNotice("");
     setSnapshot(null);
     try {
-      await createAgentTask(operation, prompt);
+      const created = await createAgentTask(operation, prompt);
       setPrompt("");
-      // Fetch the created task through the list endpoint so the screen can
-      // attach to the persisted execution record even if planning took time.
-      const recent = await getAgentTaskFromCreatedTaskFallback();
-      setSnapshot(recent);
+      const current = await getAgentTask(created.id);
+      setSnapshot(current);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "تعذر إنشاء المهمة.");
     } finally {
@@ -248,13 +246,6 @@ export default function AgentScreen() {
       </View>
     </SafeAreaView>
   );
-}
-
-// The create endpoint returns the task. This helper is replaced at the call
-// site below by retaining that ID; keeping task retrieval explicit avoids
-// trusting an unowned client-side task object.
-async function getAgentTaskFromCreatedTaskFallback(): Promise<AgentTaskSnapshot> {
-  throw new Error("تعذر ربط المهمة الجديدة. أعد المحاولة بعد تحديث التطبيق.");
 }
 
 const styles = StyleSheet.create({
