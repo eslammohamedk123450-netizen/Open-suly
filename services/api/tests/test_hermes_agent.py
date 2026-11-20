@@ -336,10 +336,30 @@ def test_hermes_stop_reconciliation_rejects_unsafe_run_ids(monkeypatch, run_id):
         hermes_agent.stop_agent_run(run_id)
 
 
-def test_hermes_stop_reconciliation_requires_isolation(monkeypatch):
+def test_hermes_stop_reconciliation_requires_server_credentials(monkeypatch):
     monkeypatch.setattr(
         hermes_agent, "get_settings",
-        lambda: settings(hermes_agent_isolation_confirmed=False),
+        lambda: settings(hermes_agent_enabled=False, hermes_agent_isolation_confirmed=False,
+                         hermes_agent_api_key=None),
     )
-    with pytest.raises(hermes_agent.HermesAgentUnavailable, match="not enabled"):
+    with pytest.raises(hermes_agent.HermesAgentUnavailable, match="not configured"):
         hermes_agent.stop_agent_run("run_orphan_123")
+
+
+def test_hermes_stop_reconciliation_still_works_after_new_runs_are_disabled(monkeypatch):
+    class Client:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+        async def post(self, *_args, **_kwargs):
+            return Response({"status": "stopping"})
+        async def get(self, *_args, **_kwargs):
+            return Response({"status": "cancelled"})
+
+    monkeypatch.setattr(
+        hermes_agent, "get_settings",
+        lambda: settings(hermes_agent_enabled=False, hermes_agent_isolation_confirmed=False),
+    )
+    monkeypatch.setattr(hermes_agent.httpx, "AsyncClient", lambda **_kw: Client())
+    assert hermes_agent.stop_agent_run("run_orphan_123", timeout_seconds=5) is True
