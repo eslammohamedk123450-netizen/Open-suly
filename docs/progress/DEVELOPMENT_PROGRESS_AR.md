@@ -102,3 +102,13 @@ Commit تحديث هذا السجل: يتم ربطه بعد إنشائه.
 - أضيف ملف مراجعة upstream مع SHAs ثابتة وتقييمات الترخيص والعزل، بما فيها قيود Dify وn8n وAGPL في Skyvern وأرشفة UI-TARS.
 - لم يتم تشغيل محركات OpenHands/OpenCode/Aider/Browser Use أو دمج source. OpenHands وBrowser Use لا يدخلان runtime قبل sandbox per-task.
 - CI للتوثيق الأخير كان queued وقت التحديث.
+
+
+## جلسة تطوير — 2026-11-20 (إيقاف المحركات الخارجية اليتيمة)
+
+- عالجنا فجوة مهمة: انتهاء task lease لا يعني أن عملية Hermes الخارجية توقفت. أضيفت حالة `stop_pending` بدل إغلاق سجل تشغيل له upstream ID قبل محاولة الإيقاف.
+- أضيفت RPCs لحجز طلبات الإيقاف بlease مستقل، وإتمامها بعد تأكيد الحالة النهائية، أو إعادة المحاولة مع backoff.
+- أضيف Hermes stop client محدود الوقت، وEngineRunReconciler، وجدولة اختيارية في WorkerRuntime. بدء reconciler معطل افتراضيًا ويحتاج إعدادًا صريحًا وبيانات اتصال الخادم.
+- اختبارات الوحدة تغطي store claims، stop confirmation، عدم اعتبار HTTP acceptance نجاحًا، فشل المحرك، وعدم تسريب تفاصيل الاستثناء.
+- CI على commit `8080478aa8bb` نجح (API tests + client typecheck/web export). تغييرات لاحقة على stop guard وschedule لا تزال قيد CI.
+- migration `20261120210000` غير مطبقة، ولا توجد عملية Hermes فعلية قيد التشغيل في بيئة اختبار. يلزم disposable PostgreSQL/Supabase للتحقق من SQL semantics قبل تفعيلها.
