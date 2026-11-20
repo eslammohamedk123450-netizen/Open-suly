@@ -53,3 +53,11 @@ Browser Use remains disabled until all of the following are implemented and test
 - Do not treat cloud browser domain rules as an SSRF defense.
 - The next implementation unit is an isolated MCP runner plus network egress broker, not a direct client connection to Browser Use.
 - No browser automation, cloud browser, provider credential, or live side effect was enabled by this audit.
+
+
+## URL preflight policy checkpoint — 2026-11-20
+
+- Added `services/api/app/services/browser_network_policy.py` as a fail-closed preflight helper for a future task-scoped browser runtime.
+- It requires a task-specific host allowlist, defaults to ports 80/443, rejects userinfo and non-HTTP(S) schemes, blocks IP literals/localhost/.local/.internal names, and rejects any DNS answer that is not globally routable.
+- Resolver injection keeps tests deterministic and prevents test suites from making network requests.
+- This helper is not wired to Browser Use. It cannot stop DNS rebinding or browser subresource/redirect traffic on its own; the required egress proxy must pin DNS answers at connection time and revalidate every redirect.
