@@ -186,3 +186,24 @@ class EngineRunStore:
         if not isinstance(response.data, bool):
             raise RuntimeError("engine_stop_reconciliation_invalid_response")
         return response.data
+
+    def count_missing_upstream_identity(self, min_age_seconds: int = 30) -> int:
+        """Count stale stop_pending rows with no upstream ID for operational alerting."""
+        if (
+            isinstance(min_age_seconds, bool)
+            or not isinstance(min_age_seconds, int)
+            or not 1 <= min_age_seconds <= 3600
+        ):
+            raise ValueError("invalid_missing_identity_age")
+        response = self._client.rpc(
+            "count_engine_runs_missing_upstream_identity",
+            {"p_min_age_seconds": min_age_seconds},
+        ).execute()
+        value = response.data
+        if isinstance(value, list):
+            value = value[0] if value else None
+        if isinstance(value, dict):
+            value = value.get("count_engine_runs_missing_upstream_identity")
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise RuntimeError("missing_identity_count_invalid_response")
+        return value
