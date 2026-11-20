@@ -217,3 +217,64 @@ def test_claim_rejects_input_over_64_kibibytes():
     worker = TaskWorker(FakeRpc([payload]), "worker-oversized-input")
     with pytest.raises(ValueError, match="worker_claim_input_too_large"):
         worker.claim()
+
+
+@pytest.mark.parametrize("bad_output", [
+    None,
+    [],
+    {"nan": float("nan")},
+    {"not_json": object()},
+    {"payload": "x" * (64 * 1024)},
+])
+def test_complete_rejects_invalid_or_oversized_outputs_without_rpc(bad_output):
+    client = FakeRpc([])
+    worker = TaskWorker(client, "worker-invalid-output")
+    step = worker.claim if False else None
+    # Construct a typed claim without requiring a network/RPC claim.
+    from app.services.task_worker import ClaimedStep
+    claimed = ClaimedStep(
+        step_id=UUID(STEP["step_id"]),
+        task_id=UUID(STEP["task_id"]),
+        user_id=UUID(STEP["user_id"]),
+        step_key=STEP["step_key"],
+        title=STEP["title"],
+        description=STEP["description"],
+        input=STEP["input"],
+        attempt_count=STEP["attempt_count"],
+        max_attempts=STEP["max_attempts"],
+        lease_token=UUID(STEP["lease_token"]),
+        lease_expires_at=STEP["lease_expires_at"],
+    )
+    with pytest.raises(ValueError, match="worker_output"):
+        worker.complete(claimed, bad_output)
+    assert client.calls == []
+
+
+@pytest.mark.parametrize("rpc_value", ["true", 1, {"ok": True}, False, None])
+def test_lease_renewal_requires_literal_boolean_true(rpc_value):
+    client = FakeRpc([STEP, rpc_value])
+    worker = TaskWorker(client, "worker-strict-renew")
+    claimed = worker.claim()
+    assert claimed is not None
+    assert worker.renew(claimed) is (rpc_value is True)
+
+
+@pytest.mark.parametrize("rpc_value", ["true", 1, {"ok": True}, False, None])
+def test_completion_requires_literal_boolean_true(rpc_value):
+    from app.services.task_worker import ClaimedStep
+    client = FakeRpc([rpc_value])
+    worker = TaskWorker(client, "worker-strict-complete")
+    claimed = ClaimedStep(
+        step_id=UUID(STEP["step_id"]),
+        task_id=UUID(STEP["task_id"]),
+        user_id=UUID(STEP["user_id"]),
+        step_key=STEP["step_key"],
+        title=STEP["title"],
+        description=STEP["description"],
+        input=STEP["input"],
+        attempt_count=STEP["attempt_count"],
+        max_attempts=STEP["max_attempts"],
+        lease_token=UUID(STEP["lease_token"]),
+        lease_expires_at=STEP["lease_expires_at"],
+    )
+    assert worker.complete(claimed, {"result": "ok"}) is (rpc_value is True)
