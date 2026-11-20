@@ -80,6 +80,14 @@ This roadmap applies to the standalone SULY product.
 
 The app must continue to describe saved user messages as saved messages, not as completed AI responses, until the API is deployed, a provider is configured, and authenticated end-to-end tests pass.
 
+### Additional provider option — local Ollama
+
+- The unified server-side AI gateway now supports both OpenAI-compatible APIs and Ollama's native `/api/chat` contract.
+- Ollama does not require an API key; configure `AI_PROVIDER=ollama`, a private `AI_BASE_URL`, and `AI_MODEL`. The API key remains optional and is never sent to Ollama.
+- The provider remains disabled by default. The user approval gate, server-only execution, message validation, response bounds, and request timeout apply to both provider types.
+- Automated mock-transport tests cover the native Ollama request shape, no-auth behavior, successful response parsing, and malformed responses. These tests are not a live Ollama smoke test.
+- Do not expose an Ollama port publicly. Use a private network endpoint and configure the model/runtime on the worker/API host only after resource and network review.
+
 ### Chat API foundation
 - An authenticated `POST /v1/chat/respond` endpoint now validates that the requested conversation and user message belong to the signed-in user.
 - Assistant replies are written by the server only; the public client cannot assign assistant/system/tool roles.
