@@ -12,7 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { colors } from "@/theme/tokens";
 import { useAuth } from "@/providers/AuthProvider";
-import { cancelAgentTask, getAgentTask, retryAgentTask, steerAgentRun, type AgentTaskSnapshot } from "@/lib/agent-tasks";
+import { cancelAgentTask, getAgentTask, resolveAgentApproval, retryAgentTask, steerAgentRun, type AgentTaskSnapshot } from "@/lib/agent-tasks";
 
 const terminalStatuses = new Set(["completed", "failed", "cancelled"]);
 
@@ -77,6 +77,7 @@ export default function TaskDetailsScreen() {
   const [actionMessage, setActionMessage] = useState("");
   const [steerDraft, setSteerDraft] = useState("");
   const [steeringRunId, setSteeringRunId] = useState<string | null>(null);
+  const [approvalBusyId, setApprovalBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id || !user) return;
@@ -127,6 +128,22 @@ export default function TaskDetailsScreen() {
     }
   };
 
+  const resolveApproval = async (engineRunId: string, requestId: string, choice: "once" | "deny") => {
+    if (!snapshot || approvalBusyId) return;
+    setApprovalBusyId(requestId);
+    setNotice("");
+    setActionMessage("");
+    try {
+      await resolveAgentApproval(snapshot.task.id, engineRunId, requestId, choice);
+      await load();
+      setActionMessage(choice === "once" ? "تمت الموافقة على هذه العملية فقط." : "تم رفض العملية.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "تعذر إرسال قرار الموافقة.");
+    } finally {
+      setApprovalBusyId(null);
+    }
+  };
+
   const steer = async (engineRunId: string) => {
     if (!snapshot || !steerDraft.trim() || steeringRunId) return;
     setSteeringRunId(engineRunId);
@@ -143,6 +160,16 @@ export default function TaskDetailsScreen() {
       setSteeringRunId(null);
     }
   };
+
+  const pendingApprovals = snapshot?.engine_events.filter((event) =>
+    event.event_name === "approval.request"
+    && !!event.approval_request_id
+    && !snapshot.engine_events.some((candidate) =>
+      candidate.event_name === "approval.responded"
+      && candidate.approval_request_id === event.approval_request_id
+      && candidate.engine_run_id === event.engine_run_id
+    )
+  ) ?? [];
 
   if (!user) {
     return (
@@ -274,6 +301,36 @@ export default function TaskDetailsScreen() {
                 </>
               )}
 
+              {pendingApprovals.length > 0 && (
+                <>
+                  <Text style={styles.sectionHeading}>موافقات مطلوبة ({pendingApprovals.length})</Text>
+                  {pendingApprovals.map((event) => (
+                    <View key={event.id} style={styles.approvalCard}>
+                      <Text style={styles.approvalTitle}>المحرك ينتظر قرارك</Text>
+                      <Text style={styles.muted}>اختر السماح بهذه العملية مرة واحدة أو رفضها. لن يتم منح صلاحية دائمة.</Text>
+                      <View style={styles.approvalActions}>
+                        <Pressable
+                          style={[styles.approveButton, approvalBusyId !== null && styles.disabledButton]}
+                          disabled={approvalBusyId !== null}
+                          onPress={() => void resolveApproval(event.engine_run_id, event.approval_request_id!, "once")}
+                        >
+                          {approvalBusyId === event.approval_request_id
+                            ? <ActivityIndicator color={colors.background} />
+                            : <Text style={styles.approveText}>موافقة لمرة واحدة</Text>}
+                        </Pressable>
+                        <Pressable
+                          style={[styles.denyButton, approvalBusyId !== null && styles.disabledButton]}
+                          disabled={approvalBusyId !== null}
+                          onPress={() => void resolveApproval(event.engine_run_id, event.approval_request_id!, "deny")}
+                        >
+                          <Text style={styles.denyText}>رفض</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ))}
+                </>
+              )}
+
               {(snapshot.engine_events?.length ?? 0) > 0 && (
                 <>
                   <Text style={styles.sectionHeading}>تحديثات التنفيذ ({snapshot.engine_events.length})</Text>
@@ -332,6 +389,13 @@ const styles = StyleSheet.create({
   retryBox: { marginTop: 8, gap: 9 },
   retryButton: { borderWidth: 1, borderColor: colors.goldDark, borderRadius: 10, padding: 12, alignItems: "center" },
   retryText: { color: colors.gold, fontSize: 13, fontWeight: "700" },
+  approvalCard: { backgroundColor: colors.surface, borderColor: colors.goldDark, borderWidth: 1, borderRadius: 14, padding: 15, gap: 10 },
+  approvalTitle: { color: colors.gold, fontSize: 14, fontWeight: "800", textAlign: "right" },
+  approvalActions: { flexDirection: "row", gap: 9, justifyContent: "flex-start" },
+  approveButton: { backgroundColor: colors.gold, borderRadius: 9, paddingHorizontal: 13, paddingVertical: 10, alignItems: "center" },
+  approveText: { color: colors.background, fontSize: 12, fontWeight: "800" },
+  denyButton: { borderWidth: 1, borderColor: "#8D4444", borderRadius: 9, paddingHorizontal: 16, paddingVertical: 10, alignItems: "center" },
+  denyText: { color: "#E88787", fontSize: 12, fontWeight: "800" },
   eventRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
   eventCopy: { flex: 1, gap: 4 },
   eventDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.gold },
