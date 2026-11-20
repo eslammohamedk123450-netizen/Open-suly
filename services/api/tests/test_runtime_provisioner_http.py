@@ -148,7 +148,7 @@ def test_acquire_rejects_secret_paths_in_workspace_snapshot():
     finally:
         client.close()
 
-def test_recover_rotates_a_live_task_runtime_lease():
+def test_recover_returns_stable_task_runtime_lease():
     task, run, runtime = str(uuid4()), str(uuid4()), str(uuid4())
     seen = {}
 
