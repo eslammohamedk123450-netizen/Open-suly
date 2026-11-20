@@ -254,3 +254,66 @@ def test_runtime_broker_rejects_forged_lease_object_on_release():
     assert broker.release(active) is True
     assert broker.active_count == 0
     assert provider.released == [lease.runtime_id]
+
+
+
+def test_runtime_broker_reserves_attempt_before_concurrent_provider_acquire():
+    from threading import Event, Thread
+
+    lease = make_lease()
+    entered = Event()
+    continue_acquire = Event()
+
+    class BlockingProvider(FakeProvider):
+        def acquire(self, task_id, engine_run_id, engine_id):
+            entered.set()
+            assert continue_acquire.wait(timeout=2)
+            return super().acquire(task_id, engine_run_id, engine_id)
+
+    provider = BlockingProvider([lease])
+    broker = TaskScopedRuntimeBroker(provider, allowed_origins=ORIGINS)
+    result = []
+
+    thread = Thread(target=lambda: result.append(broker.acquire(TASK_ID, RUN_ID, ENGINE_ID)))
+    thread.start()
+    assert entered.wait(timeout=2)
+    with pytest.raises(RuntimeError, match="already_leased"):
+        broker.acquire(TASK_ID, RUN_ID, ENGINE_ID)
+    continue_acquire.set()
+    thread.join(timeout=2)
+
+    assert not thread.is_alive()
+    assert result == [lease]
+    assert broker.active_count == 1
+    assert broker.release(lease) is True
+
+
+def test_runtime_broker_serializes_concurrent_release_calls():
+    from threading import Event, Thread
+
+    lease = make_lease()
+    entered = Event()
+    continue_release = Event()
+
+    class BlockingReleaseProvider(FakeProvider):
+        def release(self, runtime_lease):
+            entered.set()
+            assert continue_release.wait(timeout=2)
+            return super().release(runtime_lease)
+
+    provider = BlockingReleaseProvider([lease])
+    broker = TaskScopedRuntimeBroker(provider, allowed_origins=ORIGINS)
+    active = broker.acquire(TASK_ID, RUN_ID, ENGINE_ID)
+    result = []
+
+    thread = Thread(target=lambda: result.append(broker.release(active)))
+    thread.start()
+    assert entered.wait(timeout=2)
+    assert broker.release(active) is False
+    continue_release.set()
+    thread.join(timeout=2)
+
+    assert not thread.is_alive()
+    assert result == [True]
+    assert provider.released == [lease.runtime_id]
+    assert broker.active_count == 0
