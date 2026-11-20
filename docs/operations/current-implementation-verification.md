@@ -58,3 +58,13 @@ Anonymous SELECT access is not granted to these tables. Profile owners can updat
 - The authenticated task-detail API now returns owner-filtered engine attempt history, and the Expo task detail screen renders engine ID, attempt number, status, timestamps, and safe error code.
 - The migration is committed to GitHub but has NOT been applied to Supabase. Hermes and the worker remain disabled by default; this update does not start or deploy either service.
 - A terminal engine-run transition requires the same unexpired step lease token. A stale worker cannot mark a newer attempt as complete.
+
+## Engine-run crash reconciliation update (2026-11-20)
+
+- Added `supabase/migrations/20261120170000_engine_run_reconciliation.sql`. A PostgreSQL trigger closes only the matching still-running engine attempt when its owning task step leaves `running`, loses its lease token, expires, or is cancelled.
+- Lease expiry is recorded as the safe error code `engine_lease_expired`; other unexpected step transitions use `engine_step_ended`. Explicit cancellation records `cancelled` without storing diagnostic payloads.
+- The trigger does not change task or step state, delete history, store prompts/outputs/secrets, or overwrite engine attempts already in a terminal state.
+- Added the Arabic learning guide `docs/learning/ENGINE_RUN_LIFECYCLE_AR.md` describing the task/step/attempt/lease model and the related source files.
+- This migration is committed to GitHub but has NOT been applied to Supabase. A PostgreSQL integration test against a disposable database is still required before production use.
+- CI verification for commit `78a8b22949b3165d262ba139f2dc8f6c754aabdd`: Repository baseline checks passed; Platform CI passed both API tests and client typecheck/web export. The newly added migration and guide still need their own post-commit CI run.
+- No worker, Hermes runtime, provider, or production service was enabled or deployed by this change.
