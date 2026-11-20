@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import { colors } from "@/theme/tokens";
@@ -40,6 +40,13 @@ export default function ProjectsScreen() {
       router.push({ pathname: "/project/[id]", params: { id: project.id } });
     } catch (e) { setError(e instanceof Error ? e.message : "تعذر إنشاء المشروع."); }
     finally { setBusy(false); }
+  };
+
+  const confirmRemoveProject = (projectId: string, projectName: string) => {
+    Alert.alert("حذف المشروع", `هل تريد حذف مشروع «${projectName}»؟ ستبقى المهام محفوظة خارج المشروع.`, [
+      { text: "إلغاء", style: "cancel" },
+      { text: "حذف", style: "destructive", onPress: () => void removeProject(projectId) },
+    ]);
   };
 
   const removeProject = async (projectId: string) => {
@@ -95,7 +102,7 @@ export default function ProjectsScreen() {
                         <Text style={styles.cardDate}>آخر تحديث: {new Date(item.updated_at).toLocaleDateString("ar-EG")}</Text>
                       </Pressable>
                       <Pressable style={styles.openButton} onPress={() => router.push({ pathname: "/project/[id]", params: { id: item.id } })}><Text style={styles.openText}>فتح</Text></Pressable>
-                      <Pressable style={styles.deleteButton} onPress={() => void removeProject(item.id)} disabled={busy} accessibilityLabel="حذف المشروع"><Text style={styles.deleteText}>×</Text></Pressable>
+                      <Pressable style={styles.deleteButton} onPress={() => confirmRemoveProject(item.id, item.name)} disabled={busy} accessibilityLabel="حذف المشروع"><Text style={styles.deleteText}>×</Text></Pressable>
                     </View>
                   ))}
                 </View>
