@@ -148,6 +148,7 @@ class HTTPSRuntimeLeaseProvider:
                 base_url=str(data["base_url"]),
                 access_token=str(data["access_token"]),
                 expires_at=float(data["expires_at"]),
+                gateway_path=str(data.get("gateway_path", "")),
             )
         except (KeyError, TypeError, ValueError, OverflowError) as exc:
             raise RuntimeProvisionerError("runtime_provisioner_invalid_lease") from exc
