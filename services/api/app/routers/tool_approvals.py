@@ -90,3 +90,27 @@ def revoke_tool_approval(
         raise
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Could not revoke tool approval.") from exc
+
+
+
+@router.get("/catalog")
+def list_available_tools(
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Return registered worker tools and approval status for the current user."""
+    try:
+        approved_scopes = _store().active_scopes(user.id)
+        items = []
+        for tool in TOOL_REGISTRY.describe():
+            items.append({
+                **tool,
+                "approved": (
+                    not tool["requires_approval"]
+                    or tool["permission_scope"] in approved_scopes
+                ),
+            })
+        return {"items": items}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Could not load tool catalog.") from exc
