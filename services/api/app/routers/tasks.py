@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.supabase import get_supabase_admin_client
-from app.services.agent_planner import UnsupportedTaskRequest, plan_request
+from app.services.agent_planner import UnsupportedTaskRequest, plan_request, validate_agent_plan
 
 router = APIRouter(prefix="/v1/tasks", tags=["tasks"])
 
@@ -19,15 +19,15 @@ class CreateTaskRequest(BaseModel):
 
 
 class TaskPlanStep(BaseModel):
-    step_key: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$")
-    title: str = Field(min_length=1, max_length=200)
-    description: str = Field(default="", max_length=4000)
-    depends_on: list[str] = Field(default_factory=list, max_length=50)
+    step_key: str = Field(min_length=2, max_length=64, pattern=r"^[a-z][a-z0-9_-]{1,63}$")
+    title: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=1000)
+    depends_on: list[str] = Field(default_factory=list, max_length=32)
     input: dict[str, Any] = Field(default_factory=dict)
 
 
 class CreateTaskPlanRequest(BaseModel):
-    steps: list[TaskPlanStep] = Field(min_length=1, max_length=50)
+    steps: list[TaskPlanStep] = Field(min_length=1, max_length=32)
 
 
 def _admin_client():
@@ -132,6 +132,11 @@ def plan_task(
             )
         seen.add(step.step_key)
         normalized.append(step.model_dump())
+
+    try:
+        normalized = validate_agent_plan(normalized)
+    except UnsupportedTaskRequest as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     client = _admin_client()
     try:
