@@ -26,7 +26,11 @@ def test_readiness_reports_missing_supabase_configuration(monkeypatch) -> None:
     monkeypatch.setattr(
         main,
         "get_settings",
-        lambda: SimpleNamespace(supabase_url=None, supabase_publishable_key=None),
+        lambda: SimpleNamespace(
+            supabase_url=None,
+            supabase_publishable_key=None,
+            supabase_secret_key=None,
+        ),
     )
 
     response = client.get("/ready")
@@ -37,7 +41,7 @@ def test_readiness_reports_missing_supabase_configuration(monkeypatch) -> None:
         "service": "suly-api",
         "check": "configuration_only",
         "supabase": "missing_required_configuration",
-        "missing": ["supabase_url", "supabase_publishable_key"],
+        "missing": ["supabase_url", "supabase_publishable_key", "supabase_secret_key"],
     }
 
 
@@ -49,6 +53,7 @@ def test_readiness_accepts_configuration_without_claiming_network_health(monkeyp
         lambda: SimpleNamespace(
             supabase_url="https://example.supabase.co",
             supabase_publishable_key=SecretStr("public-test-placeholder"),
+            supabase_secret_key=SecretStr("server-only-test-secret"),
         ),
     )
 
@@ -63,3 +68,4 @@ def test_readiness_accepts_configuration_without_claiming_network_health(monkeyp
         "missing": [],
     }
     assert "public-test-placeholder" not in response.text
+    assert "server-only-test-secret" not in response.text
