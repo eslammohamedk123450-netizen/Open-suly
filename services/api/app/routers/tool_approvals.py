@@ -27,11 +27,7 @@ def _store() -> ToolApprovalStore:
 
 
 def _approvable_scope(scope: str) -> None:
-    registered = [
-        tool for tool in TOOL_REGISTRY._tools.values()
-        if tool.requires_approval and tool.permission_scope == scope
-    ]
-    if not registered:
+    if not TOOL_REGISTRY.requires_approval_scope(scope):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="This permission scope is not currently available for approval.",
