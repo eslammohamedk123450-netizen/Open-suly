@@ -140,3 +140,14 @@ Commit تحديث هذا السجل: يتم ربطه بعد إنشائه.
 - availability catalog صار يطابق حالة worker الفعلية؛ لا يعلن أدوات التنفيذ متاحة إذا worker معطل.
 - CI على HEAD `e99f0e1349d4` كان قيد التنفيذ وقت التوثيق.
 - لم يتم تشغيل أي محرك upstream إضافي أو بناء Docker image/runner.
+
+
+## جلسة تطوير — 2026-11-20 (التحقق المركزي من خطط الوكلاء)
+
+- أضيف validator موحد لخطط الوكلاء والـDAG: allow-list العمليات، حقول الإدخال، حدود الحجم وعدد الخطوات، مفاتيح فريدة، واعتماديات صحيحة مرتبة دون cycles.
+- endpoint `/plan` لم يعد يقبل عمليات غير مسجلة مثل `shell.exec`؛ يتم الرفض قبل قاعدة البيانات.
+- `auto-plan` لا ينشئ خطة إذا Worker معطل، وGeneral Agent يحتاج Worker + Hermes + عزل مؤكد + URL ومفتاح خادم.
+- Tool catalog وواجهة Agent أصبحت تعكس حالة Worker الفعلية؛ لا يتم عرض محرك غير جاهز على أنه متاح.
+- أضيفت متغيرات البيئة اللازمة مع تعطيل Worker/Hermes/Reconciler افتراضيًا.
+- CI على `a05feb5d1226`: API tests وClient typecheck/web export نجحت؛ Baseline على HEAD `6bede601c606` نجح، وPlatform CI كان قيد التنفيذ.
+- المسار لم يكتمل: لا يوجد تشغيل حي لـOpenHands/OpenCode/Aider/Browser Use، ولا Docker runner أو egress proxy، ولم تُطبق migrations.
