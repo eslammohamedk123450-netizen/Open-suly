@@ -348,3 +348,15 @@ For every engine:
 - [ ] OpenCode adapter وBrowser Use MCP broker بعد إثبات العزل.
 
 هذا العقد لا يشغّل أي container أو process، ولا يجعل المحركات متاحة. تبقى جميع runtimes معطلة.
+
+
+## تشديد عقد Runtime Lease — 2026-11-20
+
+- [x] HTTPS canonical origin allowlist، exact match بلا subdomain suffix.
+- [x] رفض IP literals وlocalhost وURL credentials/path/query/fragment.
+- [x] ربط release بكائن lease الأصلي، لا بمجرد ID/قيم قابلة للاستنساخ.
+- [x] منع teardown غير الآمن عند اكتشاف runtime ID مكرر سبق إصداره.
+- [x] اختبارات للـorigin والـlease forgery وruntime reuse.
+- [ ] إثبات uniqueness عبر workers/restarts بواسطة provider خارجي durable.
+- [ ] تنفيذ teardown آمن عبر broker فعلي مع reconciliation للـorphan runtimes.
+- [ ] تشغيل CI على آخر HEAD بعد اكتمال الاختبارات الحالية.
