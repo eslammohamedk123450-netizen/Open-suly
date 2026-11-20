@@ -307,6 +307,7 @@ def test_append_engine_run_event_persists_only_exact_approval_identity_and_choic
     {"event": "approval.request", "approval_request_id": "req", "approval_choice": "once"},
     {"event": "approval.responded", "approval_request_id": "req"},
     {"event": "approval.responded", "approval_request_id": "req", "approval_choice": "always"},
+    {"event": "approval.responded", "approval_request_id": "req", "approval_choice": []},
     {"event": "tool.started", "approval_request_id": "req"},
 ])
 def test_append_engine_run_event_rejects_invalid_approval_metadata(event):
