@@ -84,6 +84,11 @@ class EngineRunStore:
         })
         if not isinstance(event, dict):
             raise ValueError("invalid_engine_run_event")
+        allowed_fields = {
+            "event", "seq", "timestamp", "approval_request_id", "approval_choice",
+        }
+        if set(event) - allowed_fields:
+            raise ValueError("invalid_engine_run_event_fields")
         event_name = event.get("event")
         if not isinstance(event_name, str) or event_name not in allowed_events:
             raise ValueError("invalid_engine_run_event_name")
