@@ -29,6 +29,14 @@ begin
       (project_id, user_id, file_id, path, content, size_bytes)
     values
       (old.project_id, old.user_id, old.id, old.path, old.content, old.size_bytes);
+
+    delete from public.project_file_revisions
+    where id in (
+      select id from public.project_file_revisions
+      where file_id = old.id
+      order by created_at desc, id desc
+      offset 50
+    );
   end if;
   return new;
 end;
