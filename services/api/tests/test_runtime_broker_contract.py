@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from time import time
 from uuid import uuid4
 
 import pytest
@@ -34,7 +35,7 @@ def make_lease(**overrides) -> RuntimeLease:
         "engine_id": ENGINE_ID,
         "base_url": "https://opencode-runtime.internal:8443",
         "access_token": "x" * 48,
-        "expires_at": 2_000_000_000.0,
+        "expires_at": time() + 1800,
     }
     values.update(overrides)
     return RuntimeLease(**values)
@@ -47,7 +48,7 @@ def test_runtime_lease_binds_one_task_attempt_and_exact_origin():
         engine_run_id=RUN_ID,
         engine_id=ENGINE_ID,
         allowed_origins=ORIGINS,
-        now=1_900_000_000.0,
+        now=time(),
     )
 
 
@@ -84,7 +85,8 @@ def test_runtime_lease_rejects_task_attempt_or_engine_mismatch():
 
 
 def test_runtime_lease_rejects_expired_or_excessively_long_credential_lease():
-    for expiry in (1_899_999_999.0, 1_900_003_601.0):
+    current = time()
+    for expiry in (current - 1, current + 3601):
         lease = make_lease(expires_at=expiry)
         with pytest.raises(ValueError, match="expiry"):
             lease.validate(
