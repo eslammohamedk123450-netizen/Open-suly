@@ -375,3 +375,10 @@ undefined
 - Platform CI وRepository baseline على commit 7a805ed9 نجحا بالكامل: 381 API tests، TypeScript typecheck، Expo dependency compatibility، وWeb export.
 - API tests على commit 11997350 نجحت: 388 passed, 2 warnings؛ client typecheck/export كانا قيد التنفيذ عند آخر فحص لهذا commit. أحدث تغييرات الاختبارات والوثائق بعده تنتظر Platform CI على أحدث HEAD.
 - لا يوجد provider فعلي للـruntime broker ولا حاويات تعمل؛ OpenCode وBrowser Use وHermes ما زالت disabled. لا توجد migrations أو deployments تم تطبيقها في هذه الدفعة.
+
+
+## تحسينات إضافية لموافقة Hermes — 2026-11-20
+- تمت مراجعة مسار GET /v1/runs/{run_id} في نسخة Hermes المثبتة، وتأكدنا أن حالة waiting_for_approval تعيد كائن approval الذي بُني عبر helper التنقيح upstream؛ لا نستخدم SSE payload خامًا كبديل.
+- أضيفت حماية no-store لاستجابة تفاصيل الموافقة، مع Vary: Authorization، واختبار يثبت عدم تخزين بيانات الأمر في cache.
+- تم تصحيح مفاتيح حالة الموافقة في الواجهة لتكون مركبة من engine_run_id + request_id، منعًا لتصادم معرفات الطلب بين محاولات تشغيل مختلفة.
+- API tests نجحت على commit 11c2bf29 بعد إصلاح اختبار إعادة استخدام runtime identity. التعديلات التالية الخاصة بمفاتيح الواجهة وno-store headers قيد CI على أحدث HEAD؛ لا نعلن نجاحًا قبل اكتمال أحدث API + typecheck + Expo compatibility + Web export.
