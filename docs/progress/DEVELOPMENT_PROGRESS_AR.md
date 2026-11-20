@@ -289,3 +289,13 @@ undefined
 - أضيفت اختبارات لوحدة Hermes وEngineRunStore وAPI تشمل رفض session/always، والطلب غير المسجل، والطلب المجاب عنه، والعزل بين engine runs، والتحقق من رد Hermes.
 - آخر CI مؤكد قبل هذه الدفعة: Platform CI وRepository baseline على commit 74311d9a نجحا (API tests + TypeScript + Expo compatibility + Web export). تغييرات موافقات Hermes الجديدة على commits 6daf7c1 إلى dd988dd9 قيد الفحص؛ لا ننسب نجاح الفحص السابق لها.
 - Migration 20261121010000_engine_run_approval_metadata.sql غير مطبقة. يجب تطبيقها على قاعدة اختبار مؤقتة والتحقق من توقيع RPC الجديد قبل نشر API. لا يوجد Hermes runtime حي أو provider أو worker مفعّل.
+
+## دفعة إضافية — موافقات مرئية وغير عمياء — 2026-11-20
+
+- أضفنا endpoint لقراءة تفاصيل الموافقة من حالة Hermes الحالية، مع التحقق من أن run ما زال waiting_for_approval وأن request_id مطابق تمامًا.
+- تفاصيل command وdescription تأتي من عرض Hermes المنقح، وتُعاد للمستخدم عند الطلب فقط. لا تحفظ قاعدة SULY نص الأمر أو الوصف؛ السجل الدائم يحتفظ بمعرف الطلب والقرار once/deny فقط.
+- واجهة المهمة لم تعد تعرض أزرار الموافقة مباشرة: يجب الضغط على «عرض تفاصيل العملية» أولًا، ولا تظهر أزرار الموافقة/الرفض إلا بعد جلب التفاصيل بنجاح.
+- أضيفت اختبارات تفاصيل الموافقة في Hermes client وAPI، تشمل ربط run/request، حالة الانتظار، ومنع إظهار تفاصيل طلب غير موجود أو تمت الإجابة عنه.
+- Platform CI وRepository baseline على commit c79ee7f2 نجحا. Platform CI على commit 8762451a نجح: 355 API tests passed، TypeScript typecheck، Expo compatibility، وWeb export كلها ناجحة. التحذيران الموجودان في API tests من تبعيات Starlette/FastAPI ولا يمثلان فشلًا.
+- بعد مراجعة migration الجديدة، شددنا شرط قاعدة البيانات ليرفض NULL صراحة في قرار الموافقة؛ commit 206e55df هو آخر HEAD، وCI الخاص به queued وقت التوثيق.
+- لا تزال migrations غير مطبقة، ولا يوجد runtime حي أو worker أو provider مفعّل. لا نعلن نجاح CI للـHEAD الأحدث حتى تنتهي فحوصاته.
