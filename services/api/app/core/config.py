@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     engine_reconciler_enabled: bool = False
     engine_reconciler_interval_seconds: int = Field(default=30, ge=10, le=600)
 
+    # In-process per-user API rate limits (requests per minute); 0 disables a limit.
+    # Best-effort per API process; the ingress must still enforce global caps.
+    rate_limit_chat_respond_per_minute: int = Field(default=10, ge=0, le=1000)
+    rate_limit_chat_conversations_per_minute: int = Field(default=10, ge=0, le=1000)
+    rate_limit_chat_messages_per_minute: int = Field(default=30, ge=0, le=1000)
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -20,6 +20,7 @@ Runtime ownership, container mapping, token hashes, expiry and the initial works
 - `OPENCODE_RUNTIME_IMAGE`: immutable `repository@sha256:<64 hex>` image built from `engines/opencode/Dockerfile`.
 - `RUNTIME_DB_PATH`: persistent volume path (default `/var/lib/suly-runtime/runtimes.sqlite3`).
 - `RUNTIME_WORKSPACE_ROOT`: persistent workspace path.
+- `RUNTIME_ALLOW_EGRESS`: optional explicit opt-in (`true`) for task containers to reach the external network. Defaults to `false`; task networks are created `internal` so containers cannot make any outbound connection. Enabling egress is only safe together with mandatory production control 2 (host firewall egress allowlist).
 
 Terminate TLS at a trusted reverse proxy/load balancer. The public SULY API connects to the private provisioner endpoint over TLS. Docker only publishes OpenCode on 127.0.0.1. If the provisioner itself runs in a container while using the host Docker socket, it must use host networking (or an equivalently verified host-loopback route); otherwise 127.0.0.1 inside the provisioner container will not reach the Docker host's loopback-published ports. Prefer running this control plane directly on its dedicated worker host.
 
@@ -31,6 +32,7 @@ Terminate TLS at a trusted reverse proxy/load balancer. The public SULY API conn
 4. Persist and encrypt SQLite/workspace volumes; do not run multiple replicas with independent local SQLite stores. Multi-host deployments require a shared transactional lease store and distributed watchdog.
 5. Results are a bounded UTF-8 snapshot with changed files and deleted paths compared with the initial content hashes; binary files, symlinks and files over 1 MiB are omitted. The provider exposes `run_task()` to submit and collect the result. SULY must apply results against the recorded workspace revision and show a reviewable diff before changing canonical project files; this provisioner does not write directly to Supabase.
 6. The gateway uses HTTP only on loopback between gateway and container. Public access must always be HTTPS.
+7. Archive helpers (for example Python's `tarfile`) may only create archives when exporting results. Never extract archives produced from task output without validating every member name, size, and type; a malicious archive can traverse paths or expand without bounds (zip bomb). The workspace is a host bind mount and must be read directly, never through archive extraction.
 
 ## Run
 

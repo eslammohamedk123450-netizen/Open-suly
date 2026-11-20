@@ -96,9 +96,13 @@ def _safe_workspace(files: list[dict[str, Any]], root: Path, max_bytes: int) -> 
 
 
 class DockerTaskRuntimeManager:
-    """Creates a fresh network, container, and workspace for each task attempt."""
+    """Creates a fresh network, container, and workspace for each task attempt.
 
-    def __init__(self, *, image: str, workspace_root: str, limits: RuntimeLimits | None = None, client=None):
+    Networks are internal (no container egress) unless egress is explicitly
+    allowed; see the provisioner README for the mandatory host firewall controls.
+    """
+
+    def __init__(self, *, image: str, workspace_root: str, limits: RuntimeLimits | None = None, client=None, egress_allowed: bool | None = None):
         if not isinstance(image, str) or not re.fullmatch(r"[A-Za-z0-9./:_-]+@sha256:[0-9a-f]{64}", image):
             raise ValueError("runtime_image_must_be_digest_pinned")
         self.image = image
@@ -107,6 +111,12 @@ class DockerTaskRuntimeManager:
         self.limits = limits or RuntimeLimits()
         self.limits.validate()
         self.client = client or docker.from_env()
+        # Fail closed: task containers get no outbound network access unless an
+        # operator explicitly opts in (RUNTIME_ALLOW_EGRESS=true) and enforces the
+        # host firewall egress allowlist documented in the provisioner README.
+        if egress_allowed is None:
+            egress_allowed = os.environ.get("RUNTIME_ALLOW_EGRESS", "false").strip().lower() in {"1", "true", "yes"}
+        self.egress_allowed = bool(egress_allowed)
 
     def create(self, *, task_id: str, engine_run_id: str, engine_id: str, files: list[dict[str, Any]]) -> dict[str, Any]:
         task_id = _canonical_uuid(task_id)
@@ -130,7 +140,10 @@ class DockerTaskRuntimeManager:
         try:
             _safe_workspace(files, workspace, self.limits.workspace_bytes)
             network = self.client.networks.create(
-                name=f"suly-{runtime_id}", driver="bridge", internal=False,
+                name=f"suly-{runtime_id}", driver="bridge",
+                # Fail closed: an internal network blocks container egress unless
+                # explicitly allowed together with the host firewall allowlist.
+                internal=not self.egress_allowed,
                 check_duplicate=True, labels=labels,
             )
             container = self.client.containers.run(

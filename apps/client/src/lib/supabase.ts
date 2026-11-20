@@ -4,9 +4,11 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "https://razvryvazmqvvqkzetuo.supabase.co";
-// Publishable keys are intended for public clients. RLS protects every exposed table.
-const supabasePublishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "sb_publishable_t5xrzZNN6Uj9zhhBLUYQVg_mj7qPjQL";
+// Configuration must come from EXPO_PUBLIC_* environment variables.
+// Never bake a project URL or publishable key into the client as a fallback:
+// a stale embedded key keeps working silently and blocks key rotation.
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
+const supabasePublishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
 
 const authStorage = Platform.OS === "web"
   ? AsyncStorage

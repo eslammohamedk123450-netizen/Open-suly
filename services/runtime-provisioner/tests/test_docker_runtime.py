@@ -24,8 +24,9 @@ class FakeContainer:
 
 
 class FakeNetworks:
-    def __init__(self): self.items = {}
+    def __init__(self): self.items = {}; self.kwargs = None
     def create(self, name, **kwargs):
+        self.kwargs = kwargs
         value = FakeNetwork(name); self.items[name] = value; return value
     def get(self, name): return self.items[name]
 
@@ -112,11 +113,39 @@ def test_create_rejects_non_loopback_port_binding_and_cleans_up(tmp_path):
         mgr.create(task_id=str(uuid4()), engine_run_id=str(uuid4()), engine_id="opencode", files=[])
 
 
-
 def test_image_must_use_a_full_sha256_digest(tmp_path):
     with pytest.raises(ValueError, match="digest_pinned"):
         DockerTaskRuntimeManager(
             image="registry.example/opencode:latest",
-            workspace_root=str(tmp_path),
-            client=FakeDocker(),
+            workspace_root=str(tmp_path), client=FakeDocker(),
         )
+
+
+def test_network_has_no_outbound_egress_by_default(tmp_path):
+    mgr, fake = manager(tmp_path)
+    mgr.create(task_id=str(uuid4()), engine_run_id=str(uuid4()), engine_id="opencode", files=[])
+    assert fake.networks.kwargs["internal"] is True
+
+
+def test_network_egress_requires_explicit_opt_in(tmp_path):
+    fake = FakeDocker()
+    mgr = DockerTaskRuntimeManager(
+        image="registry.example/opencode@sha256:" + "a" * 64,
+        workspace_root=str(tmp_path / "egress"), client=fake, egress_allowed=True,
+    )
+    mgr.create(task_id=str(uuid4()), engine_run_id=str(uuid4()), engine_id="opencode", files=[])
+    assert fake.networks.kwargs["internal"] is False
+
+
+def test_network_egress_env_opt_in(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNTIME_ALLOW_EGRESS", "true")
+    mgr, fake = manager(tmp_path)
+    mgr.create(task_id=str(uuid4()), engine_run_id=str(uuid4()), engine_id="opencode", files=[])
+    assert fake.networks.kwargs["internal"] is False
+
+
+def test_network_egress_env_rejects_random_values(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNTIME_ALLOW_EGRESS", "yes-please")
+    mgr, fake = manager(tmp_path)
+    mgr.create(task_id=str(uuid4()), engine_run_id=str(uuid4()), engine_id="opencode", files=[])
+    assert fake.networks.kwargs["internal"] is True

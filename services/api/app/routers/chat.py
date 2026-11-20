@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -6,6 +7,7 @@ from pydantic import BaseModel
 
 from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.config import get_settings
+from app.core.rate_limit import rate_limit
 from app.core.supabase import get_supabase_admin_client
 from app.services.tool_approvals import ToolApprovalStore
 from app.services.ai_gateway import (
@@ -16,6 +18,7 @@ from app.services.ai_gateway import (
 )
 
 router = APIRouter(prefix="/v1/chat", tags=["chat"])
+logger = logging.getLogger("suly.api.chat")
 
 
 def _build_prompt_messages(
@@ -72,6 +75,7 @@ class ChatRespondRequest(BaseModel):
 async def respond_to_message(
     request: ChatRespondRequest,
     user: AuthenticatedUser = Depends(get_current_user),
+    _limited: None = Depends(rate_limit("chat_respond")),
 ) -> dict[str, Any]:
     """Generate and persist one assistant reply for an owned user message."""
     admin = get_supabase_admin_client()
@@ -133,7 +137,12 @@ async def respond_to_message(
             except AIProviderTimeout as exc:
                 raise HTTPException(status_code=504, detail="AI provider timed out.") from exc
             except AIProviderError as exc:
-                raise HTTPException(status_code=502, detail=str(exc)) from exc
+                # Log the details server-side only; never echo provider errors to clients.
+                logger.warning("ai_provider_error", exc_info=True)
+                raise HTTPException(
+                    status_code=502,
+                    detail="The AI provider could not return a response.",
+                ) from exc
 
             try:
                 inserted = (
@@ -158,7 +167,8 @@ async def respond_to_message(
                     return inserted[0]
             except Exception:
                 # A concurrent retry may have won the unique idempotency index.
-                pass
+                # Any other failure is logged so a lost reply is never silent.
+                logger.warning("assistant_reply_persist_failed", exc_info=True)
 
             existing_after_race = (
                 admin.table("messages")
@@ -178,7 +188,6 @@ async def respond_to_message(
         raise
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Chat storage is temporarily unavailable.") from exc
-
 
 
 class CreateConversationRequest(BaseModel):
@@ -227,6 +236,7 @@ def list_conversations(
 def create_conversation(
     request: CreateConversationRequest,
     user: AuthenticatedUser = Depends(get_current_user),
+    _limited: None = Depends(rate_limit("chat_conversations")),
 ) -> dict[str, Any]:
     title = (request.title or "محادثة جديدة").strip()
     if not title or len(title) > 200:
@@ -293,6 +303,7 @@ def add_user_message(
     conversation_id: UUID,
     request: AddUserMessageRequest,
     user: AuthenticatedUser = Depends(get_current_user),
+    _limited: None = Depends(rate_limit("chat_messages")),
 ) -> dict[str, Any]:
     content = request.content.strip()
     if not content or len(content) > 100000:
