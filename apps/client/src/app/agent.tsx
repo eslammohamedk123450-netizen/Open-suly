@@ -19,6 +19,7 @@ import {
   getAgentToolCatalog,
   grantAIApproval,
   grantHermesApproval,
+  revokeToolApproval,
   type AgentOperation,
   type AgentTaskSnapshot,
 } from "@/lib/agent-tasks";
@@ -111,6 +112,22 @@ export default function AgentScreen() {
       }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "تعذر حفظ الموافقة.");
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  const revokeSelectedApproval = async () => {
+    setApproving(true);
+    setNotice("");
+    try {
+      const scope = operation === "ai.respond" ? "ai.provider.run" : "agent.hermes.run";
+      await revokeToolApproval(scope);
+      if (operation === "ai.respond") setAiApproved(false);
+      else setApproved(false);
+      setNotice("تم إلغاء الموافقة. لن يستطيع العامل استخدام هذه الأداة في المحاولات التالية.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "تعذر إلغاء الموافقة.");
     } finally {
       setApproving(false);
     }
@@ -219,11 +236,9 @@ export default function AgentScreen() {
                 </View>
                 <Text style={styles.modeHint}>كل طلب قد يستهلك رصيدًا لدى مزود النموذج. الموافقة تخص نطاق ai.provider.run فقط.</Text>
                 <Text style={[styles.modeHint, aiAvailable ? styles.good : styles.warn]}>{aiAvailable ? "مزود AI مضبوط على الخادم." : "مزود AI غير مضبوط أو متوقف حاليًا."}</Text>
-                {!aiApproved && (
-                  <Pressable style={styles.secondaryButton} onPress={enableSelectedApproval} disabled={approving || loadingCatalog}>
-                    {approving ? <ActivityIndicator color={colors.gold} /> : <Text style={styles.secondaryText}>أوافق على استخدام AI</Text>}
-                  </Pressable>
-                )}
+                <Pressable style={styles.secondaryButton} onPress={aiApproved ? revokeSelectedApproval : enableSelectedApproval} disabled={approving || loadingCatalog}>
+                  {approving ? <ActivityIndicator color={colors.gold} /> : <Text style={styles.secondaryText}>{aiApproved ? "إلغاء موافقة AI" : "أوافق على استخدام AI"}</Text>}
+                </Pressable>
               </View>
             )}
 
@@ -237,11 +252,9 @@ export default function AgentScreen() {
                 <Text style={[styles.modeHint, hermesAvailable ? styles.good : styles.warn]}>
                   {hermesAvailable ? "خدمة Hermes مهيأة على الخادم." : "الخادم لا يعلن جاهزية Hermes حاليًا."}
                 </Text>
-                {!approved && (
-                  <Pressable style={styles.secondaryButton} onPress={enableSelectedApproval} disabled={approving || loadingCatalog}>
-                    {approving ? <ActivityIndicator color={colors.gold} /> : <Text style={styles.secondaryText}>أوافق على تشغيل Hermes</Text>}
-                  </Pressable>
-                )}
+                <Pressable style={styles.secondaryButton} onPress={approved ? revokeSelectedApproval : enableSelectedApproval} disabled={approving || loadingCatalog}>
+                  {approving ? <ActivityIndicator color={colors.gold} /> : <Text style={styles.secondaryText}>{approved ? "إلغاء موافقة Hermes" : "أوافق على تشغيل Hermes"}</Text>}
+                </Pressable>
               </View>
             )}
 
