@@ -265,3 +265,26 @@ def test_task_detail_includes_owner_scoped_engine_run_history(monkeypatch):
     assert body["steps"][0]["status"] == "running"
     assert body["engine_runs"][0]["engine_id"] == "hermes-agent"
     assert body["engine_runs"][0]["status"] == "running"
+
+
+def test_task_plan_rejects_unregistered_operations_before_database(monkeypatch):
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    monkeypatch.setattr(
+        tasks_module,
+        "get_supabase_admin_client",
+        lambda: (_ for _ in ()).throw(AssertionError("Database must not be called")),
+    )
+    try:
+        response = client.post(
+            "/v1/tasks/00000000-0000-0000-0000-000000000001/plan",
+            json={"steps": [{
+                "step_key": "unsafe_step",
+                "title": "Unsafe operation",
+                "input": {"operation": "shell.exec", "command": "id"},
+            }]},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422
+    assert "unregistered operation" in response.json()["detail"]
