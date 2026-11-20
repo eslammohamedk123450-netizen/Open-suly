@@ -54,7 +54,7 @@ create table if not exists public.opencode_change_sets (
   user_id uuid not null references auth.users(id) on delete cascade,
   project_id uuid not null references public.projects(id) on delete cascade,
   base_revision text not null check (base_revision ~ '^[0-9a-f]{64}$'),
-  status text not null default 'review_ready' check (status in ('review_ready','approved','applied','stale','rejected')),
+  status text not null default 'review_ready' check (status in ('review_ready','applying','approved','applied','stale','rejected')),
   changes jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now(),
   decided_at timestamptz,
