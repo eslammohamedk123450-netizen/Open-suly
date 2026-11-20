@@ -191,7 +191,11 @@ class TaskWorker:
         step = self.claim()
         if step is None:
             return "idle"
-        if not self.renew(step):
+        try:
+            if not self.renew(step):
+                return "lease_lost"
+        except Exception:
+            # A failed initial renewal is not proof of lease ownership.
             return "lease_lost"
 
         heartbeat_stop = Event()
@@ -271,4 +275,10 @@ class TaskWorker:
 
         if lease_lost.is_set():
             return "lease_lost"
-        return "completed" if self.complete(step, output) else "lease_lost"
+        try:
+            completed = self.complete(step, output)
+        except Exception:
+            # The RPC may have committed before the connection failed; do not
+            # claim either success or lease loss without a confirmed response.
+            return "completion_unconfirmed"
+        return "completed" if completed else "lease_lost"
