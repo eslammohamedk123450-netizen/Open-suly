@@ -70,3 +70,31 @@ def test_finish_engine_run_rejects_non_terminal_status():
 def test_finish_engine_run_reports_stale_lease_rejection():
     client = FakeRpc(False)
     assert EngineRunStore(client).finish(RUN_ID, step(), "succeeded") is False
+
+
+
+def test_attach_upstream_run_id_uses_active_lease():
+    client = FakeRpc(True)
+    assert EngineRunStore(client).attach_upstream_run_id(
+        RUN_ID, step(), "run_hermes_123",
+    )
+    assert client.calls == [(
+        "attach_engine_upstream_run",
+        {
+            "p_run_id": str(RUN_ID),
+            "p_step_id": str(step().step_id),
+            "p_lease_token": str(step().lease_token),
+            "p_upstream_run_id": "run_hermes_123",
+        },
+    )]
+
+
+def test_attach_upstream_run_id_rejects_invalid_identifier():
+    with pytest.raises(ValueError, match="invalid_upstream_run_id"):
+        EngineRunStore(FakeRpc(True)).attach_upstream_run_id(RUN_ID, step(), " ")
+
+
+def test_attach_upstream_run_id_reports_lease_loss():
+    assert EngineRunStore(FakeRpc(False)).attach_upstream_run_id(
+        RUN_ID, step(), "run_hermes_123",
+    ) is False
