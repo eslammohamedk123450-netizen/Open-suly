@@ -354,3 +354,13 @@ undefined
 - أضيف runtime lease broker contract مع exact endpoint origin allowlist (scheme/host/port)، ربط lease بـtask/run/engine، صلاحية لا تتجاوز ساعة، ومنع إعادة استخدام runtime identity أو task attempt داخل العملية. أضيفت اختبارات unit تغطي origin/port، metadata/localhost، expiry، ownership mismatch، وإعادة الاستخدام والتنظيف.
 - CI كشف فشلًا في اختبارات lease لأن وقت انتهاء الاختبار كان أبعد من حد الساعة؛ أصلحنا الاختبارات لتستخدم وقتًا حاليًا وصلاحية 30 دقيقة. فحص CI على commit 3936f442 queued وقت آخر فحص؛ لا نعلن نجاحًا قبل اكتمال API tests وclient typecheck/export على أحدث HEAD.
 - لم يتم بناء provider فعلي أو تشغيل Docker أو Hermes أو Browser Use، ولم تُطبق أي migration أو deployment. كل المحركات تظل disabled.
+
+
+## تشديد Runtime Lease Broker — 2026-11-20
+
+- شددنا عقد endpoint الخاص بالـruntime: allowlist أصبحت origins كاملة بدل host فقط، ويجب أن تكون canonical HTTPS origins بلا credentials أو path أو query أو fragment، مع رفض localhost وIP literals/metadata IP.
+- أضيف تحقق من exact origin match بدل suffix matching، حتى لا يقبل subdomain غير مقصود.
+- أصبح broker يحتفظ بكائن الـlease نفسه، وليس معرف المحاولة فقط؛ لا يقبل release لكائن lease مستنسخ حتى لو كانت قيمه مساوية.
+- عند اكتشاف runtime ID سبق إصداره، لا يحاول broker إيقافه مرة أخرى؛ لأن ذلك قد ينهي runtime ما زال مملوكًا لمهمة أخرى أو broker آخر. أما runtime جديد أُنشئ بالخطأ لمحاولة مكررة فيتم طلب release له.
+- أضيفت اختبارات لرفض HTTP/IP origins، والـlease المزيف، وإعادة استخدام runtime identity.
+- API tests على commit `7a805ed9a8d1` نجحت؛ Client jobs كانت قيد التنفيذ. أحدث commits الاختبارات `c3a0ad69` و`11c2bf29` تنتظر Platform CI، فلا نعلن نجاحها بعد.
