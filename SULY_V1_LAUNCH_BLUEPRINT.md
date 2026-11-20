@@ -326,3 +326,13 @@ The task database foundation is live, but it must not be described as autonomous
 - This is persistent text-file editing, not yet a sandboxed code execution environment, Git synchronization, binary asset manager, or autonomous coding-agent runtime.
 - Migration `20261120213000_project_files.sql` is committed for review and has not been applied to the live database.
 
+## Project file version history
+
+- Added immutable snapshots of prior text-file contents, captured automatically by a database trigger before a file's content changes.
+- Added authenticated, owner-scoped endpoints to list and read previous versions and restore a selected version.
+- Added editor UI for browsing recent revisions and restoring a prior version after explicit confirmation.
+- Retention is bounded to the latest 50 revisions per file; each revision remains subject to the 256 KiB text-file limit.
+- Restoring a revision updates the current file and captures the replaced current content as another revision, so recovery is reversible.
+- Migration `20261120220000_project_file_history.sql` is committed but not applied to the live database.
+- This adds recovery and traceability; it is not yet an AI-generated patch/diff review system or a code execution sandbox.
+
