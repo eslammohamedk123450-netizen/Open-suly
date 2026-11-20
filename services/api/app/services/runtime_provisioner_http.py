@@ -157,6 +157,36 @@ class HTTPSRuntimeLeaseProvider:
             raise RuntimeProvisionerError("runtime_provisioner_expired_lease")
         return lease
 
+    def run_task(self, lease: RuntimeLease, *, prompt: str, title: str = "SULY task") -> dict[str, Any]:
+        """Execute a bounded prompt in the leased OpenCode runtime and collect its diff snapshot."""
+        if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 32_000:
+            raise ValueError("runtime_prompt_invalid")
+        if not isinstance(title, str) or not title.strip() or len(title) > 120:
+            raise ValueError("runtime_title_invalid")
+        try:
+            lease.validate(task_id=lease.task_id, engine_run_id=lease.engine_run_id, engine_id=lease.engine_id, allowed_origins=frozenset({lease.base_url}))
+        except ValueError as exc:
+            raise ValueError("runtime_lease_invalid") from exc
+        route = lease.gateway_path + "/execute"
+        try:
+            with self._client.stream("POST", route, json={"prompt": prompt.strip(), "title": title.strip()}, headers={"Authorization": f"Bearer {lease.access_token}"}, timeout=httpx.Timeout(900, connect=5)) as response:
+                if response.status_code != 200 or response.headers.get("content-type", "").split(";", 1)[0].lower() != "application/json":
+                    raise RuntimeProvisionerError("runtime_execution_failed")
+                chunks, total = [], 0
+                for chunk in response.iter_bytes():
+                    total += len(chunk)
+                    if total > 2 * 1024 * 1024:
+                        raise RuntimeProvisionerError("runtime_execution_response_too_large")
+                    chunks.append(chunk)
+                execution = json.loads(b"".join(chunks))
+        except RuntimeProvisionerError:
+            raise
+        except (httpx.HTTPError, ValueError, UnicodeDecodeError) as exc:
+            raise RuntimeProvisionerError("runtime_execution_unavailable") from exc
+        if not isinstance(execution, dict) or not isinstance(execution.get("session_id"), str):
+            raise RuntimeProvisionerError("runtime_execution_invalid_response")
+        results = self.fetch_results(lease)
+        return {"execution": execution, "results": results}
     def fetch_results(self, lease: RuntimeLease) -> dict[str, Any]:
         """Fetch bounded changed files using the one-time runtime token."""
         if not isinstance(lease, RuntimeLease):
