@@ -22,7 +22,7 @@ class Broker:
     def __init__(self):
         self.calls = []
 
-    def run_task(self, task_id, run_id, engine_id, *, files, prompt, title, on_lease_acquired=None):
+    def run_task(self, task_id, run_id, engine_id, *, files, prompt, title, on_lease_acquired=None, on_session_created=None):
         self.calls.append((task_id, run_id, engine_id, files, prompt, title))
         return {
             "execution": {"session_id": "sesABC123", "result": {"ok": True}},
@@ -154,9 +154,12 @@ def test_executor_persists_runtime_id_immediately_when_lease_is_acquired():
     runtime_id = str(uuid4())
 
     class CallbackBroker(Broker):
-        def run_task(self, task_id, run_id, engine_id, *, files, prompt, title, on_lease_acquired=None):
+        def run_task(self, task_id, run_id, engine_id, *, files, prompt, title, on_lease_acquired=None, on_session_created=None):
             assert callable(on_lease_acquired)
-            on_lease_acquired(SimpleNamespace(runtime_id=runtime_id))
+            assert callable(on_session_created)
+            lease = SimpleNamespace(runtime_id=runtime_id)
+            on_lease_acquired(lease)
+            on_session_created(lease, "sesABC123")
             return {
                 "execution": {"runtime_id": runtime_id, "session_id": "sesABC123"},
                 "results": {"changed_files": [], "deleted_paths": [], "changed_count": 0},
