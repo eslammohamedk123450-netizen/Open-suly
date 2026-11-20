@@ -126,8 +126,10 @@ def _get_manager() -> DockerTaskRuntimeManager:
 
 
 def _require_suly(authorization: str | None) -> None:
-    if not SULY_TOKEN or not authorization or not authorization.startswith("Bearer "):
+    if not SULY_TOKEN:
         raise HTTPException(503, "provisioner_auth_not_configured")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "unauthorized")
     supplied = authorization[7:]
     if not hmac.compare_digest(supplied, SULY_TOKEN):
         raise HTTPException(401, "unauthorized")
