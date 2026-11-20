@@ -234,7 +234,7 @@ def get_task(
             task = _owned_task(client, task_id, user.id)
             steps = (
                 client.table("task_steps")
-                .select("*")
+                .select("id,task_id,user_id,step_key,title,description,step_order,depends_on,status,input,output,error_code,error_message,attempt_count,max_attempts,started_at,completed_at,created_at,updated_at")
                 .eq("task_id", str(task_id))
                 .eq("user_id", user.id)
                 .order("step_order")
@@ -268,6 +268,7 @@ def request_task_cancellation(
                     })
                     .eq("id", str(task_id))
                     .eq("user_id", user.id)
+                    .in_("status", ["queued", "ready", "running"])
                     .execute()
                     .data
                 )
