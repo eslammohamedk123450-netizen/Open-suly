@@ -200,6 +200,17 @@ def test_hermes_agent_task_requires_persisted_approval_scope():
         dispatch(step)
 
 
+class FakeEngineRunStore:
+    def __init__(self, *_args):
+        self.events = []
+    def start(self, step, engine_id):
+        self.events.append(("start", step.step_id, engine_id))
+        return UUID("00000000-0000-0000-0000-000000000099")
+    def finish(self, run_id, step, status, error_code=None):
+        self.events.append(("finish", run_id, step.step_id, status, error_code))
+        return True
+
+
 def test_hermes_agent_task_calls_bridge_only_after_approval(monkeypatch):
     import app.worker_runtime as runtime_module
     from types import SimpleNamespace
@@ -207,6 +218,8 @@ def test_hermes_agent_task_calls_bridge_only_after_approval(monkeypatch):
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
         hermes_agent_enabled=True, hermes_agent_timeout_seconds=90.0,
     ))
+    monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: object())
+    monkeypatch.setattr(runtime_module, "EngineRunStore", FakeEngineRunStore)
 
     class ApprovedScopes:
         def active_scopes(self, _user_id):
@@ -284,6 +297,8 @@ def test_hermes_engine_stays_disabled_without_feature_flag(monkeypatch):
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
         hermes_agent_enabled=False, hermes_agent_timeout_seconds=90.0,
     ))
+    monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: object())
+    monkeypatch.setattr(runtime_module, "EngineRunStore", FakeEngineRunStore)
     with pytest.raises(RuntimeError, match="engine_disabled"):
         runtime_module.hermes_agent_turn(
             make_step({"operation": "hermes.agent.turn", "prompt": "hello"})
@@ -304,6 +319,8 @@ def test_cancel_aware_dispatch_passes_event_to_hermes_adapter(monkeypatch):
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
         hermes_agent_enabled=True, hermes_agent_timeout_seconds=90.0,
     ))
+    monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: object())
+    monkeypatch.setattr(runtime_module, "EngineRunStore", FakeEngineRunStore)
 
     def fake_run(prompt, **kwargs):
         received["prompt"] = prompt
@@ -321,3 +338,46 @@ def test_cancel_aware_dispatch_passes_event_to_hermes_adapter(monkeypatch):
     assert received["prompt"] == "safe task"
     assert received["cancel_event"] is cancel_event
     assert received["timeout_seconds"] == 90
+
+
+def test_hermes_run_is_recorded_as_succeeded(monkeypatch):
+    import app.worker_runtime as runtime_module
+    from types import SimpleNamespace
+    from app.services.tool_registry import ToolExecutionContext
+
+    store = FakeEngineRunStore()
+    monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        hermes_agent_enabled=True, hermes_agent_timeout_seconds=90.0,
+    ))
+    monkeypatch.setattr(runtime_module, "run_agent_turn", lambda *_args, **_kwargs: {
+        "engine": "hermes-agent", "content": "finished",
+    })
+    step = make_step({"operation": "hermes.agent.turn", "prompt": "safe"})
+    result = runtime_module.hermes_agent_turn(
+        step, ToolExecutionContext(engine_run_store=store),
+    )
+    assert result["content"] == "finished"
+    assert store.events[0][0] == "start"
+    assert store.events[1][0] == "finish"
+    assert store.events[1][3] == "succeeded"
+
+
+def test_hermes_run_records_failure_without_raw_error(monkeypatch):
+    import app.worker_runtime as runtime_module
+    from types import SimpleNamespace
+    from app.services.tool_registry import ToolExecutionContext
+
+    store = FakeEngineRunStore()
+    monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        hermes_agent_enabled=True, hermes_agent_timeout_seconds=90.0,
+    ))
+    monkeypatch.setattr(runtime_module, "run_agent_turn", lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        RuntimeError("sensitive prompt and upstream response")
+    ))
+    with pytest.raises(RuntimeError):
+        runtime_module.hermes_agent_turn(
+            make_step({"operation": "hermes.agent.turn", "prompt": "safe"}),
+            ToolExecutionContext(engine_run_store=store),
+        )
+    assert store.events[1][3] == "failed"
+    assert store.events[1][4] == "engine_execution_failed"
