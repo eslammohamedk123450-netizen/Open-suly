@@ -205,7 +205,7 @@ The task database foundation is live, but it must not be described as autonomous
 
 ### Verification boundary
 - Automated tests cover registry metadata, duplicate registration, schema enforcement, size limits, and rejection of unsupported operations.
-- Permission-scope values are metadata only; no user-consent grant system is claimed yet.
+- Permission-scope values are enforced through the persisted user-consent workflow documented below.
 - No external tool, paid service, API key, deployment, or database migration was introduced.
 
 
@@ -220,7 +220,7 @@ The task database foundation is live, but it must not be described as autonomous
 
 ### Verification boundary
 - Unit tests cover default-deny behavior, exact-scope authorization, no handler execution before approval, and rejection of self-granted scopes.
-- This is an authorization gate interface, not yet a persisted user-consent workflow. No external tool is currently registered.
+- The gate is backed by persisted user-consent records and audit events, documented below. No external tool is currently registered.
 - No Supabase schema change, provider, API key, paid service, or deployment was introduced.
 
 
@@ -262,3 +262,20 @@ The task database foundation is live, but it must not be described as autonomous
 - Performance advisor's foreign-key index finding was fixed and indexed in the final migration. Existing unused-index notices remain informational and are expected before production traffic.
 - The current registry still contains only local `text.analyze`, which does not require approval. No sensitive external tool is registered yet, so the new API correctly refuses grants for unknown/unavailable scopes. This is the consent infrastructure, not a claim that web, browser, files, shell, or integrations are already available.
 - API/worker code changes require CI confirmation; no live authenticated consent round-trip or deployed worker execution is claimed.
+
+
+## Worker lease heartbeat and CI hardening — 2026-11-20
+
+### Implemented on main
+- Worker now renews the opaque task-step lease periodically while a handler is running, rather than relying only on the preflight renewal.
+- Heartbeat interval is bounded to no more than half of the configured lease duration.
+- If a renewal returns false or raises an error, the worker treats ownership as lost and will not checkpoint the handler output.
+- Handler failures are recorded only while lease ownership is still valid; raw exception details remain redacted.
+- Added tests for successful periodic renewal, lost-lease checkpoint prevention, and invalid heartbeat intervals.
+- Fixed a stale worker test that still expected the old raw exception class name after safe error redaction was introduced.
+- Added API tests for authentication requirements, rejection of unregistered approval scopes, scope format validation, and deriving the grant actor from the verified user rather than request JSON.
+
+### Verification boundary
+- Python compile and test CI must pass on the latest commit before this batch is considered verified.
+- Heartbeat protects the lease during synchronous handlers, but it is not a sandbox, hard execution timeout, or deployed always-on worker.
+- The worker process remains opt-in and must be hosted separately with server-only Supabase credentials.
