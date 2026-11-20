@@ -261,7 +261,7 @@ async def test_prompt_async_is_session_scoped_bounded_and_sends_text_only():
     async def handler(request):
         seen["path"] = request.url.path
         seen["body"] = request.read().decode()
-        return httpx.Response(204)
+        return httpx.Response(200, json={"data": {"id": "inbox_123"}})
 
     async with OpenCodeHTTPClient(
         lease(), task_id=TASK_ID, engine_run_id=RUN_ID,
@@ -282,8 +282,8 @@ async def test_prompt_async_is_session_scoped_bounded_and_sends_text_only():
                 prompt="x" * 32001,
             )
 
-    assert seen["path"] == "/api/session/ses_taskrun_123456789/prompt_async"
-    assert seen["body"] == '{"parts":[{"type":"text","text":"Fix the failing unit tests."}]}'
+    assert seen["path"] == "/api/session/ses_taskrun_123456789/prompt"
+    assert seen["body"] == '{"text":"Fix the failing unit tests."}'
 
 
 @pytest.mark.asyncio
@@ -319,7 +319,7 @@ async def test_abort_session_requires_confirmed_boolean_and_exact_session():
 
     async def handler(request):
         seen["path"] = request.url.path
-        return httpx.Response(200, json=True)
+        return httpx.Response(200, json={"interrupted": True})
 
     async with OpenCodeHTTPClient(
         lease(), task_id=TASK_ID, engine_run_id=RUN_ID,
@@ -329,7 +329,7 @@ async def test_abort_session_requires_confirmed_boolean_and_exact_session():
         with pytest.raises(ValueError, match="session_id_invalid"):
             await client.abort_session(session_id="../other")
 
-    assert seen["path"] == "/api/session/ses_taskrun_123456789/abort"
+    assert seen["path"] == "/api/session/ses_taskrun_123456789/interrupt"
 
 
 @pytest.mark.asyncio
@@ -337,8 +337,8 @@ async def test_abort_session_fails_closed_when_upstream_does_not_confirm():
     async with OpenCodeHTTPClient(
         lease(), task_id=TASK_ID, engine_run_id=RUN_ID,
         allowed_origins=ORIGINS, transport=httpx.MockTransport(
-            lambda request: httpx.Response(200, json=False)
+            lambda request: httpx.Response(200, json={"interrupted": "yes"})
         ),
     ) as client:
-        with pytest.raises(OpenCodeTransportError, match="abort_not_confirmed"):
+        with pytest.raises(OpenCodeTransportError, match="interrupt_not_confirmed"):
             await client.abort_session(session_id="ses_taskrun_123456789")
