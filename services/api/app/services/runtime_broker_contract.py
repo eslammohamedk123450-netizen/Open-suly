@@ -31,7 +31,15 @@ class RuntimeLease:
     access_token: str = field(repr=False)
     expires_at: float
 
-    def validate(self, *, task_id: str, engine_run_id: str, engine_id: str, now: float | None = None) -> None:
+    def validate(
+        self,
+        *,
+        task_id: str,
+        engine_run_id: str,
+        engine_id: str,
+        allowed_hosts: frozenset[str],
+        now: float | None = None,
+    ) -> None:
         """Validate broker identity, secret shape, URL shape, and short expiry."""
         try:
             runtime_uuid = UUID(self.runtime_id)
@@ -66,6 +74,12 @@ class RuntimeLease:
                 raise ValueError('runtime_lease_base_url_invalid')
         except ValueError as exc:
             raise ValueError('runtime_lease_base_url_invalid') from exc
+        host = parsed.hostname.lower().rstrip('.')
+        if not allowed_hosts or not any(
+            host == allowed or host.endswith('.' + allowed)
+            for allowed in allowed_hosts
+        ):
+            raise ValueError('runtime_lease_host_not_allowlisted')
         current = time() if now is None else now
         if isinstance(self.expires_at, bool) or not isinstance(self.expires_at, (int, float)) or not current < self.expires_at <= current + 3600:
             raise ValueError('runtime_lease_expiry_invalid')
@@ -84,13 +98,22 @@ class RuntimeLeaseProvider(Protocol):
 class TaskScopedRuntimeBroker:
     """Validate leases and prevent runtime reuse within this broker process."""
 
-    def __init__(self, provider: RuntimeLeaseProvider) -> None:
+    def __init__(self, provider: RuntimeLeaseProvider, *, allowed_hosts: frozenset[str]) -> None:
         if not callable(getattr(provider, 'acquire', None)) or not callable(getattr(provider, 'release', None)):
             raise TypeError('runtime_lease_provider_required')
+        if (
+            not isinstance(allowed_hosts, frozenset)
+            or not allowed_hosts
+            or any(not isinstance(host, str) or not host or host != host.lower() for host in allowed_hosts)
+        ):
+            raise ValueError('runtime_broker_host_allowlist_required')
         self._provider = provider
+        self._allowed_hosts = allowed_hosts
         self._lock = RLock()
         self._active_by_runtime: dict[str, tuple[str, str, str]] = {}
         self._active_by_attempt: dict[tuple[str, str, str], str] = {}
+        self._seen_runtime_ids: set[str] = set()
+        self._seen_attempts: set[tuple[str, str, str]] = set()
 
     def acquire(self, task_id: str, engine_run_id: str, engine_id: str) -> RuntimeLease:
         attempt = (task_id, engine_run_id, engine_id)
@@ -101,7 +124,12 @@ class TaskScopedRuntimeBroker:
         if not isinstance(lease, RuntimeLease):
             raise RuntimeError('runtime_provider_returned_invalid_lease')
         try:
-            lease.validate(task_id=task_id, engine_run_id=engine_run_id, engine_id=engine_id)
+            lease.validate(
+                task_id=task_id,
+                engine_run_id=engine_run_id,
+                engine_id=engine_id,
+                allowed_hosts=self._allowed_hosts,
+            )
         except Exception:
             try:
                 self._provider.release(lease)
@@ -109,14 +137,18 @@ class TaskScopedRuntimeBroker:
                 logger.warning('Failed to release invalid runtime lease %s', getattr(lease, 'runtime_id', 'unknown'))
             raise
         with self._lock:
-            if lease.runtime_id in self._active_by_runtime or attempt in self._active_by_attempt:
-                try:
-                    self._provider.release(lease)
-                except Exception:
-                    logger.warning('Failed to release reused runtime lease %s', lease.runtime_id)
-                raise RuntimeError('runtime_instance_reuse_rejected')
-            self._active_by_runtime[lease.runtime_id] = attempt
-            self._active_by_attempt[attempt] = lease.runtime_id
+            reused = lease.runtime_id in self._seen_runtime_ids or attempt in self._seen_attempts
+            if not reused:
+                self._active_by_runtime[lease.runtime_id] = attempt
+                self._active_by_attempt[attempt] = lease.runtime_id
+                self._seen_runtime_ids.add(lease.runtime_id)
+                self._seen_attempts.add(attempt)
+        if reused:
+            try:
+                self._provider.release(lease)
+            except Exception:
+                logger.warning('Failed to release reused runtime lease %s', lease.runtime_id)
+            raise RuntimeError('runtime_instance_reuse_rejected')
         return lease
 
     def release(self, lease: RuntimeLease) -> bool:
