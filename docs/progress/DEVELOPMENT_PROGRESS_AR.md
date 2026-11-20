@@ -473,3 +473,10 @@ undefined
 - أحداث OpenCode تُختزل إلى lifecycle وpermission metadata المسموحة فقط، مع رفض session mismatch، وعدم تمرير reasoning أو text deltas أو tool input/output.
 - أضيفت اختبارات حدود البروتوكول، بما فيها malformed/unhashable decisions وtimestamps الكبيرة.
 - لا يوجد OpenCode HTTP client أو runtime provisioner أو session persistence حتى الآن؛ المحرك يظل disabled.
+
+## نتيجة اختبارات OpenCode contract وBrowser URL — 2026-11-20
+
+- أحدث Platform CI على commit 61c194f8: **456 API tests passed**، وPython compile نجح.
+- Client TypeScript typecheck نجح، وExpo dependency compatibility نجح؛ Web export كان لا يزال قيد التنفيذ وقت تسجيل هذا التحديث.
+- Repository baseline على commit 61c194f8 نجح.
+- لا ننسب اكتمال Platform CI حتى يكتمل Web export.
