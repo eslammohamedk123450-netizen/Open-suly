@@ -26,6 +26,7 @@ class ToolDefinition:
     max_input_bytes: int
     handler: ToolHandler
     requires_approval: bool = True
+    max_output_bytes: int = 64_000
 
 
 class ToolRegistry:
@@ -35,7 +36,12 @@ class ToolRegistry:
     def register(self, definition: ToolDefinition) -> None:
         if definition.name in self._tools:
             raise ValueError(f"duplicate_tool:{definition.name}")
-        if not definition.name or not definition.permission_scope or definition.max_input_bytes < 1:
+        if (
+            not definition.name
+            or not definition.permission_scope
+            or definition.max_input_bytes < 1
+            or definition.max_output_bytes < 1
+        ):
             raise ValueError("invalid_tool_definition")
         if not definition.required_input_fields <= definition.allowed_input_fields:
             raise ValueError("required_fields_must_be_allowed")
@@ -80,4 +86,13 @@ class ToolRegistry:
         grants = context.approved_scopes if context is not None else frozenset()
         if tool.requires_approval and tool.permission_scope not in grants:
             raise PermissionError(f"tool_approval_required:{tool.permission_scope}")
-        return tool.handler(step)
+        result = tool.handler(step)
+        if not isinstance(result, dict):
+            raise ValueError("invalid_tool_output: handler must return an object")
+        try:
+            output = json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            raise ValueError("invalid_tool_output: result must be JSON serializable") from exc
+        if len(output) > tool.max_output_bytes:
+            raise ValueError("tool_output_too_large")
+        return result
