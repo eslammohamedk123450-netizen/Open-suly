@@ -70,15 +70,31 @@ class HTTPSRuntimeLeaseProvider:
         self._client.close()
 
     def _json(self, response: httpx.Response, statuses: frozenset[int]) -> dict[str, Any]:
+        """Consume a bounded JSON response while the streaming response is open."""
         if 300 <= response.status_code < 400 or response.status_code not in statuses:
             raise RuntimeProvisionerError("runtime_provisioner_unavailable")
-        if len(response.content) > _MAX_BODY:
-            raise RuntimeProvisionerError("runtime_provisioner_response_too_large")
-        if response.headers.get("content-type", "").split(";", 1)[0].lower() != "application/json":
+        content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        if content_type != "application/json":
             raise RuntimeProvisionerError("runtime_provisioner_invalid_content_type")
+        declared = response.headers.get("content-length")
+        if declared is not None:
+            try:
+                if int(declared) > _MAX_BODY:
+                    raise RuntimeProvisionerError("runtime_provisioner_response_too_large")
+            except ValueError as exc:
+                raise RuntimeProvisionerError("runtime_provisioner_invalid_response") from exc
+        chunks: list[bytes] = []
+        total = 0
         try:
-            value = response.json()
-        except (ValueError, json.JSONDecodeError) as exc:
+            for chunk in response.iter_bytes():
+                total += len(chunk)
+                if total > _MAX_BODY:
+                    raise RuntimeProvisionerError("runtime_provisioner_response_too_large")
+                chunks.append(chunk)
+            value = json.loads(b"".join(chunks))
+        except RuntimeProvisionerError:
+            raise
+        except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise RuntimeProvisionerError("runtime_provisioner_invalid_response") from exc
         if not isinstance(value, dict):
             raise RuntimeProvisionerError("runtime_provisioner_invalid_response")
@@ -92,11 +108,12 @@ class HTTPSRuntimeLeaseProvider:
         if str(task) != task_id or str(run) != engine_run_id or not isinstance(engine_id, str) or not _ENGINE.fullmatch(engine_id):
             raise ValueError("runtime_attempt_identity_invalid")
         try:
-            response = self._client.post(
+            with self._client.stream(
+                "POST",
                 "/v1/runtimes",
                 json={"task_id": task_id, "engine_run_id": engine_run_id, "engine_id": engine_id},
-            )
-            data = self._json(response, frozenset({201}))
+            ) as response:
+                data = self._json(response, frozenset({201}))
         except httpx.HTTPError as exc:
             raise RuntimeProvisionerError("runtime_provisioner_unreachable") from exc
         try:
@@ -126,12 +143,12 @@ class HTTPSRuntimeLeaseProvider:
         if runtime_id != lease.runtime_id:
             raise ValueError("runtime_id_invalid")
         try:
-            response = self._client.request(
+            with self._client.stream(
                 "DELETE",
                 f"/v1/runtimes/{runtime_id}",
                 json={"task_id": lease.task_id, "engine_run_id": lease.engine_run_id},
-            )
-            data = self._json(response, frozenset({200}))
+            ) as response:
+                data = self._json(response, frozenset({200}))
         except httpx.HTTPError as exc:
             raise RuntimeProvisionerError("runtime_provisioner_unreachable") from exc
         if not isinstance(data.get("released"), bool):
