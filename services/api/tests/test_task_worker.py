@@ -182,3 +182,34 @@ def test_cancel_aware_handler_still_completes_when_lease_held():
     assert worker.run_once(lambda _step: {}, cancel_aware_handler=handler) == "completed"
     assert len(seen_event) == 1
     assert client.calls[-1][0] == "complete_task_step"
+
+
+@pytest.mark.parametrize("field,value,error", [
+    ("attempt_count", True, "worker_claim_invalid_attempt_bounds"),
+    ("attempt_count", "1", "worker_claim_invalid_attempt_bounds"),
+    ("max_attempts", False, "worker_claim_invalid_attempt_bounds"),
+    ("step_key", "bad key", "worker_claim_invalid_step_metadata"),
+    ("step_key", "research\u200b", "worker_claim_invalid_step_metadata"),
+])
+def test_claim_rejects_malformed_scalar_fields(field, value, error):
+    payload = dict(STEP)
+    payload[field] = value
+    worker = TaskWorker(FakeRpc([payload]), "worker-invalid-claim")
+    with pytest.raises(ValueError, match=error):
+        worker.claim()
+
+
+def test_claim_rejects_non_json_input_values():
+    payload = dict(STEP)
+    payload["input"] = {"invalid": float("nan")}
+    worker = TaskWorker(FakeRpc([payload]), "worker-invalid-json")
+    with pytest.raises(ValueError, match="worker_claim_invalid_input"):
+        worker.claim()
+
+
+def test_claim_rejects_input_over_64_kibibytes():
+    payload = dict(STEP)
+    payload["input"] = {"payload": "x" * (64 * 1024)}
+    worker = TaskWorker(FakeRpc([payload]), "worker-oversized-input")
+    with pytest.raises(ValueError, match="worker_claim_input_too_large"):
+        worker.claim()
