@@ -233,6 +233,64 @@ class OpenCodeLifecycleStore:
             raise RuntimeError("opencode_changeset_persistence_failed")
         return self._changeset_projection(rows[0])
 
+    def approve_and_apply_change_set(
+        self, *, user_id: str, change_set_id: str,
+        current_revision: Callable[[str], str],
+        apply_if_revision: Callable[[str, str, list[dict[str, Any]]], bool],
+    ) -> bool:
+        """Approve only against the captured revision; adapter must apply atomically by CAS."""
+        _uuid(user_id, "opencode_task_identity_invalid")
+        _uuid(change_set_id, "opencode_changeset_identity_invalid")
+        rows = self._client.table("opencode_change_sets").select(
+            "id,project_id,base_revision,changes,status"
+        ).eq("id", change_set_id).eq("user_id", user_id).eq(
+            "status", "review_ready"
+        ).limit(1).execute().data
+        if not rows:
+            return False
+        item = rows[0]
+        claimed = self._client.table("opencode_change_sets").update({
+            "status": "applying",
+        }).eq("id", change_set_id).eq("user_id", user_id).eq(
+            "status", "review_ready"
+        ).execute().data
+        if not claimed:
+            return False
+        try:
+            latest_revision = current_revision(item["project_id"])
+            if latest_revision != item["base_revision"]:
+                self._client.table("opencode_change_sets").update({
+                    "status": "stale",
+                }).eq("id", change_set_id).eq("user_id", user_id).eq(
+                    "status", "applying"
+                ).execute()
+                return False
+            # This adapter MUST perform its own transactional compare-and-swap.
+            # The preflight revision check alone cannot close a concurrent-write race.
+            applied = apply_if_revision(
+                item["project_id"], item["base_revision"], item["changes"]
+            )
+            if not applied:
+                self._client.table("opencode_change_sets").update({
+                    "status": "stale",
+                }).eq("id", change_set_id).eq("user_id", user_id).eq(
+                    "status", "applying"
+                ).execute()
+                return False
+            updated = self._client.table("opencode_change_sets").update({
+                "status": "applied", "decided_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", change_set_id).eq("user_id", user_id).eq(
+                "status", "applying"
+            ).execute().data
+            return bool(updated)
+        except Exception:
+            self._client.table("opencode_change_sets").update({
+                "status": "review_ready",
+            }).eq("id", change_set_id).eq("user_id", user_id).eq(
+                "status", "applying"
+            ).execute()
+            raise
+
     @staticmethod
     def _run_projection(row: dict[str, Any]) -> dict[str, Any]:
         keys = ("id", "project_id", "task_id", "engine_run_id", "runtime_id",
