@@ -15,6 +15,7 @@ export default function ProjectFilesScreen() {
   const { user } = useAuth();
   const [files, setFiles] = useState<ProjectFile[]>([]);
   const [selected, setSelected] = useState("");
+  const [selectedUpdatedAt, setSelectedUpdatedAt] = useState<string | null>(null);
   const [content, setContent] = useState("");
   const [newPath, setNewPath] = useState("");
   const [history, setHistory] = useState<ProjectFileRevision[]>([]);
@@ -34,10 +35,12 @@ export default function ProjectFilesScreen() {
       if (selected && items.some((item) => item.path === selected)) {
         const file = await readProjectFile(id, selected);
         setContent(file.content);
+        setSelectedUpdatedAt(file.updated_at);
         await loadHistory(selected);
       } else if (selected) {
         setSelected("");
         setContent("");
+        setSelectedUpdatedAt(null);
         setHistory([]);
       }
       setNotice("");
@@ -54,6 +57,7 @@ export default function ProjectFilesScreen() {
       const file = await readProjectFile(id, path);
       setSelected(path);
       setContent(file.content);
+      setSelectedUpdatedAt(file.updated_at);
       await loadHistory(path);
     } catch (error) { setNotice(error instanceof Error ? error.message : "تعذر فتح الملف."); }
   };
@@ -64,8 +68,9 @@ export default function ProjectFilesScreen() {
     setSaving(true);
     setNotice("");
     try {
-      await saveProjectFile(id, path, content);
+      const saved = await saveProjectFile(id, path, content, selected ? selectedUpdatedAt : null);
       setSelected(path);
+      setSelectedUpdatedAt(saved.updated_at);
       setNewPath("");
       setFiles(await listProjectFiles(id));
       await loadHistory(path);
@@ -82,10 +87,12 @@ export default function ProjectFilesScreen() {
         { text: "إلغاء", style: "cancel" },
         { text: "استعادة", style: "destructive", onPress: () => {
           setRestoring(true);
-          void restoreProjectFileRevision(id, revision.id)
-            .then(async () => {
+          if (!selectedUpdatedAt) { setNotice("أعد تحميل الملف قبل الاستعادة."); setRestoring(false); return; }
+          void restoreProjectFileRevision(id, revision.id, selectedUpdatedAt)
+            .then(async (result) => {
               const file = await readProjectFile(id, revision.path);
               setContent(file.content);
+              setSelectedUpdatedAt(result.updated_at);
               await loadHistory(revision.path);
               setNotice("تمت الاستعادة، وحُفظت النسخة السابقة في السجل.");
             })
@@ -142,7 +149,7 @@ export default function ProjectFilesScreen() {
               autoCapitalize="none" autoCorrect={false} spellCheck={false}
               placeholder="اكتب محتوى الملف هنا..." placeholderTextColor={colors.faint} style={styles.editor} />
             <View style={styles.actions}>
-              {selected ? <Pressable style={styles.secondary} onPress={() => { setSelected(""); setContent(""); setNewPath(""); setHistory([]); }}>
+              {selected ? <Pressable style={styles.secondary} onPress={() => { setSelected(""); setSelectedUpdatedAt(null); setContent(""); setNewPath(""); setHistory([]); }}>
                 <Text style={styles.secondaryText}>ملف جديد</Text>
               </Pressable> : null}
               <Pressable style={[styles.save, (saving || restoring) && styles.disabled]} onPress={() => void save()} disabled={saving || restoring}>
