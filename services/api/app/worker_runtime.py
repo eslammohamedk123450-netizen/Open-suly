@@ -62,11 +62,13 @@ class HermesAgentAdapter:
         *,
         idempotency_key: str,
         on_run_started: Callable[[str], bool],
+        on_event: Callable[[dict[str, str | int | float]], bool] | None = None,
     ) -> None:
-        # نمرر إشارة الإلغاء ومفتاح المحاولة ودالة حفظ معرف Hermes الخارجي.
+        # نمرر إشارة الإلغاء وهوية المحاولة وقناة أحداث لا تقبل إلا metadata.
         self.cancel_event = cancel_event
         self.idempotency_key = idempotency_key
         self.on_run_started = on_run_started
+        self.on_event = on_event
 
     def execute(self, request: EngineRequest) -> EngineResult:
         prompt = request.input_payload.get("prompt")
@@ -78,6 +80,7 @@ class HermesAgentAdapter:
             cancel_event=self.cancel_event,
             idempotency_key=self.idempotency_key,
             on_run_started=self.on_run_started,
+            on_event=self.on_event,
         )
         if not isinstance(result, dict) or not isinstance(result.get("content"), str):
             raise ValueError("hermes_adapter_invalid_response")
@@ -92,6 +95,7 @@ def build_engine_registry(
     *,
     idempotency_key: str,
     on_run_started: Callable[[str], bool],
+    on_event: Callable[[dict[str, str | int | float]], bool] | None = None,
 ) -> EngineRegistry:
     """Build the full pinned engine catalogue with only configured Hermes enabled."""
     settings = get_settings()
@@ -106,6 +110,7 @@ def build_engine_registry(
         cancel_event,
         idempotency_key=idempotency_key,
         on_run_started=on_run_started,
+        on_event=on_event,
     )
     return build_pinned_engine_registry({
         "hermes-agent": (hermes_enabled, hermes_adapter),
@@ -154,6 +159,7 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
         on_run_started=lambda upstream_id: run_store.attach_upstream_run_id(
             run_id, step, upstream_id
         ),
+        on_event=lambda event: run_store.append_event(run_id, step, event),
     )
     manager = build_agent_manager(registry)
     try:
