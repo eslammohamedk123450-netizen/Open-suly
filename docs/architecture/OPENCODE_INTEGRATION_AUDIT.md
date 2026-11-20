@@ -61,3 +61,18 @@ The existing non-executing Docker command policy was tightened before any runtim
 - Production provisioners must pass the persisted engine_run_id. The task_id fallback is retained only for existing policy tests and must not be used by a real provisioner.
 - The command builder does not execute Docker and does not enforce wall-clock timeout itself. A future runtime supervisor must enforce timeout, cleanup on cancellation/lease loss/restart, and daemon-level isolation before any engine can be enabled.
 - Unit tests cover per-attempt names/labels and private namespaces. This is policy construction testing only, not a container escape or cross-tenant integration test.
+
+
+## SULY-side lease contract progress — 2026-11-20
+
+A fail-closed contract now exists in `services/api/app/services/runtime_broker_contract.py`:
+
+- Runtime lease binds canonical task UUID, engine-run UUID, engine ID, runtime UUID, one endpoint host, opaque access token, and a maximum one-hour expiry.
+- The broker rejects a previously leased task attempt and rejects runtime ID reuse within its process lifetime, including after release.
+- The endpoint must use HTTPS, contain no embedded credentials/query/fragment/path, and match one exact DNS host in the explicit allowlist. IP literals are rejected, including metadata-service addresses.
+- Access tokens are bounded and excluded from dataclass repr.
+- Context-managed sessions always attempt release; a failed/unconfirmed release remains counted as active.
+
+Tests cover task/run/engine binding, endpoint allowlisting, IP-literal and HTTP rejection, credential bounds, expiry, duplicate attempts, runtime reuse, invalid provider leases, and teardown.
+
+This is only an in-process validation contract around a provider protocol. There is still no concrete runtime provider, container launch, task-scoped broker service, network policy, or live OpenCode integration. The catalog remains disabled.
