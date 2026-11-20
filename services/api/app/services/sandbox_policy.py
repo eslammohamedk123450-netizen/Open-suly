@@ -117,7 +117,7 @@ class DockerSandboxCommandBuilder:
 
         limits = self.limits
         argv = [
-            "docker", "run", "--rm", "--init",
+            "docker", "run", "--rm", "--pull=never", "--init",
             "--name", f"suly-task-{normalized_task_id}",
             "--label", f"com.suly.task-id={normalized_task_id}",
             "--network", "none",
@@ -128,6 +128,7 @@ class DockerSandboxCommandBuilder:
             "--ulimit", "nofile=1024:1024",
             "--ulimit", "core=0",
             "--memory", f"{limits.memory_mb}m",
+            "--memory-swap", f"{limits.memory_mb}m",
             "--cpus", str(limits.cpu_count),
             "--stop-timeout", "5",
             "--user", f"{limits.container_uid}:{limits.container_gid}",
