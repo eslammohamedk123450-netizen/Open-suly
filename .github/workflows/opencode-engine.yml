@@ -20,6 +20,15 @@ on:
     paths:
       - ".gitmodules"
       - "engines/opencode/**"
+      - "services/api/app/services/opencode_*.py"
+      - "services/api/app/services/runtime_provisioner_http.py"
+      - "services/api/app/services/project_workspace_store.py"
+      - "services/api/app/routers/opencode_sessions.py"
+      - "supabase/migrations/*opencode*.sql"
+      - "services/api/app/services/runtime_broker_contract.py"
+      - "services/api/tests/test_opencode_*.py"
+      - "services/api/tests/test_runtime_provisioner_http.py"
+      - "services/api/tests/test_project_workspace_store.py"
       - ".github/workflows/opencode-engine.yml"
   workflow_dispatch:
 
