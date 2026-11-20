@@ -59,7 +59,7 @@ def _safe_run_event(payload: object, expected_run_id: str) -> dict[str, str | in
         choice = payload.get("choice")
         if isinstance(request_id, str) and 1 <= len(request_id) <= 256 and request_id.isascii() and all(ch.isalnum() or ch in "_-.:@" for ch in request_id):
             summary["approval_request_id"] = request_id
-        if choice in {"once", "deny"}:
+        if isinstance(choice, str) and choice in {"once", "deny"}:
             summary["approval_choice"] = choice
     seq = payload.get("seq")
     if isinstance(seq, int) and not isinstance(seq, bool) and seq >= 0:
@@ -437,7 +437,7 @@ def resolve_agent_approval(
         or any(not (ch.isalnum() or ch in "_-.:@") for ch in request_id)
     ):
         raise ValueError("Hermes approval request identifier is invalid.")
-    if choice not in {"once", "deny"}:
+    if not isinstance(choice, str) or choice not in {"once", "deny"}:
         raise ValueError("Hermes approval choice must be once or deny.")
     if (
         isinstance(timeout_seconds, bool)
