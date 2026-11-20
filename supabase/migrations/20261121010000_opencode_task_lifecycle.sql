@@ -42,7 +42,7 @@ create table if not exists public.opencode_approvals (
   session_id text not null check (session_id ~ '^ses[A-Za-z0-9_-]{1,128}$'),
   permission_type text not null check (length(permission_type) between 1 and 80),
   resource jsonb not null default '{}'::jsonb,
-  status text not null default 'pending' check (status in ('pending','approved_once','approved_always','rejected','expired')),
+  status text not null default 'pending' check (status in ('pending','processing','approved_once','approved_always','rejected','expired')),
   decided_at timestamptz,
   created_at timestamptz not null default now(),
   unique (run_id, upstream_permission_id)
