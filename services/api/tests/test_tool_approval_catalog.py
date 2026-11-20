@@ -33,6 +33,8 @@ def test_catalog_lists_registered_tools_and_user_approval(monkeypatch):
     assert set(by_name) == {"text.analyze", "hermes.agent.turn"}
     assert by_name["text.analyze"]["approved"] is True
     assert by_name["text.analyze"]["requires_approval"] is False
+    assert by_name["text.analyze"]["available"] is True
+    assert by_name["hermes.agent.turn"]["available"] is False
     assert by_name["hermes.agent.turn"]["approved"] is True
     assert by_name["hermes.agent.turn"]["permission_scope"] == "agent.hermes.run"
     assert by_name["hermes.agent.turn"]["allowed_input_fields"] == ["prompt"]
@@ -57,4 +59,30 @@ def test_catalog_marks_hermes_unapproved_for_user(monkeypatch):
 
     assert response.status_code == 200
     hermes = next(item for item in response.json()["items"] if item["name"] == "hermes.agent.turn")
+    assert hermes["approved"] is False
+
+
+def test_catalog_reports_hermes_available_only_when_runtime_is_configured(monkeypatch):
+    class FakeStore:
+        def active_scopes(self, _user_id):
+            return frozenset()
+
+    class FakeSettings:
+        hermes_agent_enabled = True
+        hermes_agent_base_url = "http://hermes.internal:8642"
+        hermes_agent_api_key = object()
+
+    monkeypatch.setattr(approvals_router, "_store", lambda: FakeStore())
+    monkeypatch.setattr(approvals_router, "get_settings", lambda: FakeSettings())
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+        id="runtime-ready-user", email=None
+    )
+    try:
+        response = client.get("/v1/tools/approvals/catalog")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    hermes = next(item for item in response.json()["items"] if item["name"] == "hermes.agent.turn")
+    assert hermes["available"] is True
     assert hermes["approved"] is False
