@@ -542,6 +542,58 @@ def test_safe_approval_event_drops_invalid_request_id_and_permanent_choice():
     assert event == {"event": "approval.responded"}
 
 
+def test_hermes_approval_details_returns_only_upstream_redacted_display_fields(monkeypatch):
+    calls = []
+
+    class Client:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+        async def get(self, url, **kwargs):
+            calls.append((url, kwargs))
+            return Response({
+                "run_id": "run_approval_123",
+                "status": "waiting_for_approval",
+                "approval": {
+                    "request_id": "approval-req_123",
+                    "command": "git status",
+                    "description": "Review repository status",
+                    "choices": ["once", "session", "always", "deny"],
+                    "reasoning": "must not be returned",
+                },
+            })
+
+    monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
+    monkeypatch.setattr(hermes_agent.httpx, "AsyncClient", lambda **_kw: Client())
+    result = hermes_agent.get_agent_approval_details("run_approval_123", "approval-req_123")
+    assert result == {
+        "request_id": "approval-req_123",
+        "command": "git status",
+        "description": "Review repository status",
+    }
+    assert calls[0][0].endswith("/v1/runs/run_approval_123")
+
+
+def test_hermes_approval_details_rejects_wrong_run_state_or_request(monkeypatch):
+    class Client:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+        async def get(self, *_args, **_kwargs):
+            return Response({
+                "run_id": "run_approval_123",
+                "status": "running",
+                "approval": {"request_id": "approval-req_123", "command": "do thing"},
+            })
+
+    monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
+    monkeypatch.setattr(hermes_agent.httpx, "AsyncClient", lambda **_kw: Client())
+    with pytest.raises(hermes_agent.HermesAgentError, match="no longer pending"):
+        hermes_agent.get_agent_approval_details("run_approval_123", "approval-req_123")
+
+
 def test_hermes_approval_resolves_exact_request_with_once_choice(monkeypatch):
     calls = []
 
