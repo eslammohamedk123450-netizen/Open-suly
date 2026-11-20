@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi.testclient import TestClient
 
 from app.core.auth import AuthenticatedUser, get_current_user
@@ -366,6 +368,9 @@ class _SteerQuery:
     def eq(self, key, value):
         self.rows = [row for row in self.rows if row.get(key) == value]
         return self
+    def gt(self, key, value):
+        self.rows = [row for row in self.rows if row.get(key) is not None and row.get(key) > value]
+        return self
     def limit(self, count):
         self.rows = self.rows[:count]
         return self
@@ -395,6 +400,7 @@ class _SteerAdmin:
                 "user_id": "test-user",
                 "status": "running",
                 "lease_token": "00000000-0000-0000-0000-000000000004",
+                "lease_expires_at": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
             }],
         }
         self.rpc_calls = []
@@ -495,6 +501,40 @@ def test_task_approval_cannot_resolve_request_from_another_engine_run(monkeypatc
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 404
+
+
+def test_task_approval_details_rejects_expired_worker_lease(monkeypatch):
+    from types import SimpleNamespace
+
+    admin = _SteerAdmin()
+    admin.tables["engine_run_events"] = [{
+        "id": 1,
+        "engine_run_id": "00000000-0000-0000-0000-000000000099",
+        "event_name": "approval.request",
+        "approval_request_id": "approval-req_123",
+    }]
+    admin.tables["task_steps"][0]["lease_expires_at"] = (
+        datetime.now(timezone.utc) - timedelta(seconds=10)
+    ).isoformat()
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    monkeypatch.setattr(tasks_module, "get_agent_approval_details", lambda *_args: (_ for _ in ()).throw(
+        AssertionError("Expired lease must not disclose approval command details")
+    ))
+    monkeypatch.setattr(tasks_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
+        hermes_agent_enabled=True,
+        hermes_agent_isolation_confirmed=True,
+        hermes_agent_base_url="http://hermes:8642",
+        hermes_agent_api_key=object(),
+    ))
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    try:
+        response = client.get(
+            "/v1/tasks/00000000-0000-0000-0000-000000000001/engine-runs/00000000-0000-0000-0000-000000000099/approvals/approval-req_123",
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 409
 
 
 def test_task_owner_can_fetch_redacted_details_for_their_pending_approval(monkeypatch):
