@@ -93,12 +93,12 @@ jobs:
           trap cleanup EXIT
           docker run -d --name suly-opencode-smoke \
             -p 127.0.0.1:4096:4096 \
-            -e OPENCODE_SERVER_USERNAME=suly \
+            -e OPENCODE_SERVER_USERNAME=opencode \
             -e OPENCODE_SERVER_PASSWORD=ci-smoke-password-not-for-production \
             suly-opencode:ci
           for attempt in $(seq 1 60); do
             if curl --fail --silent --show-error \
-              --user 'suly:ci-smoke-password-not-for-production' \
+              --user 'opencode:ci-smoke-password-not-for-production' \
               http://127.0.0.1:4096/api/info >/tmp/opencode-info.json; then
               python -c "import json; d=json.load(open('/tmp/opencode-info.json')); assert isinstance(d, dict)"
               exit 0
