@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 from difflib import unified_diff
+import hashlib
 
 from app.services.opencode_session_store import OpenCodeSessionStore
 from app.services.project_workspace_store import ProjectWorkspaceStore
@@ -97,14 +98,33 @@ class OpenCodeTaskExecutor:
             change_set = None
             if lifecycle_run is not None:
                 original_by_path = {item["path"]: item["content"] for item in snapshot["files"]}
+                changed_files = results.get("changed_files", [])
+                deleted_paths = results.get("deleted_paths", [])
+                if (
+                    not isinstance(changed_files, list) or len(changed_files) > 500
+                    or not isinstance(deleted_paths, list) or len(deleted_paths) > 500
+                ):
+                    raise ValueError("opencode_result_file_count_invalid")
                 changes = []
-                for item in results.get("changed_files", []):
+                seen_paths: set[str] = set()
+                for item in changed_files:
                     if not isinstance(item, dict):
-                        continue
-                    path = item.get("path")
-                    action = "update" if path in original_by_path else "create"
+                        raise ValueError("opencode_result_file_invalid")
+                    path = ProjectWorkspaceStore._path(item.get("path"))
+                    new_content = item.get("content")
+                    if not isinstance(new_content, str) or len(new_content.encode("utf-8")) > 256 * 1024:
+                        raise ValueError("opencode_result_content_invalid")
+                    if path in seen_paths:
+                        raise ValueError("opencode_result_duplicate_path")
+                    seen_paths.add(path)
+                    digest = hashlib.sha256(new_content.encode("utf-8")).hexdigest()
+                    supplied_digest = item.get("sha256")
+                    if supplied_digest is not None and supplied_digest != digest:
+                        raise ValueError("opencode_result_digest_mismatch")
                     old_content = original_by_path.get(path, "")
-                    new_content = item.get("content", "")
+                    action = "update" if path in original_by_path else "create"
+                    if action == "update" and old_content == new_content:
+                        continue
                     diff = "".join(unified_diff(
                         old_content.splitlines(keepends=True),
                         new_content.splitlines(keepends=True),
@@ -113,11 +133,15 @@ class OpenCodeTaskExecutor:
                     ))
                     changes.append({
                         "action": action, "path": path,
-                        "content": new_content, "sha256": item.get("sha256"),
+                        "content": new_content, "sha256": digest,
                         "diff": diff[:256 * 1024],
                     })
-                for path in results.get("deleted_paths", []):
-                    old_content = original_by_path.get(path, "")
+                for raw_path in deleted_paths:
+                    path = ProjectWorkspaceStore._path(raw_path)
+                    if path in seen_paths or path not in original_by_path:
+                        raise ValueError("opencode_result_deleted_path_invalid")
+                    seen_paths.add(path)
+                    old_content = original_by_path[path]
                     diff = "".join(unified_diff(
                         old_content.splitlines(keepends=True), [],
                         fromfile=f"a/{path}", tofile="/dev/null",
