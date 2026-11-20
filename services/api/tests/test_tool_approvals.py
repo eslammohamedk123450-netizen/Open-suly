@@ -8,6 +8,7 @@ class FakeQuery:
         self.data = data
         self.filters = []
         self.selected = None
+        self.limit_value = None
 
     def select(self, value):
         return self
@@ -24,6 +25,7 @@ class FakeQuery:
         return self
 
     def limit(self, value):
+        self.limit_value = value
         return self
 
     def execute(self):
@@ -65,6 +67,7 @@ def test_active_scopes_are_loaded_only_for_requested_owner():
     assert scopes == frozenset({"files.read", "web.search"})
     assert ("user_id", "user-1") in client.last_query.filters
     assert ("revoked_at", "null") in client.last_query.filters
+    assert client.last_query.limit_value == 200
 
 
 def test_grant_rpc_uses_authenticated_owner_as_actor_not_request_input():
