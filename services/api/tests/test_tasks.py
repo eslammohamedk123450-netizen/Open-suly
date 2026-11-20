@@ -530,6 +530,9 @@ def test_task_owner_can_fetch_redacted_details_for_their_pending_approval(monkey
     assert response.status_code == 200
     assert response.json()["command"] == "git status"
     assert response.json()["description"] == "Review repository status"
+    assert response.headers["cache-control"] == "private, no-store, max-age=0"
+    assert response.headers["pragma"] == "no-cache"
+    assert response.headers["vary"] == "Authorization"
 
 
 def test_task_approval_details_rejects_answered_or_untracked_request(monkeypatch):
