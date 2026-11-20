@@ -163,3 +163,15 @@ def test_agent_manager_rejects_non_string_route_values():
         manager.route([], "research")
     with pytest.raises(ValueError, match="invalid_agent_route"):
         manager.route("agent", [])
+
+
+@pytest.mark.parametrize("agent_id,capability", [
+    ("invalid id", "research"),
+    ("research-agent", "Research"),
+    ("research-agent", "research/unsafe"),
+    ("research-agent", "research\u200b"),
+])
+def test_agent_manager_rejects_malformed_route_identifiers(agent_id, capability):
+    manager = AgentManager(registry())
+    with pytest.raises(ValueError, match="invalid_agent_route"):
+        manager.route(agent_id, capability)
