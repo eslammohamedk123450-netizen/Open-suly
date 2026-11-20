@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.config import get_settings
+from app.routers.agents import router as agents_router
 from app.routers.chat import router as chat_router
 from app.routers.tasks import router as tasks_router
 from app.routers.tool_approvals import router as tool_approvals_router
@@ -17,6 +18,7 @@ app = FastAPI(
     redoc_url=None,
 )
 
+app.include_router(agents_router)
 app.include_router(chat_router)
 app.include_router(tasks_router)
 app.include_router(tool_approvals_router)
