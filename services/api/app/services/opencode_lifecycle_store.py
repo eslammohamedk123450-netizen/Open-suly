@@ -117,6 +117,28 @@ class OpenCodeLifecycleStore:
         ).eq("user_id", user_id).execute().data
         return bool(rows)
 
+    def recover_interrupted_runs(self, *, user_id: str, limit: int = 100) -> int:
+        """Mark nonterminal worker-owned runs as interrupted after process restart."""
+        _uuid(user_id, "opencode_task_identity_invalid")
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
+            raise ValueError("opencode_recovery_limit_invalid")
+        rows = self._client.table("opencode_task_runs").select(
+            "id,status"
+        ).eq("user_id", user_id).in_(
+            "status", ["provisioning", "running", "waiting_approval", "collecting", "applying"]
+        ).limit(limit).execute().data or []
+        recovered = 0
+        for row in rows:
+            updated = self._client.table("opencode_task_runs").update({
+                "status": "failed", "error_code": "worker_restarted",
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", row["id"]).eq("user_id", user_id).eq(
+                "status", row["status"]
+            ).execute().data
+            if updated:
+                recovered += 1
+        return recovered
+
     def append_event(
         self, *, user_id: str, run_id: str, sequence: int, event_type: str,
         payload: dict[str, Any],
