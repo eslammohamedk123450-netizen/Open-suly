@@ -32,6 +32,11 @@ def test_sandbox_command_has_hardened_defaults_and_one_workspace_mount(tmp_path)
     assert "--cap-drop" in argv and argv[argv.index("--cap-drop") + 1] == "ALL"
     assert "--security-opt" in argv
     assert "no-new-privileges:true" in argv
+    assert "seccomp=default" in argv
+    assert "HOME=/home/agent" in argv
+    assert "TMPDIR=/tmp" in argv
+    assert "--pull=never" in argv
+    assert "--memory-swap" in argv
     assert "--pids-limit" in argv
     assert "--memory" in argv
     assert "--cpus" in argv
