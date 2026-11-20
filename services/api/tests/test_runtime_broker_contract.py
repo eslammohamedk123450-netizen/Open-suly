@@ -97,6 +97,29 @@ def test_runtime_lease_rejects_ip_literal_or_localhost_even_if_allowlisted(host)
         )
 
 
+@pytest.mark.parametrize("token", [
+    "x" * 31,
+    "x" * 4097,
+    "x" * 40 + "\\n",
+    "x" * 20 + " " + "x" * 20,
+])
+def test_runtime_lease_rejects_unbounded_or_header_unsafe_tokens(token):
+    lease = make_lease(access_token=token)
+    with pytest.raises(ValueError, match="credential_invalid"):
+        lease.validate(
+            task_id=TASK_ID,
+            engine_run_id=RUN_ID,
+            engine_id=ENGINE_ID,
+            allowed_origins=ORIGINS,
+            now=time(),
+        )
+
+
+def test_runtime_lease_secret_is_not_exposed_in_repr():
+    lease = make_lease(access_token="secret-token-" + "x" * 40)
+    assert lease.access_token not in repr(lease)
+
+
 def test_runtime_lease_rejects_task_attempt_or_engine_mismatch():
     lease = make_lease()
     with pytest.raises(ValueError, match="mismatch"):
