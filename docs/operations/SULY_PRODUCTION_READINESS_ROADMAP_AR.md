@@ -30,15 +30,15 @@
 - [ ] reconciliation job for orphan runs if a trigger event is missed or deployment interrupted
 - [ ] idempotent run admission, lease-expiry races and retry invariants tests
 - [ ] external runtime run IDs, status polling, event streaming and cancellation contract
-- [ ] verify terminal state before task completion
+- [x] verify terminal state before task completion in bridge contract (mocked tests; live runtime not verified)
 
 ### المرحلة C — Hermes adapter
 - [x] upstream exact-source audit (MIT revision recorded; full transitive license audit still pending)
 - [x] documented native Runs API and stop semantics
-- [ ] update pin consistently in Compose + docs (currently prior SHA in Compose needs refresh)
-- [ ] integration client: POST run, idempotency key, persisted external ID
+- [x] update pin consistently in Compose + docs (verified same immutable SHA `2de9f51b8008a7d49a49221c184f2f11cbfc4af1`)
+- [x] integration client: POST run, idempotency key, lease-guarded persisted external ID (mocked unit tests; no live runtime)
 - [ ] status polling and bounded SSE parsing
-- [ ] cooperative stop + verify final cancelled state
+- [x] cooperative stop + bounded terminal-state polling contract (mocked unit tests; remote process termination not live-verified)
 - [ ] per-task/tenant disposable runtime isolation
 - [ ] CPU, memory, process, disk, timeout bounds
 - [ ] default-deny egress / approved proxy
@@ -122,3 +122,15 @@ For every engine:
 - no critical/high unresolved security findings
 - load test report describes achieved throughput, latency, error rate, resource use and bottlenecks
 - production secrets stored in platform secret manager, never repository
+
+
+## Session checkpoint — 2026-11-20 (Hermes bridge input/status hardening)
+
+- Verified `main` head before work: `c229a76698184ea78c7973de2bb6ff7a01db73ba`.
+- Confirmed Repository baseline checks and Platform CI both succeeded for that HEAD.
+- Verified Hermes Compose and README use the same immutable upstream revision `2de9f51b8008a7d49a49221c184f2f11cbfc4af1`.
+- Hardened upstream `run_id` validation to accept only safe ASCII letters, digits, underscores, and hyphens; rejects slash/path traversal, spaces, Unicode and empty IDs before persisting or polling.
+- Hardened cancellation-poll status parsing to reject non-object JSON responses with a controlled HermesAgentError.
+- Added parameterized tests for invalid upstream IDs and malformed status payloads. CI pending until runs for the resulting commit finish.
+- Safety boundary unchanged: Hermes runtime and provider remain disabled; no DB migrations applied or deployments performed.
+- Next: verify CI; then implement bounded SSE event handling or orphan-run reconciliation (choose after reviewing worker lease/recovery design). Sandbox manager remains prerequisite for any activation.
