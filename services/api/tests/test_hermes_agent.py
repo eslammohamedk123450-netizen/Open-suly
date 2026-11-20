@@ -39,12 +39,9 @@ class Response:
 def invoke(monkeypatch, client, **kwargs):
     monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
     monkeypatch.setattr(hermes_agent.httpx, "AsyncClient", lambda **_kw: client)
-    return hermes_agent.run_agent_turn(
-        "Do a safe task",
-        idempotency_key="suly-test-run-0001",
-        on_run_started=lambda _run_id: True,
-        **kwargs,
-    )
+    kwargs.setdefault("idempotency_key", "suly-test-run-0001")
+    kwargs.setdefault("on_run_started", lambda _run_id: True)
+    return hermes_agent.run_agent_turn("Do a safe task", **kwargs)
 
 
 def test_hermes_bridge_is_disabled_by_default(monkeypatch):
