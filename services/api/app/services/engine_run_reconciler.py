@@ -51,10 +51,10 @@ class EngineRunReconciler:
                 except Exception:
                     # لا نسجل exception text؛ قد يحتوي على بيانات من المحرك الخارجي.
                     confirmed = False
-            self._store.finish_stop_reconciliation(
+            finalized = self._store.finish_stop_reconciliation(
                 claim,
                 stop_confirmed=confirmed,
             )
-            if confirmed:
+            if confirmed and finalized is True:
                 confirmed_count += 1
         return confirmed_count
