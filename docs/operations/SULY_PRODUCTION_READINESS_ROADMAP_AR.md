@@ -166,3 +166,17 @@ For every engine:
 - Commits: `4b2631294ff6` (migration)، `fabebc485b09` (store)، `c5fe327594ed` (tests).
 - CI على HEAD `c5fe327594ed6630c7e4b2406908f8721f3a983d` كان queued عند التوثيق؛ لم يتم ادعاء نجاحه.
 - حد مهم: RPC تغلق سجل SULY فقط، ولا توقف العملية الخارجية بنفسها. ما زال يلزم reconciler آمن يسترجع معرف upstream ويطلب الإيقاف بعد التحقق من lease/runtime ownership. لم تُطبق migration على أي قاعدة بيانات.
+
+
+## Session checkpoint — 2026-11-20 (Agent routing + upstream intake)
+
+- ربطنا `hermes_agent_turn` فعليًا بـ`AgentManager`: أصبح الدور `general-agent` يختار محركًا مؤهلًا من registry بدل اختيار المحرك مباشرة. لا يحدث تشغيل إلا بعد approval والـlease، ويظل Hermes خاضعًا لإعداداته الحالية.
+- أضفنا catalog للأدوار: general, coding, research, browser, workflow. كل الأدوار غير المتاحة تظل disabled؛ لا يتم اختراع محركات أو إظهارها كأنها تعمل.
+- أضيفت اختبارات تثبت وجود الأدوار، الإعدادات المعطلة، واستخدام AgentManager في مسار Hermes.
+- Commits: `cfb2b858b260` (integration), `72d596250734` (tests).
+- CI على `72d59625` كشف خطأ validation: Python bool يقبل int؛ أُصلح بشرط رفض bool صراحة في `7411adec258e`. على commit `7411adec`: Repository baseline checks وPlatform CI كلاهما **success**.
+- أضيف سجل استلام ومراجعة لمصادر الوكلاء مع immutable audit SHAs، وقرار الترخيص/العزل لكل مشروع: `docs/operations/UPSTREAM_AGENT_ENGINE_INTAKE_AR.md`.
+- تمت مراجعة LICENSE الفعلي لـDify وn8n؛ Dify يقيّد multi-tenant دون موافقة مكتوبة، وn8n Sustainable Use License يقيّد الاستخدام التجاري/تقديم الخدمة للغير. لم يتم دمجهما.
+- OpenHands مرشح أول للـcoding backend لكن توثيقه يحذر من host filesystem/shell/network access؛ لا تشغيل دون sandbox. Browser Use يتطلب عزل REPL وChrome profile وegress.
+- CI لتغييرات التوثيق الأخيرة ما زال قيد الانتظار وقت checkpoint.
+- لا يوجد build/run حي لمحرك upstream إضافي، ولا نسخ source أو تفعيل خدمة. لا migrations مطبقة.
