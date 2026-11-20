@@ -47,6 +47,21 @@ def hermes_agent_turn(step: ClaimedStep) -> dict[str, Any]:
     }
 
 
+def dispatch_cancel_aware(
+    step: ClaimedStep,
+    cancel_event: Event,
+    approval_store: ToolApprovalStore | None = None,
+) -> dict[str, Any]:
+    """Refuse to start an operation after the worker loses its lease or is cancelled.
+
+    The worker still owns the authoritative lease check before checkpointing;
+    this event is a cooperative stop signal, never an authorization grant.
+    """
+    if cancel_event.is_set():
+        raise RuntimeError("task_execution_cancelled")
+    return dispatch(step, approval_store)
+
+
 def build_tool_registry() -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(ToolDefinition(
@@ -149,6 +164,9 @@ def main() -> None:
         worker,
         poll_interval_seconds=settings.worker_poll_interval_seconds,
         handler=lambda step: dispatch(step, approval_store),
+        cancel_aware_handler=lambda step, cancel_event: dispatch_cancel_aware(
+            step, cancel_event, approval_store
+        ),
     ).run(stop)
     logger.info("Worker stopped")
 
