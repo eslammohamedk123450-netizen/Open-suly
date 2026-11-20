@@ -84,7 +84,7 @@ async def _consume_run_events(
                     data_lines.append(line[5:].strip())
                 elif line == "" and data_lines:
                     try:
-                        payload = json.loads("\\n".join(data_lines))
+                        payload = json.loads("\n".join(data_lines))
                         summary = _safe_run_event(payload, run_id)
                         if summary is not None:
                             try:
