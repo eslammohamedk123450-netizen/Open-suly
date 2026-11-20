@@ -51,3 +51,53 @@ def test_executor_sends_project_snapshot_and_returns_reviewable_changes():
     assert result["changes"]["deleted_paths"] == ["old.py"]
     assert result["requires_review"] is True
     assert sessions.kwargs["workspace_revision"] == "a" * 64
+
+
+class Lifecycle:
+    def __init__(self):
+        self.calls = []
+    def create_run(self, **kwargs):
+        self.calls.append(("create_run", kwargs))
+        return {"id": str(uuid4()), "status": "queued"}
+    def append_event(self, **kwargs):
+        self.calls.append(("event", kwargs))
+        return True
+    def create_change_set(self, **kwargs):
+        self.calls.append(("change_set", kwargs))
+        return {"id": str(uuid4()), "status": "review_ready"}
+    def update_status(self, **kwargs):
+        self.calls.append(("status", kwargs))
+        return True
+
+
+def test_executor_persists_run_and_reviewable_change_set():
+    import hashlib
+    user_id, project_id, task_id, run_id = (str(uuid4()) for _ in range(4))
+    broker, sessions, lifecycle = Broker(), Sessions(), Lifecycle()
+    changed = "print('after')"
+    broker.run_task = lambda *args, **kwargs: {
+        "execution": {"session_id": "sesABC123"},
+        "results": {
+            "changed_files": [{
+                "path": "src/main.py", "content": changed,
+                "sha256": hashlib.sha256(changed.encode()).hexdigest(),
+            }],
+            "deleted_paths": ["old.py"], "changed_count": 1,
+        },
+    }
+    executor = OpenCodeTaskExecutor(
+        workspace_store=Workspace(), session_store=sessions,
+        runtime_broker=broker, lifecycle_store=lifecycle,
+    )
+    result = executor.execute(
+        user_id=user_id, project_id=project_id, task_id=task_id,
+        engine_run_id=run_id, prompt="Change the file",
+    )
+    assert result["task_run"]["status"] == "queued"
+    assert result["change_set"]["status"] == "review_ready"
+    assert result["requires_review"] is True
+    change_call = next(call for call in lifecycle.calls if call[0] == "change_set")
+    assert change_call[1]["base_revision"] == "a" * 64
+    assert change_call[1]["changes"][0]["action"] == "update"
+    assert change_call[1]["changes"][1] == {"action": "delete", "path": "old.py"}
+    assert any(call[0] == "event" and call[1]["event_type"] == "changes.collected" for call in lifecycle.calls)
