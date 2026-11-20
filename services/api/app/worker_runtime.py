@@ -341,8 +341,13 @@ class WorkerRuntime:
                 else:
                     idle_delay = self.poll_interval_seconds
                     logger.info("Worker step result: %s", result)
-            except Exception:
-                logger.exception("Worker iteration failed")
+            except Exception as exc:
+                # Exception messages may contain prompts, provider payloads,
+                # database URLs, or credentials. Log only the exception type.
+                logger.error(
+                    "Worker iteration failed (exception_type=%s)",
+                    type(exc).__name__,
+                )
                 stop.wait(idle_delay)
                 idle_delay = min(self.idle_backoff_max_seconds, idle_delay * 2)
 
