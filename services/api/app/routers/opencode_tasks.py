@@ -125,12 +125,29 @@ def decide_permission(
 @router.get("/opencode/runs/{run_id}/approvals")
 def list_run_approvals(
     run_id: UUID,
+    request: Request,
     limit: int = Query(default=50, ge=1, le=100),
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """List pending permission prompts for this owner's task run."""
+    """Refresh and list pending permission prompts for this owner's active task run."""
     try:
-        rows = OpenCodeLifecycleStore(_client()).list_pending_approvals(
+        client = _client()
+        run_rows = client.table("opencode_task_runs").select(
+            "task_id,engine_run_id,upstream_session_id"
+        ).eq("id", str(run_id)).eq("user_id", user.id).limit(1).execute().data
+        if not run_rows:
+            raise HTTPException(status_code=404, detail="OpenCode task run not found.")
+        run = run_rows[0]
+        broker = getattr(request.app.state, "runtime_broker", None)
+        if broker is not None and run.get("upstream_session_id"):
+            lease = broker.lease_for_attempt(run["task_id"], run["engine_run_id"], "opencode")
+            if lease is not None:
+                OpenCodeApprovalManager(store=OpenCodeLifecycleStore(client)).collect_pending(
+                    user_id=user.id, run_id=str(run_id),
+                    session_id=run["upstream_session_id"], base_url=lease.base_url,
+                    gateway_path=lease.gateway_path, runtime_token=lease.access_token,
+                )
+        rows = OpenCodeLifecycleStore(client).list_pending_approvals(
             user_id=user.id, run_id=str(run_id), limit=limit
         )
         return {"items": rows}
