@@ -11,7 +11,7 @@
 - Select one backend per task/capability by policy. Do not run overlapping agents by default.
 - Never copy or vendor upstream code until the exact commit's LICENSE/NOTICE, dependency licenses, provenance, and security model have been reviewed.
 - GitHub metadata below is an initial discovery snapshot. The SPDX field is repository API metadata only; it is **not** a substitute for inspecting the exact pinned revision's LICENSE/NOTICE. `NOASSERTION` is a hard license-review blocker.
-- Only Hermes currently has an explicit source pin recorded in SULY: `2de9f51b8008a7d49a49221c184f2f11cbfc4af1`. Other projects must be pinned after their source and license audit.
+- Immutable source pins are now recorded in `services/api/app/services/engine_catalog.py` for Hermes (`2de9f51b8008a7d49a49221c184f2f11cbfc4af1`), OpenCode (`4cca18d80450a3dd6a9a4142028bde84ccb3116e`), and Browser Use (`ccbdb8095fbaf903c748880a600054a34c7b6191`). These are source identities only: they do not mean the runtimes are installed, adapted, sandboxed, or enabled.
 
 ## Repository inventory
 
@@ -77,3 +77,13 @@ This first pass records GitHub repository metadata (default branch, primary lang
 ## Hermes exact-source audit update (2026-11-20)
 
 The current immutable Hermes source pin in `engines/hermes/compose.yaml` and `engines/hermes/README.md` is `2de9f51b8008a7d49a49221c184f2f11cbfc4af1`; the earlier `9f47677483d1b4de4d1a88d37b3b7ca18b18b215` was a valid older commit and has been superseded. The exact current revision's LICENSE is MIT. It includes the native Runs API for run creation, status polling, SSE events, stop requests, and idempotent admission. Upstream explicitly describes Hermes as a single-tenant personal agent and requires whole-process OS isolation for untrusted/shared production use. SULY will not expose one shared Hermes process as a multi-tenant security boundary. Per-tenant/task isolation, egress controls, resource limits, and full dependency/license review remain mandatory blockers.
+
+
+## Initial runtime catalogue — 2026-11-20
+
+- Added a typed SULY engine catalogue for Hermes, OpenCode, and Browser Use, each bound to an immutable upstream commit SHA and repository URL.
+- Inspected the upstream LICENSE files at the selected revisions; all three report MIT. Preserve each upstream copyright/license notice if any source is later vendored. This is not yet a transitive dependency/SBOM audit.
+- The catalogue registers capabilities with `enabled=false`, `requires_approval=true`, and no adapter. It does not install, launch, or expose any upstream process.
+- Added tests for immutable provenance, duplicate IDs, and fail-closed defaults.
+- OpenHands is not selected as the coding runtime from the current candidate snapshot: its repository README currently describes Agent Canvas/control-center functionality and multiple agent backends, so OpenCode is the clearer dedicated coding-agent candidate for the first integration.
+- Next gates: verify exact upstream server/API entry points, audit dependency licenses and vulnerabilities, build task-scoped sandbox images, implement narrow adapters, and add cancellation/event/lease-loss contract tests before any runtime activation.
