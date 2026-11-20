@@ -116,3 +116,58 @@ def test_gateway_rejects_malformed_and_oversized_replies(monkeypatch) -> None:
         asyncio.run(run({"choices": []}))
     with pytest.raises(ai_gateway.AIProviderError, match="exceeded"):
         asyncio.run(run({"choices": [{"message": {"content": "x" * 60001}}]}))
+
+def test_gateway_supports_local_ollama_without_api_key(monkeypatch) -> None:
+    monkeypatch.setattr(ai_gateway, "get_settings", lambda: Settings(
+        ai_provider="ollama",
+        ai_base_url="http://ollama:11434",
+        ai_model="qwen2.5:3b",
+        ai_api_key=None,
+        ai_timeout_seconds=12,
+        ai_max_output_tokens=700,
+    ))
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        seen["authorization"] = request.headers.get("authorization")
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={
+            "model": "qwen2.5:3b",
+            "message": {"role": "assistant", "content": "  إجابة محلية  "},
+            "done": True,
+        })
+
+    async def run() -> str:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await ai_gateway.generate_reply(
+                [{"role": "user", "content": "اشرح لي"}], client=client
+            )
+
+    assert asyncio.run(run()) == "إجابة محلية"
+    assert seen["url"] == "http://ollama:11434/api/chat"
+    assert seen["authorization"] is None
+    body = seen["body"]
+    assert body["model"] == "qwen2.5:3b"
+    assert body["stream"] is False
+    assert body["options"]["num_predict"] == 700
+
+
+def test_gateway_rejects_ollama_malformed_response(monkeypatch) -> None:
+    monkeypatch.setattr(ai_gateway, "get_settings", lambda: Settings(
+        ai_provider="ollama",
+        ai_base_url="http://ollama:11434",
+        ai_model="qwen2.5:3b",
+    ))
+
+    async def run() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json={"message": {}})
+        )) as client:
+            await ai_gateway.generate_reply(
+                [{"role": "user", "content": "hello"}], client=client
+            )
+
+    with pytest.raises(ai_gateway.AIProviderError, match="invalid response"):
+        asyncio.run(run())
+
