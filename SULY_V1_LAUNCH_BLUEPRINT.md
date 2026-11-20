@@ -230,4 +230,8 @@ The task database foundation is live, but it must not be described as autonomous
 - This is output validation, not a sandbox or a hard execution timeout.
 - Registry input must be a JSON object; tool outputs must be strict JSON (finite numbers and string object keys only) before checkpoint persistence.
 - Tests reject non-object inputs, NaN/Infinity, and non-string output keys.
+- Tool input JSON is now strict as well: non-finite numeric values and non-string object keys are rejected before dispatch.
+- Worker failures no longer persist raw exception text in task error records; a stable generic failure code/message is stored to avoid leaking user content, provider payloads, or secrets.
+- Worker tests cover redaction and verify invalid handler output cannot be checkpointed as completed.
+
 
