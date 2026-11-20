@@ -58,3 +58,7 @@ A capability is considered integrated only after code exists, required permissio
 ## Tool catalog API
 
 Authenticated clients can now query `GET /v1/tools/approvals/catalog` to discover the currently registered worker operations. The response includes each tool's name, description, permission scope, approval requirement, and `approved` flag for the requesting user's active grants. This endpoint is descriptive only; it does not execute tools or grant/revoke permissions. Hermes remains disabled unless separately configured and sandbox-reviewed.
+
+## Tool schema discovery
+
+The authenticated tool catalog now publishes each registered tool's allowed and required input field names and the registry-enforced maximum serialized input/output byte sizes. This is metadata only: it does not relax the worker allow-list, change approval requirements, or expose arbitrary execution. Client-side forms can use this metadata for discovery while the server remains authoritative for validation.
