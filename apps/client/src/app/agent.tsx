@@ -47,6 +47,7 @@ export default function AgentScreen() {
   const [prompt, setPrompt] = useState("");
   const [snapshot, setSnapshot] = useState<AgentTaskSnapshot | null>(null);
   const [approved, setApproved] = useState(false);
+  const [hermesAvailable, setHermesAvailable] = useState(false);
   const [busy, setBusy] = useState(false);
   const [approving, setApproving] = useState(false);
   const [notice, setNotice] = useState("");
@@ -55,7 +56,9 @@ export default function AgentScreen() {
   const refreshCatalog = useCallback(async () => {
     try {
       const items = await getAgentToolCatalog();
-      setApproved(items.some((item) => item.name === "hermes.agent.turn" && item.approved));
+      const hermes = items.find((item) => item.name === "hermes.agent.turn");
+      setApproved(Boolean(hermes?.approved));
+      setHermesAvailable(Boolean(hermes?.available));
       setNotice("");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "تعذر تحميل أدوات الوكيل.");
@@ -104,6 +107,10 @@ export default function AgentScreen() {
   const submit = async () => {
     if (!user) { router.push("/auth"); return; }
     if (!prompt.trim() || busy) return;
+    if (operation === "hermes.agent.turn" && !hermesAvailable) {
+      setNotice("خدمة Hermes نفسها غير مهيأة أو متوقفة على الخادم. يمكنك اختبار محرك المهام الآن، أما Hermes فيحتاج تجهيز بيئته الآمنة ومزود النموذج.");
+      return;
+    }
     if (operation === "hermes.agent.turn" && !approved) {
       setNotice("يجب منح موافقة صريحة على تشغيل Hermes أولًا.");
       return;
@@ -187,6 +194,9 @@ export default function AgentScreen() {
                   <Text style={[styles.approvalState, approved ? styles.good : styles.warn]}>{approved ? "مفعّلة" : "غير مفعّلة"}</Text>
                 </View>
                 <Text style={styles.modeHint}>الموافقة تمنح نطاق agent.hermes.run فقط. لا تفعّل أدوات النظام أو الطرفية تلقائيًا.</Text>
+                <Text style={[styles.modeHint, hermesAvailable ? styles.good : styles.warn]}>
+                  {hermesAvailable ? "خدمة Hermes مهيأة على الخادم." : "الخادم لا يعلن جاهزية Hermes حاليًا."}
+                </Text>
                 {!approved && (
                   <Pressable style={styles.secondaryButton} onPress={enableHermes} disabled={approving || loadingCatalog}>
                     {approving ? <ActivityIndicator color={colors.gold} /> : <Text style={styles.secondaryText}>أوافق على تشغيل Hermes</Text>}
