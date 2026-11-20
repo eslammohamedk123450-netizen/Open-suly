@@ -22,7 +22,7 @@ class Broker:
     def __init__(self):
         self.calls = []
 
-    def run_task(self, task_id, run_id, engine_id, *, files, prompt, title):
+    def run_task(self, task_id, run_id, engine_id, *, files, prompt, title, on_lease_acquired=None):
         self.calls.append((task_id, run_id, engine_id, files, prompt, title))
         return {
             "execution": {"session_id": "sesABC123", "result": {"ok": True}},
@@ -72,6 +72,9 @@ class Lifecycle:
         return {"id": str(uuid4()), "status": "review_ready"}
     def update_status(self, **kwargs):
         self.calls.append(("status", kwargs))
+        return True
+    def set_runtime(self, **kwargs):
+        self.calls.append(("runtime", kwargs))
         return True
 
 
@@ -141,3 +144,36 @@ def test_executor_rejects_runtime_result_with_forged_content_digest():
         call[0] == "status" and call[1]["status"] == "failed"
         for call in lifecycle.calls
     )
+
+
+def test_executor_persists_runtime_id_immediately_when_lease_is_acquired():
+    from types import SimpleNamespace
+
+    user_id, project_id, task_id, run_id = (str(uuid4()) for _ in range(4))
+    lifecycle = Lifecycle()
+    runtime_id = str(uuid4())
+
+    class CallbackBroker(Broker):
+        def run_task(self, task_id, run_id, engine_id, *, files, prompt, title, on_lease_acquired=None):
+            assert callable(on_lease_acquired)
+            on_lease_acquired(SimpleNamespace(runtime_id=runtime_id))
+            return {
+                "execution": {"runtime_id": runtime_id, "session_id": "sesABC123"},
+                "results": {"changed_files": [], "deleted_paths": [], "changed_count": 0},
+            }
+
+    executor = OpenCodeTaskExecutor(
+        workspace_store=Workspace(), session_store=Sessions(),
+        runtime_broker=CallbackBroker(), lifecycle_store=lifecycle,
+    )
+    executor.execute(
+        user_id=user_id, project_id=project_id, task_id=task_id,
+        engine_run_id=run_id, prompt="Run a task",
+    )
+
+    runtime_calls = [call[1] for call in lifecycle.calls if call[0] == "runtime"]
+    assert runtime_calls[0]["runtime_id"] == runtime_id
+    assert runtime_calls[0]["session_id"] is None
+    assert runtime_calls[0]["status"] == "provisioning"
+    assert runtime_calls[1]["session_id"] == "sesABC123"
+    assert runtime_calls[1]["status"] == "running"
