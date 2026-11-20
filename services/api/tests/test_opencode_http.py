@@ -151,7 +151,7 @@ async def test_client_rejects_malformed_session_response():
     async with OpenCodeHTTPClient(
         lease(), task_id=TASK_ID, engine_run_id=RUN_ID,
         allowed_origins=ORIGINS, transport=httpx.MockTransport(
-            lambda request: httpx.Response(200, json={"id": "not-a-session"})
+            lambda request: httpx.Response(200, json={"data": {"id": "not-a-session"}})
         ),
     ) as client:
         with pytest.raises(OpenCodeTransportError, match="session_id"):
