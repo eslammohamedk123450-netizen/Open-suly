@@ -474,6 +474,125 @@ def test_task_steering_rejects_non_running_engine_before_upstream_call(monkeypat
 
 
 
+def test_task_owner_can_resolve_one_exact_hermes_approval_once(monkeypatch):
+    from types import SimpleNamespace
+
+    admin = _SteerAdmin()
+    admin.tables["engine_run_events"] = [{
+        "id": 1,
+        "engine_run_id": "00000000-0000-0000-0000-000000000099",
+        "event_name": "approval.request",
+        "approval_request_id": "approval-req_123",
+    }]
+    resolved = []
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    monkeypatch.setattr(tasks_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
+        hermes_agent_enabled=True,
+        hermes_agent_isolation_confirmed=True,
+        hermes_agent_base_url="http://hermes:8642",
+        hermes_agent_api_key=object(),
+    ))
+    monkeypatch.setattr(
+        tasks_module, "resolve_agent_approval",
+        lambda upstream_id, request_id, choice: resolved.append((upstream_id, request_id, choice)) or True,
+    )
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    try:
+        response = client.post(
+            "/v1/tasks/00000000-0000-0000-0000-000000000001/engine-runs/00000000-0000-0000-0000-000000000099/approvals",
+            json={"request_id": "approval-req_123", "choice": "once"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["accepted"] is True
+    assert resolved == [("run_native_123", "approval-req_123", "once")]
+    assert admin.rpc_calls == [("append_engine_run_event", {
+        "p_run_id": "00000000-0000-0000-0000-000000000099",
+        "p_step_id": "00000000-0000-0000-0000-000000000002",
+        "p_lease_token": "00000000-0000-0000-0000-000000000004",
+        "p_event_name": "approval.responded",
+        "p_event_seq": None,
+        "p_event_timestamp": None,
+        "p_approval_request_id": "approval-req_123",
+        "p_approval_choice": "once",
+    })]
+
+
+def test_task_approval_rejects_persistent_choice_before_upstream_call(monkeypatch):
+    admin = _SteerAdmin()
+    admin.tables["engine_run_events"] = [{
+        "id": 1,
+        "engine_run_id": "00000000-0000-0000-0000-000000000099",
+        "event_name": "approval.request",
+        "approval_request_id": "approval-req_123",
+    }]
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    monkeypatch.setattr(tasks_module, "resolve_agent_approval", lambda *_args: (_ for _ in ()).throw(
+        AssertionError("Persistent grants must never reach Hermes")
+    ))
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    try:
+        response = client.post(
+            "/v1/tasks/00000000-0000-0000-0000-000000000001/engine-runs/00000000-0000-0000-0000-000000000099/approvals",
+            json={"request_id": "approval-req_123", "choice": "always"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 422
+
+
+def test_task_approval_requires_request_id_from_this_engine_run(monkeypatch):
+    admin = _SteerAdmin()
+    admin.tables["engine_run_events"] = []
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    monkeypatch.setattr(tasks_module, "resolve_agent_approval", lambda *_args: (_ for _ in ()).throw(
+        AssertionError("Untracked approval must never reach Hermes")
+    ))
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    try:
+        response = client.post(
+            "/v1/tasks/00000000-0000-0000-0000-000000000001/engine-runs/00000000-0000-0000-0000-000000000099/approvals",
+            json={"request_id": "approval-req_123", "choice": "deny"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 404
+
+
+def test_task_approval_rejects_already_answered_request(monkeypatch):
+    admin = _SteerAdmin()
+    admin.tables["engine_run_events"] = [
+        {
+            "id": 1,
+            "engine_run_id": "00000000-0000-0000-0000-000000000099",
+            "event_name": "approval.request",
+            "approval_request_id": "approval-req_123",
+        },
+        {
+            "id": 2,
+            "engine_run_id": "00000000-0000-0000-0000-000000000099",
+            "event_name": "approval.responded",
+            "approval_request_id": "approval-req_123",
+        },
+    ]
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    monkeypatch.setattr(tasks_module, "resolve_agent_approval", lambda *_args: (_ for _ in ()).throw(
+        AssertionError("Answered approval must never reach Hermes")
+    ))
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    try:
+        response = client.post(
+            "/v1/tasks/00000000-0000-0000-0000-000000000001/engine-runs/00000000-0000-0000-0000-000000000099/approvals",
+            json={"request_id": "approval-req_123", "choice": "once"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 409
+
+
 def test_task_steering_cannot_access_another_users_task_or_run(monkeypatch):
     admin = _SteerAdmin()
     admin.tables["tasks"][0]["user_id"] = "different-user"
