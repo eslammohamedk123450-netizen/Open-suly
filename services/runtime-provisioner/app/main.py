@@ -178,6 +178,12 @@ def release_runtime(runtime_id: str, body: dict[str, str], authorization: str | 
 @app.api_route("/v1/runtime-gateway/{runtime_id}/{path:path}", methods=["GET", "POST"])
 async def runtime_gateway(runtime_id: str, path: str, request: Request, authorization: str | None = Header(default=None)):
     row = _runtime(runtime_id, authorization[7:] if authorization and authorization.startswith("Bearer ") else None)
+    if request.method == "POST" and path == "execute":
+        try:
+            payload = ExecuteRequest.model_validate(await request.json())
+        except Exception as exc:
+            raise HTTPException(422, "invalid_execution_request") from exc
+        return await execute(runtime_id, payload, authorization)
     route = "/" + path
     method = request.method
     if not (method == "GET" and route == "/api/event") and (method, route) not in _ALLOWED_PROXY:
