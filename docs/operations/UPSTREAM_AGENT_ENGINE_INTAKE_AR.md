@@ -24,7 +24,7 @@
 | LangGraph | `langchain-ai/langgraph` — `58a6e1cc5b7dfc3619fc6e7e7573b040d554649b` | MIT | تكامل orchestration اختياري فقط إذا أثبت حاجة لا يغطيها SULY DAG الحالي؛ لا نستبدل durable task state. |
 | CrewAI | `crewAIInc/crewAI` — `c24960bda1d34d9038d7da92c3eee18275331feb` | MIT | تقييم اختياري لتعاون الوكلاء؛ لا نضيفه بالتوازي مع LangGraph إلا لميزة مثبتة. |
 | Dify | `langgenius/dify` — `4ab850e4f06047fb0a6dcba70f3f32ab2c521c90` | ترخيص معدل مبني على Apache-2.0 | لا دمج في multi-tenant SULY قبل ترخيص تجاري/موافقة مكتوبة؛ ملف LICENSE يمنع multi-tenant use دون إذن صريح. |
-| n8n | `n8n-io/n8n` — `03689bec07e0a700a72c5e3f2f3f26caffe6394f` | GitHub metadata: NOASSERTION | مؤجل حتى مراجعة Sustainable Use License وشروط embedding/white-label/commercial. |
+| n8n | `n8n-io/n8n` — `03689bec07e0a700a72c5e3f2f3f26caffe6394f` | Sustainable Use License 1.0 (not OSI permissive) | مؤجل حتى مراجعة Sustainable Use License وشروط embedding/white-label/commercial. |
 | UI-TARS | `bytedance/UI-TARS` — `582f3a7ea5d285ee8ed9e2e84048d1ab01453c49` | Apache-2.0 | المستودع مؤرشف؛ لا يُعتمد كمحرك إنتاج حالي. |
 | OpenClaw | `openclaw/openclaw` — `4bddfe904ddc48b07948fc0294c6514c80a297c7` | MIT | تقييم أمني/قدرات فقط؛ لا يضاف كقلب ثانٍ للوكلاء ولا يفتح قنوات خارجية تلقائيًا. |
 | Nanobot | `HKUDS/nanobot` — `db0306b404954e48ffb82ceae70cbf6f73094348` | MIT | Benchmark خفيف فقط؛ لا دمج قبل إثبات فرق واضح عن Hermes. |
