@@ -202,6 +202,11 @@ def test_hermes_agent_task_requires_persisted_approval_scope():
 
 def test_hermes_agent_task_calls_bridge_only_after_approval(monkeypatch):
     import app.worker_runtime as runtime_module
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        hermes_agent_enabled=True, hermes_agent_timeout_seconds=90.0,
+    ))
 
     class ApprovedScopes:
         def active_scopes(self, _user_id):
