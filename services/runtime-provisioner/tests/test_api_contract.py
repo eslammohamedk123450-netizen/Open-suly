@@ -48,3 +48,35 @@ def test_gateway_route_allowlist_is_task_scoped_and_rejects_arbitrary_routes():
     assert not _allowed_opencode_route("GET", "/api/event")
     assert not _allowed_opencode_route("POST", "/api/session/sesABC123/shell")
     assert not _allowed_opencode_route("GET", "/etc/passwd")
+
+
+def test_runtime_manager_factory_is_lazy_and_singleton(monkeypatch):
+    import app.main as runtime_api
+
+    created = []
+
+    class FakeManager:
+        def __init__(self, *, image, workspace_root):
+            created.append((image, workspace_root, object()))
+            self.marker = created[-1][2]
+
+    monkeypatch.setattr(runtime_api, "DockerTaskRuntimeManager", FakeManager)
+    monkeypatch.setattr(runtime_api, "IMAGE", "registry.example/opencode@sha256:" + "a" * 64)
+    monkeypatch.setattr(runtime_api, "_runtime_manager", None)
+
+    first = runtime_api._get_manager()
+    second = runtime_api._get_manager()
+
+    assert first is second
+    assert len(created) == 1
+
+
+def test_runtime_manager_factory_rejects_mutable_image_tag(monkeypatch):
+    import app.main as runtime_api
+
+    monkeypatch.setattr(runtime_api, "_runtime_manager", None)
+    monkeypatch.setattr(runtime_api, "IMAGE", "registry.example/opencode:latest")
+
+    import pytest
+    with pytest.raises(RuntimeError, match="digest-pinned"):
+        runtime_api._get_manager()
