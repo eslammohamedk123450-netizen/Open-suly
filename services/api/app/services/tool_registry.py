@@ -3,17 +3,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import json
+from threading import Event
 from typing import Any, Callable
 
 from app.services.task_worker import ClaimedStep
 
-ToolHandler = Callable[[ClaimedStep], dict[str, Any]]
+ToolHandler = Callable[..., dict[str, Any]]
 
 
 @dataclass(frozen=True)
 class ToolExecutionContext:
     """Trusted server-created grants; never construct this from task input."""
     approved_scopes: frozenset[str] = field(default_factory=frozenset)
+    cancel_event: Event | None = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -27,6 +29,7 @@ class ToolDefinition:
     handler: ToolHandler
     requires_approval: bool = True
     max_output_bytes: int = 64_000
+    supports_cancellation: bool = False
 
 
 class ToolRegistry:
@@ -99,7 +102,10 @@ class ToolRegistry:
         grants = context.approved_scopes if context is not None else frozenset()
         if tool.requires_approval and tool.permission_scope not in grants:
             raise PermissionError(f"tool_approval_required:{tool.permission_scope}")
-        result = tool.handler(step)
+        if tool.supports_cancellation:
+            result = tool.handler(step, context.cancel_event if context is not None else None)
+        else:
+            result = tool.handler(step)
         if not isinstance(result, dict):
             raise ValueError("invalid_tool_output: handler must return an object")
         try:
