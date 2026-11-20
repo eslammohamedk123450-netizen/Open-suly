@@ -47,8 +47,9 @@ function statusLabel(status: string): string {
 
 export default function AgentScreen() {
   const { user } = useAuth();
-  const params = useLocalSearchParams<{ prompt?: string | string[] }>();
+  const params = useLocalSearchParams<{ prompt?: string | string[]; projectId?: string | string[] }>();
   const initialPrompt = typeof params.prompt === "string" ? params.prompt : "";
+  const projectId = typeof params.projectId === "string" ? params.projectId : undefined;
   const [operation, setOperation] = useState<AgentOperation>(initialPrompt ? "ai.respond" : "text.analyze");
   const [prompt, setPrompt] = useState(initialPrompt);
   const [snapshot, setSnapshot] = useState<AgentTaskSnapshot | null>(null);
@@ -173,7 +174,7 @@ export default function AgentScreen() {
     setNotice("");
     setSnapshot(null);
     try {
-      const created = await createAgentTask(operation, prompt);
+      const created = await createAgentTask(operation, prompt, projectId);
       setPrompt("");
       const current = await getAgentTask(created.id);
       setSnapshot(current);
@@ -217,7 +218,7 @@ export default function AgentScreen() {
           <Pressable onPress={() => router.back()} style={styles.back}><Text style={styles.backText}>→</Text></Pressable>
           <View style={styles.headerCopy}>
             <Text style={styles.title}>مساحة الوكيل</Text>
-            <Text style={styles.muted}>مهام محفوظة وتنفيذ قابل للتتبع</Text>
+            <Text style={styles.muted}>{projectId ? "مهمة جديدة داخل المشروع" : "مهام محفوظة وتنفيذ قابل للتتبع"}</Text>
           </View>
           <View style={styles.logo}><Text style={styles.logoText}>S</Text></View>
         </View>
