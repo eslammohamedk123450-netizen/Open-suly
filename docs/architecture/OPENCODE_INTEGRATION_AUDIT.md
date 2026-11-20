@@ -48,3 +48,16 @@ OpenCode remains disabled and unavailable until all of the following are impleme
 - Keep the OpenCode catalog entry as `disabled`; do not create a shared server or route user traffic to the upstream server.
 - Do not claim the engine is integrated or usable. The audit establishes upstream API/authentication facts and the isolation contract only.
 - The next implementation unit is the task-scoped runtime provisioner and broker contract, followed by sandbox policy tests. It must remain opt-in and must not launch containers until separately approved.
+
+
+## Per-attempt sandbox command hardening — 2026-11-20
+
+The existing non-executing Docker command policy was tightened before any runtime manager is allowed to call it:
+
+- Container name and immutable labels now bind to both SULY task UUID and engine-run UUID. Retries of one task therefore receive distinct runtime identities.
+- PID, IPC, and UTS namespaces are explicitly private; restart policy is disabled.
+- Docker container logs are disabled by default to reduce accidental persistence of prompts, command output, and credentials. Structured SULY audit metadata remains the control-plane responsibility.
+- Existing defaults remain: digest-pinned image only, no network, read-only root filesystem, all Linux capabilities dropped, no-new-privileges, seccomp default, non-root UID/GID, bounded CPU/memory/PIDs/tmpfs, one private workspace mount, no host mounts, and no Docker socket.
+- Production provisioners must pass the persisted engine_run_id. The task_id fallback is retained only for existing policy tests and must not be used by a real provisioner.
+- The command builder does not execute Docker and does not enforce wall-clock timeout itself. A future runtime supervisor must enforce timeout, cleanup on cancellation/lease loss/restart, and daemon-level isolation before any engine can be enabled.
+- Unit tests cover per-attempt names/labels and private namespaces. This is policy construction testing only, not a container escape or cross-tenant integration test.
