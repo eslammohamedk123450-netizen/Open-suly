@@ -285,3 +285,9 @@ The task database foundation is live, but it must not be described as autonomous
 - Task detail responses now select an explicit allow-list of step columns and never expose internal worker lease owner, token, or expiry values. This is required because the API uses a server admin client that bypasses database RLS and column grants.
 - Task cancellation updates are conditional on the task still being queued, ready, or running. If execution reaches a terminal state between the initial read and update, the API re-reads and returns the terminal state rather than overwriting it with a cancellation request.
 - Added regression tests for lease-secret non-disclosure and the cancellation terminal-state race.
+
+
+### Final task safety and bounded lookup refinements — 2026-11-20
+- Approval scope loading is capped at 200 active grants per dispatch to keep the worker's authorization lookup bounded.
+- Cancellation's conditional update now covers queued, planning, ready, running, and waiting-approval tasks while remaining unable to overwrite terminal states.
+- Regression tests assert the bounded consent lookup and cancellation eligibility/terminal-race behavior.
