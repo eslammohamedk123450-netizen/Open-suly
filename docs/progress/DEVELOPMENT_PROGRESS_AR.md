@@ -402,3 +402,13 @@ undefined
 - وثقنا ضرورة per-attempt browser process/profile وegress proxy يثبت DNS عند الاتصال ويعيد فحص redirects والـsubresources؛ BrowserNetworkPolicy مجرد preflight ولا يمنع DNS rebinding بمفرده.
 - Platform CI على commit 772207dc نجح في API tests: **415 passed, 2 warnings**. Client typecheck/export كانا قيد التنفيذ عند آخر فحص؛ commit 852ddd1f أضاف تحديث التوثيق فقط وفحوصاته queued.
 - لا يوجد Browser Use adapter أو runtime provider أو egress proxy فعلي، ولذلك المحرك ما زال disabled. لا توجد migrations أو deployments أو browser sessions حية.
+
+
+## دفعة إضافية — إحكام أحداث موافقات Hermes — 2026-11-20
+
+- أصبحت أحداث approval.request وapproval.responded تُرفض بالكامل إذا كان request_id ناقصًا أو غير صالح، بدل تمرير event ناقص إلى RPC.
+- أحداث approval.responded لا تمر إلا إذا كان القرار once أو deny؛ session وalways وأي قيمة غير متوقعة لا تدخل سجل الأحداث.
+- أضيفت اختبارات للقيم الناقصة، ومحارف التحكم، والقرارات الدائمة/غير المدعومة، والتأكد من بقاء السجل metadata-only.
+- GitHub Platform CI على commit 06c46b4d: اختبارات API نجحت، 427 passed و2 warnings. فحص Client typecheck/Expo compatibility/Web export كان ما زال جاريًا وقت التحقق.
+- ملاحظة: run سابق على commit 17889cf7 فشل بسبب اختبارات قديمة كانت تتوقع الاحتفاظ بحدث approval ناقص؛ تم تحديث الاختبارات لتتوافق مع fail-closed behavior، ثم نجح API CI على 06c46b4d.
+- لا توجد موافقات Hermes حية أو runtime مفعّل؛ هذه اختبارات وحدات/API mock.
