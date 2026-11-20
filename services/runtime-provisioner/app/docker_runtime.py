@@ -99,7 +99,7 @@ class DockerTaskRuntimeManager:
     """Creates a fresh network, container, and workspace for each task attempt."""
 
     def __init__(self, *, image: str, workspace_root: str, limits: RuntimeLimits | None = None, client=None):
-        if not isinstance(image, str) or not image or "@sha256:" not in image:
+        if not isinstance(image, str) or not re.fullmatch(r"[A-Za-z0-9./:_-]+@sha256:[0-9a-f]{64}", image):
             raise ValueError("runtime_image_must_be_digest_pinned")
         self.image = image
         self.root = Path(workspace_root).resolve()
