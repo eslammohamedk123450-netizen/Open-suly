@@ -181,13 +181,14 @@ def test_runtime_recovery_rotates_token_only_for_exact_task_owner(tmp_path, monk
     database = tmp_path / "runtime-recovery.sqlite3"
     monkeypatch.setattr(runtime_api, "DATABASE", str(database))
     old_token = "o" * 48
+    expected_token = runtime_api._derive_runtime_access_token(runtime_id, task_id, run_id)
     db = runtime_api._db()
     try:
         db.execute(
             "INSERT INTO runtimes (runtime_id,task_id,engine_run_id,engine_id,container_id,host_port,token_hash,expires_at,created_at,baseline_json) VALUES(?,?,?,?,?,?,?,?,?,?)",
             (
                 runtime_id, task_id, run_id, "opencode", "container-id", 4096,
-                hashlib.sha256(old_token.encode()).hexdigest(),
+                hashlib.sha256(expected_token.encode()).hexdigest(),
                 time.time() + 600, time.time(), "{}",
             ),
         )
@@ -213,6 +214,7 @@ def test_runtime_recovery_rotates_token_only_for_exact_task_owner(tmp_path, monk
     assert payload["runtime_id"] == runtime_id
     assert payload["task_id"] == task_id
     assert payload["engine_run_id"] == run_id
+    assert payload["access_token"] == expected_token
     assert payload["access_token"] != old_token
 
     new_row = runtime_api._runtime(runtime_id, payload["access_token"])
