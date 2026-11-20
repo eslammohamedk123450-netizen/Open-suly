@@ -291,3 +291,52 @@ def test_run_once_rejects_bad_output_and_records_safe_failure(bad_output):
         "Step execution failed. Sensitive diagnostic details were not stored"
     )
     assert all(call[0] != "complete_task_step" for call in client.calls)
+
+
+
+@pytest.mark.parametrize("rpc_value", [
+    None,
+    True,
+    "accepted",
+    {"accepted": "true"},
+    {"accepted": False},
+])
+def test_fail_rejects_unconfirmed_rpc_results(rpc_value):
+    client = FakeRpc([rpc_value])
+    worker = TaskWorker(client, "worker-strict-fail")
+    claimed = ClaimedStep(
+        step_id=UUID(STEP["step_id"]),
+        task_id=UUID(STEP["task_id"]),
+        user_id=UUID(STEP["user_id"]),
+        step_key=STEP["step_key"],
+        title=STEP["title"],
+        description=STEP["description"],
+        input=STEP["input"],
+        attempt_count=STEP["attempt_count"],
+        max_attempts=STEP["max_attempts"],
+        lease_token=UUID(STEP["lease_token"]),
+        lease_expires_at=STEP["lease_expires_at"],
+    )
+    assert worker.fail(claimed, "tool_execution_failed", "safe") == {"accepted": False}
+
+
+def test_run_once_does_not_claim_failure_was_recorded_when_rpc_rejects():
+    client = FakeRpc([STEP, True, {"accepted": False}])
+    worker = TaskWorker(client, "worker-fail-not-accepted")
+    assert worker.run_once(lambda _step: (_ for _ in ()).throw(RuntimeError("failed"))) == (
+        "failure_not_recorded"
+    )
+
+
+def test_run_once_reports_failure_write_exception_without_claiming_persistence():
+    class RaisingFailRpc(FakeRpc):
+        def rpc(self, name, args):
+            if name == "fail_task_step":
+                raise RuntimeError("database unavailable")
+            return super().rpc(name, args)
+
+    client = RaisingFailRpc([STEP, True])
+    worker = TaskWorker(client, "worker-fail-rpc-error")
+    assert worker.run_once(lambda _step: (_ for _ in ()).throw(RuntimeError("failed"))) == (
+        "failure_not_recorded"
+    )
