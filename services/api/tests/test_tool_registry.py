@@ -163,3 +163,14 @@ def test_registry_rejects_non_strict_json_outputs(bad_output):
     ))
     with pytest.raises(ValueError, match="invalid_tool_output"):
         registry.execute(make_step({"operation": "strict.output", "value": "ok"}))
+
+
+
+@pytest.mark.parametrize("bad_input", [
+    {"operation": "text.analyze", "text": float("nan")},
+    {"operation": "text.analyze", "text": float("inf")},
+    {"operation": "text.analyze", 7: "non-string key"},
+])
+def test_registry_rejects_non_strict_json_inputs(bad_input):
+    with pytest.raises(ValueError, match="invalid_tool_input"):
+        dispatch(make_step(bad_input))
