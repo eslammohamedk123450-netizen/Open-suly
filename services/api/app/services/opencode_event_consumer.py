@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from app.services.opencode_lifecycle_store import OpenCodeLifecycleStore
+from app.services.opencode_contract import safe_event_metadata
 
 _SESSION = re.compile(r"^ses[A-Za-z0-9_-]{1,128}$")
 _SAFE_FIELDS = frozenset({
@@ -68,7 +69,7 @@ class OpenCodeEventConsumer:
             raise ValueError("opencode_gateway_origin_invalid")
         if not re.fullmatch(r"/v1/runtime-gateway/[0-9a-f-]{36}", gateway_path):
             raise ValueError("opencode_gateway_path_invalid")
-        return base_url.rstrip("/") + gateway_path + "/event"
+        return base_url.rstrip("/") + gateway_path + "/api/event"
 
     def consume(
         self, *, user_id: str, run_id: str, session_id: str, base_url: str,
@@ -99,33 +100,34 @@ class OpenCodeEventConsumer:
                     if time.monotonic() > deadline or saved >= max_events:
                         break
                     try:
-                        event = json.loads(raw)
+                        envelope = json.loads(raw)
                     except (ValueError, UnicodeDecodeError):
                         continue
-                    if not isinstance(event, dict):
+                    safe = safe_event_metadata(envelope, session_id)
+                    if safe is None:
                         continue
-                    event_type = event.get("type")
-                    if not isinstance(event_type, str) or len(event_type) > 100:
+                    upstream_type = safe.get("event")
+                    mapping = {
+                        "session.execution.started": "task.started",
+                        "session.execution.succeeded": "task.completed",
+                        "session.execution.failed": "task.failed",
+                        "session.execution.interrupted": "task.cancelled",
+                        "session.step.started": "task.status",
+                        "session.step.ended": "task.status",
+                        "session.step.failed": "task.failed",
+                        "permission.asked": "permission.requested",
+                        "permission.replied": "permission.decided",
+                    }
+                    mapped = mapping.get(upstream_type)
+                    if mapped is None:
                         continue
-                    properties = event.get("properties")
-                    if not isinstance(properties, dict):
-                        properties = {}
-                    event_session = properties.get("sessionID") or properties.get("sessionId")
-                    if event_session is not None and event_session != session_id:
-                        continue
-                    safe = {key: properties[key] for key in _SAFE_FIELDS if key in properties}
-                    safe["upstream_type"] = event_type[:100]
-                    if event_type.startswith("permission."):
-                        mapped = "permission.requested"
-                    elif event_type.endswith(".error"):
-                        mapped = "task.failed"
-                    elif event_type.endswith(".idle"):
-                        mapped = "task.completed"
-                    else:
-                        mapped = "task.status"
+                    safe_payload = {
+                        key: value for key, value in safe.items()
+                        if key in {"event", "permission_request_id", "decision", "created"}
+                    }
                     self._store.append_event(
                         user_id=user_id, run_id=run_id,
-                        sequence=sequence_start + saved, event_type=mapped, payload=safe,
+                        sequence=sequence_start + saved, event_type=mapped, payload=safe_payload,
                     )
                     saved += 1
         return saved
