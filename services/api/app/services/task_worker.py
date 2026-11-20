@@ -50,16 +50,32 @@ class TaskWorker:
             data = data[0] if data else None
         if not data:
             return None
+        if not isinstance(data, dict):
+            raise ValueError("worker_claim_invalid_payload")
+        raw_input = data.get("input") or {}
+        if not isinstance(raw_input, dict):
+            raise ValueError("worker_claim_invalid_input")
+        attempt_count = int(data["attempt_count"])
+        max_attempts = int(data["max_attempts"])
+        if not 1 <= attempt_count <= max_attempts <= 10:
+            raise ValueError("worker_claim_invalid_attempt_bounds")
+        step_key = str(data["step_key"])
+        title = str(data["title"])
+        description = str(data.get("description") or "")
+        if not step_key or len(step_key) > 100 or not title.strip() or len(title) > 200:
+            raise ValueError("worker_claim_invalid_step_metadata")
+        if len(description) > 4000:
+            raise ValueError("worker_claim_invalid_step_metadata")
         return ClaimedStep(
             step_id=UUID(str(data["step_id"])),
             task_id=UUID(str(data["task_id"])),
             user_id=UUID(str(data["user_id"])),
-            step_key=str(data["step_key"]),
-            title=str(data["title"]),
-            description=str(data.get("description") or ""),
-            input=data.get("input") or {},
-            attempt_count=int(data["attempt_count"]),
-            max_attempts=int(data["max_attempts"]),
+            step_key=step_key,
+            title=title,
+            description=description,
+            input=raw_input,
+            attempt_count=attempt_count,
+            max_attempts=max_attempts,
             lease_token=UUID(str(data["lease_token"])),
             lease_expires_at=str(data["lease_expires_at"]),
         )
