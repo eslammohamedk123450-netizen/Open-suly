@@ -104,12 +104,12 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
     run_store = context.engine_run_store if context is not None else None
     if cancel_event is not None and cancel_event.is_set():
         raise RuntimeError("task_execution_cancelled")
-    if run_store is None:
-        raise RuntimeError("engine_run_store_unavailable")
     registry = build_engine_registry(cancel_event)
     definition = registry.get("hermes-agent")
     if definition is None or not definition.enabled:
         raise RuntimeError("engine_disabled")
+    if run_store is None:
+        raise RuntimeError("engine_run_store_unavailable")
     run_id = run_store.start(step, "hermes-agent")
     try:
         result = registry.execute("hermes-agent", request)
