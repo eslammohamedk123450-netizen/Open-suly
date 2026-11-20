@@ -1,34 +1,54 @@
-# Isolated OpenCode Docker runtime (provisioner component)
+# SULY isolated OpenCode Runtime Provisioner
 
-This component is a Docker lifecycle primitive, not yet a deployable public provisioner API. It is intentionally separate from the SULY FastAPI application: the public API must never receive Docker socket access.
+Private control-plane component. It owns Docker access and must run on a dedicated worker host/VM with a dedicated Docker daemon. Never mount the Docker socket into the public API, web app, or task containers.
 
-## Implemented in this checkpoint
+## Interfaces
 
-- One fresh Docker bridge network and container per task attempt.
-- A unique, mode-0700 host workspace populated from a bounded file snapshot.
-- Strict relative-path validation, traversal rejection, reserved secret-directory rejection, 200-file and byte limits.
-- Digest-pinned image requirement.
-- Read-only container root, non-root image user, all Linux capabilities dropped, no-new-privileges, no privileged mode, PID/CPU/RAM/swap/tmpfs limits.
-- OpenCode port publication is bound to loopback only. A non-loopback binding is rejected and partially-created resources are torn down.
-- Exact task/run/runtime Docker labels are checked before destroy.
-- Expiry metadata and a label-scoped orphan cleanup routine.
+- `POST /v1/runtimes`: SULY-authenticated runtime creation from a bounded workspace snapshot; returns a one-time runtime token and HTTPS gateway URL.
+- `DELETE /v1/runtimes/{runtime_id}`: SULY-authenticated release with exact task/run ownership.
+- `/v1/runtime-gateway/{runtime_id}/...`: task-token-authenticated allowlisted OpenCode API proxy. Container port remains loopback-only.
+- `POST /v1/runtime-gateway/{runtime_id}/execute`: create/reuse a session and submit a bounded prompt to the original OpenCode server.
+- `GET /v1/runtimes/{runtime_id}/results`: export bounded UTF-8 workspace files; symlinks, secrets, .git, node_modules and binary files are excluded.
+- `POST /internal/cleanup`: SULY-authenticated expiry cleanup.
 
-## Required deployment controls (do not skip)
+Runtime ownership, container mapping, token hashes and expiry are stored in SQLite. Raw per-runtime tokens are returned only on creation and are not stored.
 
-1. Run this service on a dedicated worker host/VM with a dedicated Docker daemon. Do not mount the Docker socket into the public API, web app, or an untrusted container. Docker socket access is effectively host-root access.
-2. The service must authenticate SULY with a high-entropy bearer secret and use TLS at its ingress. The HTTP provisioner API and gateway routing layer are not included in this checkpoint.
-3. The per-runtime bridge network is unique, so task containers are not attached to one another's networks. However, bridge networking still permits outbound traffic. Enforce host-level egress firewall rules before production; allow only approved SULY AI gateway/provider endpoints and required DNS. Block cloud metadata, host management ports, private control-plane ranges, and Docker daemon endpoints. Docker bridge isolation is not an egress firewall.
-4. A TLS runtime gateway must map each opaque runtime ID to its loopback-only host port, enforce the per-runtime token, reject unknown hosts, and remove routes on release/expiry. Never expose the published loopback port publicly.
-5. Mount only the task workspace. Never mount the Docker socket, host root, home directories, Supabase credentials, or other users' files into a runtime.
-6. Store runtime IDs, task/run ownership, expiry, port mapping, and credential hashes in a durable control-plane store. Return the bearer token once only; never log it. Rotate/revoke it on release.
-7. Configure an external watchdog to call cleanup after crashes/restarts. In-process cleanup is not a substitute for durable lease reconciliation.
+## Configuration
 
-## Build
+- `SULY_PROVISIONER_TOKEN`: high-entropy service credential (at least 32 characters).
+- `RUNTIME_GATEWAY_ORIGIN`: public HTTPS origin of this service.
+- `OPENCODE_RUNTIME_IMAGE`: immutable `repository@sha256:<64 hex>` image built from `engines/opencode/Dockerfile`.
+- `RUNTIME_DB_PATH`: persistent volume path (default `/var/lib/suly-runtime/runtimes.sqlite3`).
+- `RUNTIME_WORKSPACE_ROOT`: persistent workspace path.
 
-Build and push the OpenCode image from the SULY repository root, then configure DockerTaskRuntimeManager with its immutable repository@sha256:<digest> image reference. Never use a floating latest tag.
+Terminate TLS at a trusted reverse proxy/load balancer. The public SULY API connects to the private provisioner endpoint over TLS. Docker only publishes OpenCode on 127.0.0.1.
+
+## Mandatory production controls
+
+1. Use a dedicated VM and restrict Docker socket access to this service. Docker socket access is effectively host-root.
+2. Apply host firewall egress restrictions: allow only approved AI gateway/provider endpoints and DNS; block metadata IPs, private control-plane ranges, host management ports and Docker endpoints. Per-task bridge networks alone are not an egress firewall.
+3. Configure TLS, request rate limits, body limits and DDoS protection at ingress.
+4. Persist and encrypt SQLite/workspace volumes; do not run multiple replicas with independent local SQLite stores. Multi-host deployments require a shared transactional lease store and distributed watchdog.
+5. Results are a bounded UTF-8 snapshot; binary files, symlinks and files over 1 MiB are omitted. SULY must apply results against the recorded workspace revision and show a reviewable diff before changing canonical project files.
+6. The gateway uses HTTP only on loopback between gateway and container. Public access must always be HTTPS.
+
+## Run
+
+```sh
+pip install -r requirements.txt
+export SULY_PROVISIONER_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+export RUNTIME_GATEWAY_ORIGIN="https://runtime-gateway.example.com"
+export OPENCODE_RUNTIME_IMAGE="registry.example/opencode@sha256:<digest>"
+uvicorn app.main:app --host 0.0.0.0 --port 8080
+```
+
+The service must have access to its dedicated Docker daemon. Build the OpenCode image from repository root with `engines/opencode/Dockerfile`.
 
 ## Verification
 
-Run from services/runtime-provisioner: install requirements, install pytest, then run pytest -q tests.
+```sh
+pip install pytest httpx
+PYTHONPATH=. pytest -q tests
+```
 
-The tests use a fake Docker client. They verify configuration and ownership guards; they do not claim a real Docker daemon, TLS gateway, egress firewall, or end-to-end OpenCode execution has been tested.
+Tests use fake Docker clients and API validation tests. They do not establish that production TLS ingress, host firewall, real Docker daemon or a full AI-provider execution have been validated.
