@@ -104,3 +104,35 @@ def test_task_payload_cannot_self_grant_tool_permission():
     })
     with pytest.raises(ValueError, match="unexpected input field"):
         registry.execute(step)
+
+
+def test_registry_validates_handler_output_type_and_size():
+    registry = ToolRegistry()
+    step = make_step({"operation": "output.test", "value": "x"})
+    registry.register(ToolDefinition(
+        name="output.test",
+        description="Output validation test",
+        permission_scope="output.test",
+        allowed_input_fields=frozenset({"value"}),
+        required_input_fields=frozenset({"value"}),
+        max_input_bytes=100,
+        max_output_bytes=10,
+        handler=lambda _step: {"long": "this output is too large"},
+        requires_approval=False,
+    ))
+    with pytest.raises(ValueError, match="tool_output_too_large"):
+        registry.execute(step)
+
+    invalid = ToolRegistry()
+    invalid.register(ToolDefinition(
+        name="output.test",
+        description="Invalid output test",
+        permission_scope="output.test",
+        allowed_input_fields=frozenset({"value"}),
+        required_input_fields=frozenset({"value"}),
+        max_input_bytes=100,
+        handler=lambda _step: object(),
+        requires_approval=False,
+    ))
+    with pytest.raises(ValueError, match="invalid_tool_output"):
+        invalid.execute(step)
