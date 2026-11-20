@@ -245,6 +245,15 @@ class _TaskDetailAdmin:
                 "status": "running",
                 "attempt_count": 1,
             }],
+            "engine_run_events": [{
+                "id": 1,
+                "engine_run_id": "run-1",
+                "task_id": "00000000-0000-0000-0000-000000000001",
+                "event_name": "tool.started",
+                "event_seq": 1,
+                "event_timestamp": 1800000000.0,
+                "received_at": "2026-11-20T12:00:00Z",
+            }],
         }
     def __enter__(self): return self
     def __exit__(self, *_args): return False
@@ -265,6 +274,8 @@ def test_task_detail_includes_owner_scoped_engine_run_history(monkeypatch):
     assert body["steps"][0]["status"] == "running"
     assert body["engine_runs"][0]["engine_id"] == "hermes-agent"
     assert body["engine_runs"][0]["status"] == "running"
+    assert body["engine_events"][0]["event_name"] == "tool.started"
+    assert body["engine_events"][0]["engine_run_id"] == "run-1"
 
 
 def test_task_plan_rejects_unregistered_operations_before_database(monkeypatch):
