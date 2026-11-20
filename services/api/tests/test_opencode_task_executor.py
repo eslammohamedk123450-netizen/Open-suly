@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+import pytest
+
 from app.services.opencode_task_executor import OpenCodeTaskExecutor
 
 
@@ -104,3 +106,35 @@ def test_executor_persists_run_and_reviewable_change_set():
     assert "--- a/src/main.py" in change_call[1]["changes"][0]["diff"]
     assert "+++ b/src/main.py" in change_call[1]["changes"][0]["diff"]
     assert any(call[0] == "event" and call[1]["event_type"] == "changes.collected" for call in lifecycle.calls)
+
+
+def test_executor_rejects_runtime_result_with_forged_content_digest():
+    user_id, project_id, task_id, run_id = (str(uuid4()) for _ in range(4))
+    broker, sessions, lifecycle = Broker(), Sessions(), Lifecycle()
+    broker.run_task = lambda *args, **kwargs: {
+        "execution": {"session_id": "sesABC123"},
+        "results": {
+            "changed_files": [{
+                "path": "src/main.py", "content": "print('tampered')",
+                "sha256": "0" * 64,
+            }],
+            "deleted_paths": [], "changed_count": 1,
+        },
+    }
+    broker.release_attempt = lambda *_args: True
+    executor = OpenCodeTaskExecutor(
+        workspace_store=Workspace(), session_store=sessions,
+        runtime_broker=broker, lifecycle_store=lifecycle,
+    )
+
+    with pytest.raises(ValueError, match="opencode_result_digest_mismatch"):
+        executor.execute(
+            user_id=user_id, project_id=project_id, task_id=task_id,
+            engine_run_id=run_id, prompt="Change the file",
+        )
+
+    assert not any(call[0] == "change_set" for call in lifecycle.calls)
+    assert any(
+        call[0] == "status" and call[1]["status"] == "failed"
+        for call in lifecycle.calls
+    )
