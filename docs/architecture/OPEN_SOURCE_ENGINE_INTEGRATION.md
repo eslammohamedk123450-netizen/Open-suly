@@ -185,3 +185,15 @@ Every integration batch must list:
 - The append RPC validates the current task-step lease and running engine attempt; stale workers cannot append events after losing ownership. Upstream sequence numbers are idempotent.
 - `GET /v1/tasks/{task_id}` returns at most 500 owner-filtered events alongside engine-run history. The task owner is derived from the authenticated user, never request payload.
 - The migration is additive and has not been applied to any Supabase environment. Apply it in a disposable/staging database and verify RLS/RPC behavior before deploying code that reads the new table.
+
+
+## Task-scoped runtime broker contract — 2026-11-20
+
+`services/api/app/services/runtime_broker_contract.py` defines a fail-closed contract for a future external runtime provisioner:
+
+- A lease binds one canonical task UUID, one engine-run UUID, one engine ID, one runtime UUID, one opaque credential, one broker URL, and an expiry no more than one hour ahead.
+- The broker accepts only exact, explicitly configured endpoint origins (scheme, host, and port); a hostname-only allowlist is insufficient because it could permit access to a different internal service port.
+- A broker process rejects re-acquiring an attempt and rejects reusing a runtime UUID for another attempt. The provider must additionally enforce uniqueness across multiple worker processes/hosts.
+- The context manager always attempts release after use and never logs credentials. A failed teardown is logged as a runtime identifier only.
+- Unit tests cover identity mismatch, expired/overlong leases, wrong origin/port, metadata-service/localhost targets, credential shape, same-attempt reuse, cross-attempt runtime reuse, and teardown.
+- This is a contract and in-process guard only. No provider implementation, Docker launch, process-tree supervisor, durable global runtime registry, network proxy, or live runtime integration exists. All engines remain disabled.
