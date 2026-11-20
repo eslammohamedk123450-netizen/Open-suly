@@ -15,7 +15,7 @@ SULY pins the complete upstream Hermes Agent runtime as a remote Docker build co
 - Persistent state is isolated in the `hermes-data` named volume.
 - The service has no Supabase credentials or SULY admin secrets.
 - The API server exposes Hermes' full agent toolset, including terminal execution. It is hard-disabled in this Compose file; do not change that setting until a dedicated sandbox/tool policy review is complete.
-- If the API is enabled after that review, set a unique `HERMES_API_SERVER_KEY` through the deployment secret manager. Never commit it.
+- If the API is enabled after that review, set a unique upstream `API_SERVER_KEY` through the deployment secret manager. Never commit it.
 - The SULY HTTP bridge is disabled by default. The `hermes.agent.turn` task operation is registered behind persisted user approval, but cannot execute until the Hermes API, provider, database migrations, and per-task isolation are configured and verified.
 - Hermes still requires a deliberately configured model provider. SULY has not selected or configured one.
 
@@ -35,13 +35,14 @@ The current configuration starts the Hermes gateway with its API server hard-dis
 The FastAPI bridge uses these server-only environment variables:
 
 - `HERMES_AGENT_ENABLED=false` (default; keep false until sandbox approval)
+- `HERMES_AGENT_ISOLATION_CONFIRMED=false` (default; explicit operator attestation required by the bridge, but this flag does not itself create isolation)
 - `HERMES_AGENT_BASE_URL` (internal service URL ending before `/v1`)
 - `HERMES_AGENT_API_KEY` (same secret as the Hermes API server key; secret manager only)
 - `HERMES_AGENT_MODEL=hermes-agent`
 - `HERMES_AGENT_TIMEOUT_SECONDS=90`
 - `HERMES_AGENT_MAX_OUTPUT_CHARS=12000`
 
-The current bridge uses a bounded OpenAI-compatible request and redacts upstream errors. Upstream audit also verified Hermes' native `/v1/runs` API (admission, status, SSE events, stop, and idempotency); SULY's next bridge revision will use that durable lifecycle rather than treating a single HTTP response as a run. The bridge does not pass SULY identity claims, approval scopes, database credentials, or provider secrets to Hermes.
+The current bridge uses Hermes' native `/v1/runs` admission and status endpoints, a stable per-attempt `Idempotency-Key`, a lease-guarded persisted upstream run ID, and the upstream stop endpoint for cooperative cancellation. Status polling is bounded; SSE event forwarding is a later enhancement. Upstream errors are redacted. The isolation flag is only an operator assertion, not a sandbox implementation. The bridge does not pass SULY identity claims, approval scopes, database credentials, or provider secrets to Hermes.
 
 ## Verification boundary
 
