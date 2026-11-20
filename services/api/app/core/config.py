@@ -34,6 +34,18 @@ class Settings(BaseSettings):
     hermes_agent_timeout_seconds: float = Field(default=90.0, ge=5.0, le=300.0)
     hermes_agent_max_output_chars: int = Field(default=12000, ge=256, le=50000)
 
+    # OpenCode isolated runtime provider; disabled unless all values are configured.
+    runtime_provisioner_url: str | None = None
+    runtime_provisioner_token: SecretStr | None = None
+    runtime_provisioner_allowed_origins: list[str] = Field(default_factory=list)
+    runtime_provisioner_timeout_seconds: float = Field(default=10.0, ge=1.0, le=30.0)
+
+    # In-process per-user API rate limits (requests per minute); 0 disables a limit.
+    # Best-effort per API process; the ingress must still enforce global caps.
+    rate_limit_chat_respond_per_minute: int = Field(default=10, ge=0, le=1000)
+    rate_limit_chat_conversations_per_minute: int = Field(default=10, ge=0, le=1000)
+    rate_limit_chat_messages_per_minute: int = Field(default=30, ge=0, le=1000)
+
     # Worker runtime is opt-in; never starts merely because the API boots.
     worker_enabled: bool = False
     worker_lease_seconds: int = Field(default=90, ge=15, le=900)
@@ -42,12 +54,6 @@ class Settings(BaseSettings):
     # External engine stop reconciliation is opt-in until its migration is applied and runtime isolation is verified.
     engine_reconciler_enabled: bool = False
     engine_reconciler_interval_seconds: int = Field(default=30, ge=10, le=600)
-
-    # In-process per-user API rate limits (requests per minute); 0 disables a limit.
-    # Best-effort per API process; the ingress must still enforce global caps.
-    rate_limit_chat_respond_per_minute: int = Field(default=10, ge=0, le=1000)
-    rate_limit_chat_conversations_per_minute: int = Field(default=10, ge=0, le=1000)
-    rate_limit_chat_messages_per_minute: int = Field(default=30, ge=0, le=1000)
 
     model_config = SettingsConfigDict(
         env_file=".env",
