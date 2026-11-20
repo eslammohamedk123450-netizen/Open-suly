@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
@@ -252,6 +253,73 @@ class OpenCodeHTTPClient:
         if not isinstance(value, dict) or not isinstance(value.get("interrupted"), bool):
             raise OpenCodeTransportError("opencode_interrupt_not_confirmed")
         return value["interrupted"]
+
+    async def iter_safe_events(
+        self,
+        *,
+        session_id: str,
+        max_events: int = 500,
+        max_event_bytes: int = 16_384,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Yield only allowlisted metadata from OpenCode's server-wide SSE feed.
+
+        The upstream feed is volatile and server-wide. This adapter is safe only
+        because each RuntimeLease must represent one isolated task-attempt server;
+        the reducer additionally binds every event to the expected session ID.
+        Raw event payloads, prompts, tool arguments, reasoning, paths and output
+        are never returned. SULY's durable task ledger remains authoritative.
+        """
+        if not _SESSION_ID.fullmatch(session_id):
+            raise ValueError("opencode_session_id_invalid")
+        if isinstance(max_events, bool) or not isinstance(max_events, int) or not 1 <= max_events <= 5000:
+            raise ValueError("opencode_event_limit_invalid")
+        if isinstance(max_event_bytes, bool) or not isinstance(max_event_bytes, int) or not 256 <= max_event_bytes <= 65_536:
+            raise ValueError("opencode_event_size_invalid")
+
+        yielded = 0
+        data_lines: list[str] = []
+        event_size = 0
+        try:
+            async with self._client.stream(
+                "GET", "/api/event", headers={"Accept": "text/event-stream"},
+                timeout=httpx.Timeout(60.0, connect=5.0, read=30.0),
+            ) as response:
+                if 300 <= response.status_code < 400:
+                    raise OpenCodeTransportError("opencode_redirect_rejected")
+                if response.status_code != 200:
+                    raise OpenCodeTransportError(f"opencode_upstream_status_{response.status_code}")
+                content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+                if content_type != "text/event-stream":
+                    raise OpenCodeTransportError("opencode_invalid_event_content_type")
+                async for line in response.aiter_lines():
+                    if line == "":
+                        if data_lines:
+                            raw = "\\n".join(data_lines)
+                            data_lines.clear()
+                            event_size = 0
+                            try:
+                                envelope = json.loads(raw)
+                            except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+                                continue
+                            safe = opencode_contract.safe_event_metadata(envelope, session_id)
+                            if safe is not None:
+                                yield safe
+                                yielded += 1
+                                if yielded >= max_events:
+                                    return
+                        continue
+                    if line.startswith(":"):
+                        continue
+                    if line.startswith("data:"):
+                        value = line[5:].lstrip()
+                        event_size += len(value.encode("utf-8"))
+                        if event_size > max_event_bytes:
+                            raise OpenCodeTransportError("opencode_event_too_large")
+                        data_lines.append(value)
+        except OpenCodeTransportError:
+            raise
+        except httpx.HTTPError as exc:
+            raise OpenCodeTransportError("opencode_event_stream_unavailable") from exc
 
     async def list_skills(self) -> list[dict[str, Any]]:
         result = await self._request_json("GET", "/api/skill")
