@@ -60,12 +60,13 @@ def list_projects(user: AuthenticatedUser = Depends(get_current_user)) -> dict[s
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_project(request: CreateProjectRequest, user: AuthenticatedUser = Depends(get_current_user)) -> dict[str, Any]:
+    name = _clean_name(request.name)
     client = _admin()
     try:
         with client:
             rows = client.table("projects").insert({
                 "user_id": user.id,
-                "name": _clean_name(request.name),
+                "name": name,
                 "description": request.description.strip(),
             }).execute().data
         if not rows:
