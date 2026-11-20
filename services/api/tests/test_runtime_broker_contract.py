@@ -34,7 +34,7 @@ def make_lease(**overrides) -> RuntimeLease:
         "engine_id": ENGINE_ID,
         "base_url": "https://opencode-runtime.internal:8443",
         "access_token": "x" * 48,
-        "expires_at": 2_000_000_000.0,
+        "expires_at": 1_900_000_120.0,
     }
     values.update(overrides)
     return RuntimeLease(**values)
@@ -184,3 +184,43 @@ def test_runtime_lease_rejects_oversized_access_token():
 def test_runtime_broker_requires_explicit_host_allowlist():
     with pytest.raises(ValueError, match="allowed_hosts"):
         TaskScopedRuntimeBroker(FakeProvider(make_lease()), allowed_origins=frozenset())
+
+
+
+def test_runtime_lease_secret_is_not_exposed_by_repr():
+    lease = make_lease()
+    assert "x" * 48 not in repr(lease)
+
+
+def test_runtime_broker_rejects_same_runtime_id_for_another_attempt():
+    first_task, first_run = str(uuid4()), str(uuid4())
+    second_task, second_run = str(uuid4()), str(uuid4())
+    shared_runtime_id = str(uuid4())
+    first = make_lease(
+        task_id=first_task,
+        engine_run_id=first_run,
+        runtime_id=shared_runtime_id,
+    )
+    second = make_lease(
+        task_id=second_task,
+        engine_run_id=second_run,
+        runtime_id=shared_runtime_id,
+    )
+
+    class SequenceProvider:
+        def __init__(self):
+            self.leases = [first, second]
+            self.released = []
+        def acquire(self, *_args):
+            return self.leases.pop(0)
+        def release(self, lease):
+            self.released.append(lease.runtime_id)
+            return True
+
+    provider = SequenceProvider()
+    broker = TaskScopedRuntimeBroker(provider, allowed_hosts=HOSTS)
+    active = broker.acquire(first_task, first_run, ENGINE_ID)
+    assert broker.release(active)
+    with pytest.raises(RuntimeError, match="runtime_instance_reuse_rejected"):
+        broker.acquire(second_task, second_run, ENGINE_ID)
+    assert provider.released == [shared_runtime_id, shared_runtime_id]
