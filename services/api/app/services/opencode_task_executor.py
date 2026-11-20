@@ -53,6 +53,17 @@ class OpenCodeTaskExecutor:
                 event_type="task.started", payload={"task_id": task_id},
             )
         try:
+            lease_callback = None
+            if lifecycle_run is not None:
+                def persist_runtime_lease(lease) -> None:
+                    self._lifecycle.set_runtime(
+                        user_id=user_id,
+                        run_id=lifecycle_run["id"],
+                        runtime_id=lease.runtime_id,
+                        session_id=None,
+                        status="provisioning",
+                    )
+                lease_callback = persist_runtime_lease
             result = self._broker.run_task(
                 task_id,
                 engine_run_id,
@@ -60,6 +71,7 @@ class OpenCodeTaskExecutor:
                 files=snapshot["files"],
                 prompt=prompt,
                 title=title,
+                on_lease_acquired=lease_callback,
             )
             execution = result.get("execution")
             results = result.get("results")
