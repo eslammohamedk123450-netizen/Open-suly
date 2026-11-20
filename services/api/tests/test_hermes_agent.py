@@ -496,3 +496,54 @@ def test_hermes_bridge_stops_run_when_run_id_persistence_raises(monkeypatch):
             on_run_started=fail,
         )
     assert calls[-1].endswith("/run_db_error_123/stop")
+
+
+
+def test_hermes_steer_targets_one_existing_run_with_bounded_input(monkeypatch):
+    calls = []
+
+    class Client:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+        async def post(self, url, **kwargs):
+            calls.append((url, kwargs))
+            return Response({"run_id": "run_steer_123", "accepted": True})
+
+    monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
+    monkeypatch.setattr(hermes_agent.httpx, "AsyncClient", lambda **_kw: Client())
+    assert hermes_agent.steer_agent_run("run_steer_123", "Focus on the failing test") is True
+    assert calls == [(
+        "http://hermes:8642/v1/runs/run_steer_123/steer",
+        {
+            "headers": {"Authorization": "Bearer test-only-token"},
+            "json": {"input": "Focus on the failing test"},
+        },
+    )]
+
+
+@pytest.mark.parametrize("run_id,text", [
+    ("../other-run", "hello"),
+    ("run_safe_123", ""),
+    ("run_safe_123", "x" * 20001),
+])
+def test_hermes_steer_rejects_invalid_run_or_input(monkeypatch, run_id, text):
+    monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
+    with pytest.raises(ValueError):
+        hermes_agent.steer_agent_run(run_id, text)
+
+
+def test_hermes_steer_rejects_unaccepted_or_mismatched_response(monkeypatch):
+    class Client:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+        async def post(self, *_args, **_kwargs):
+            return Response({"run_id": "another-run", "accepted": True})
+
+    monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
+    monkeypatch.setattr(hermes_agent.httpx, "AsyncClient", lambda **_kw: Client())
+    with pytest.raises(hermes_agent.HermesAgentError, match="did not match"):
+        hermes_agent.steer_agent_run("run_steer_123", "please continue")
