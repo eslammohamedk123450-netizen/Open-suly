@@ -36,10 +36,10 @@ ENGINE_MANIFESTS: tuple[EngineManifest, ...] = (
         revision="2de9f51b8008a7d49a49221c184f2f11cbfc4af1",
         license_id="MIT",
         role="primary general-purpose agent runtime",
-        capabilities=frozenset({
-            "agent.general", "agent.planning", "agent.skills",
-            "agent.memory", "agent.delegation", "research", "research.summarize",
-        }),
+        # Only the SULY capability currently backed by the native Runs adapter.
+        # Upstream Hermes may expose more features, but SULY must not route them
+        # until their permission, memory, skill, and tool bridges are integrated.
+        capabilities=frozenset({"agent.general"}),
     ),
     EngineManifest(
         engine_id="opencode",
