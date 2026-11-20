@@ -100,3 +100,14 @@ def test_reconciler_rejects_invalid_bounds(batch_size, lease_seconds):
             batch_size=batch_size,
             lease_seconds=lease_seconds,
         )
+
+
+def test_reconciler_does_not_count_stop_when_claim_finalization_was_rejected():
+    item = claim()
+    store = FakeStore([item])
+    store.finish_stop_reconciliation = lambda *_args, **_kwargs: False
+    reconciler = EngineRunReconciler(
+        store,
+        stop_handlers={"hermes-agent": lambda _run_id: True},
+    )
+    assert reconciler.run_once() == 0
