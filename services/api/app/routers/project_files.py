@@ -16,6 +16,7 @@ router = APIRouter(prefix="/v1/projects", tags=["project-files"])
 
 MAX_FILE_BYTES = 256 * 1024
 MAX_PROJECT_FILES = 200
+MAX_REVISIONS = 50
 BLOCKED_PARTS = {"..", ".git", "node_modules", ".suly"}
 
 
@@ -67,8 +68,7 @@ def list_project_files(
                 .order("path").limit(MAX_PROJECT_FILES).execute().data)
         return {"items": [
             {"id": row["id"], "path": row["path"],
-             "size": row["size_bytes"],
-             "updated_at": row["updated_at"]}
+             "size": row["size_bytes"], "updated_at": row["updated_at"]}
             for row in (rows or [])
         ]}
     except HTTPException:
@@ -100,6 +100,91 @@ def read_project_file(
         raise HTTPException(status_code=503, detail="Could not read project file.") from exc
 
 
+@router.get("/{project_id}/file/history")
+def list_project_file_history(
+    project_id: UUID,
+    path: str = Query(min_length=1, max_length=512),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    safe_path = _safe_path(path)
+    client = _admin()
+    try:
+        with client:
+            _owned_project(client, project_id, user.id)
+            files = (client.table("project_files").select("id")
+                .eq("project_id", str(project_id)).eq("user_id", user.id)
+                .eq("path", safe_path).limit(1).execute().data)
+            if not files:
+                raise HTTPException(status_code=404, detail="Project file not found.")
+            rows = (client.table("project_file_revisions")
+                .select("id,path,size_bytes,created_at")
+                .eq("project_id", str(project_id)).eq("user_id", user.id)
+                .eq("file_id", files[0]["id"])
+                .order("created_at", desc=True).limit(MAX_REVISIONS).execute().data)
+        return {"items": rows or []}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Could not load file history.") from exc
+
+
+@router.get("/{project_id}/file/history/{revision_id}")
+def read_project_file_revision(
+    project_id: UUID,
+    revision_id: UUID,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    client = _admin()
+    try:
+        with client:
+            _owned_project(client, project_id, user.id)
+            rows = (client.table("project_file_revisions")
+                .select("id,path,content,size_bytes,created_at")
+                .eq("id", str(revision_id)).eq("project_id", str(project_id))
+                .eq("user_id", user.id).limit(1).execute().data)
+        if not rows:
+            raise HTTPException(status_code=404, detail="File revision not found.")
+        return rows[0]
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Could not read file revision.") from exc
+
+
+@router.post("/{project_id}/file/history/{revision_id}/restore")
+def restore_project_file_revision(
+    project_id: UUID,
+    revision_id: UUID,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    client = _admin()
+    try:
+        with client:
+            _owned_project(client, project_id, user.id)
+            rows = (client.table("project_file_revisions")
+                .select("id,file_id,path,content,size_bytes")
+                .eq("id", str(revision_id)).eq("project_id", str(project_id))
+                .eq("user_id", user.id).limit(1).execute().data)
+            if not rows:
+                raise HTTPException(status_code=404, detail="File revision not found.")
+            revision = rows[0]
+            restored = (client.table("project_files").update({
+                "content": revision["content"],
+                "size_bytes": revision["size_bytes"],
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", revision["file_id"])
+              .eq("project_id", str(project_id)).eq("user_id", user.id)
+              .execute().data)
+        if not restored:
+            raise HTTPException(status_code=404, detail="Project file no longer exists.")
+        row = restored[0]
+        return {"restored": True, "path": row["path"], "updated_at": row["updated_at"]}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Could not restore file revision.") from exc
+
+
 @router.put("/{project_id}/file")
 def save_project_file(
     project_id: UUID,
@@ -110,7 +195,8 @@ def save_project_file(
     safe_path = _safe_path(path)
     if "\x00" in request.content:
         raise HTTPException(status_code=422, detail="Binary content is not supported.")
-    if len(request.content.encode("utf-8")) > MAX_FILE_BYTES:
+    size_bytes = len(request.content.encode("utf-8"))
+    if size_bytes > MAX_FILE_BYTES:
         raise HTTPException(status_code=413, detail="Project files are limited to 256 KiB.")
     client = _admin()
     try:
@@ -128,13 +214,13 @@ def save_project_file(
             rows = (client.table("project_files").upsert({
                 "project_id": str(project_id), "user_id": user.id,
                 "path": safe_path, "content": request.content,
-                "size_bytes": len(request.content.encode("utf-8")),
+                "size_bytes": size_bytes,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }, on_conflict="project_id,path").execute().data)
         if not rows:
             raise HTTPException(status_code=503, detail="Project file was not saved.")
         row = rows[0]
-        return {"id": row["id"], "path": row["path"], "size": len(request.content.encode("utf-8")),
+        return {"id": row["id"], "path": row["path"], "size": size_bytes,
                 "updated_at": row["updated_at"]}
     except HTTPException:
         raise
