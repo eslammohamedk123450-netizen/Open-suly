@@ -29,8 +29,6 @@ function statusLabel(status: string): string {
     pending: "في الانتظار",
     blocked: "متوقفة بانتظار خطوة أخرى",
     succeeded: "اكتمل المحرك",
-    failed: "فشل المحرك",
-    cancelled: "أُلغي المحرك",
   };
   return labels[status] ?? status;
 }
