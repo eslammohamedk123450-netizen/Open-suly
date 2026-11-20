@@ -13,6 +13,7 @@ import sqlite3
 import tarfile
 import tempfile
 import time
+from threading import Lock
 from io import BytesIO
 from pathlib import PurePosixPath
 from typing import Any
@@ -48,7 +49,8 @@ def _allowed_opencode_route(method: str, route: str) -> bool:
     )
     return any(method == expected and re.fullmatch(pattern, route) for expected, pattern in patterns)
 app = FastAPI(title="SULY Runtime Provisioner", docs_url=None, redoc_url=None, openapi_url=None)
-_manager: DockerTaskRuntimeManager | None = None
+_runtime_manager: DockerTaskRuntimeManager | None = None
+_runtime_manager_lock = Lock()
 
 
 class FileSnapshot(BaseModel):
@@ -112,13 +114,15 @@ def _wait_for_opencode(host_port: int, token: str, timeout_seconds: float = 30.0
     raise RuntimeErrorSafe("opencode_startup_timeout")
 
 
-def _manager() -> DockerTaskRuntimeManager:
-    global _manager
-    if _manager is None:
-        if not IMAGE or "@sha256:" not in IMAGE:
-            raise RuntimeError("OPENCODE_RUNTIME_IMAGE must be digest-pinned")
-        _manager = DockerTaskRuntimeManager(image=IMAGE, workspace_root=WORKSPACE_ROOT)
-    return _manager
+def _get_manager() -> DockerTaskRuntimeManager:
+    """Return one lazily-created Docker manager without shadowing its state."""
+    global _runtime_manager
+    with _runtime_manager_lock:
+        if _runtime_manager is None:
+            if not IMAGE or not re.fullmatch(r"[A-Za-z0-9./:_-]+@sha256:[0-9a-f]{64}", IMAGE):
+                raise RuntimeError("OPENCODE_RUNTIME_IMAGE must be digest-pinned")
+            _runtime_manager = DockerTaskRuntimeManager(image=IMAGE, workspace_root=WORKSPACE_ROOT)
+        return _runtime_manager
 
 
 def _require_suly(authorization: str | None) -> None:
@@ -170,7 +174,7 @@ def create_runtime(body: CreateRuntime, authorization: str | None = Header(defau
     if body.engine_id != "opencode":
         raise HTTPException(422, "engine_not_allowed")
     try:
-        result = _manager().create(
+        result = _get_manager().create(
             task_id=task_id, engine_run_id=run_id, engine_id=body.engine_id,
             files=[item.model_dump(exclude_none=True) for item in body.files],
         )
