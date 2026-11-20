@@ -180,3 +180,17 @@ For every engine:
 - OpenHands مرشح أول للـcoding backend لكن توثيقه يحذر من host filesystem/shell/network access؛ لا تشغيل دون sandbox. Browser Use يتطلب عزل REPL وChrome profile وegress.
 - CI لتغييرات التوثيق الأخيرة ما زال قيد الانتظار وقت checkpoint.
 - لا يوجد build/run حي لمحرك upstream إضافي، ولا نسخ source أو تفعيل خدمة. لا migrations مطبقة.
+
+
+## Session checkpoint — 2026-11-20 (External engine stop reconciliation)
+
+- أضيفت migration `20261120210000_engine_stop_reconciliation.sql`: عند انتهاء lease أو إلغاء/إنهاء الخطوة، إذا كان هناك `upstream_run_id` لا يُغلق سجل المحرك مباشرة؛ يتحول إلى `stop_pending` حتى يتم إيقاف التشغيل الخارجي.
+- أضيفت RPCs server-only لحجز تشغيلات الإيقاف بlease مستقل، وتأكيد الحالة النهائية، أو تحرير الحجز مع backoff عند الفشل.
+- أضيف `stop_agent_run` في Hermes bridge: يتحقق من run ID، يرسل stop، ثم ينتظر حالة نهائية محدودة الوقت دون قراءة output. يبقى متاحًا لإيقاف التشغيلات المعروفة حتى عند تعطيل بدء تشغيل Hermes جديد، بشرط وجود credentials الخادم.
+- أضيف `EngineRunReconciler` الذي يصالح السجلات المنتهية أولًا ثم يحجز ويوقف المحركات المدعومة، مع عدم تسجيل تفاصيل أخطاء خارجية.
+- أضيفت إعدادات `ENGINE_RECONCILER_ENABLED=false` ومدة دورة افتراضية 30 ثانية. لا يبدأ reconciler إلا بإعداد صريح، ومع وجود Hermes URL/key. لا يتم تشغيله تلقائيًا في API.
+- أضيفت اختبارات لحجز/تحقق/رفض claims، تأكيد إيقاف Hermes، backoff، فشل الإيقاف، وجدولة reconciler في WorkerRuntime.
+- Commits الرئيسية: `cad84f16c623` (DB state), `fbd80bcd9b44` (store), `a0e4213cc7f8` (Hermes stop), `3c6c4076e90c` (reconciler), `b922f0a74ac4` (worker scheduling), `3c90a41f0abb` (tests).
+- CI: على `8080478aa8bb` نجح Platform CI؛ إصلاح اختبار async sleep بعد فشل واحد سابق. Baseline checks لآخر commit `3c90a41f` كانت queued وقت التوثيق، وPlatform CI قيد التنفيذ.
+- لا تزال migration غير مطبقة على أي DB. تفعيل `ENGINE_RECONCILER_ENABLED` قبل تطبيق migration واختبارها في بيئة disposable ممنوع.
+- حد أمان: المحرك غير المدعوم لا يُعتبر متوقفًا؛ يتم تحرير claim مع backoff. يجب إضافة stopper خاص به قبل تسجيله كمدعوم.
