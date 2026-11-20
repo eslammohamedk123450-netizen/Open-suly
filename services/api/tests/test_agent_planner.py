@@ -9,7 +9,11 @@ from app.services.agent_planner import UnsupportedTaskRequest, plan_request
     "حلل: سولي مساعد ذكي",
     "حلّل: محتوى تجريبي",
 ])
-def test_planner_creates_only_registered_text_analysis_step(task_text):
+def test_planner_creates_only_registered_text_analysis_step(task_text, monkeypatch):
+    from types import SimpleNamespace
+    import app.core.config as config
+
+    monkeypatch.setattr(config, "get_settings", lambda: SimpleNamespace(worker_enabled=True))
     planned = plan_request(task_text)
     assert planned.planner == "deterministic-v1"
     assert len(planned.steps) == 1
