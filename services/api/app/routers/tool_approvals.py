@@ -30,7 +30,7 @@ def _store() -> ToolApprovalStore:
 def _approvable_scope(scope: str) -> None:
     if not TOOL_REGISTRY.requires_approval_scope(scope):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="This permission scope is not currently available for approval.",
         )
 
