@@ -1,13 +1,19 @@
-"""Small, explicit registry for safe worker operations."""
+"""Explicit allow-list and approval gate for worker tools."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 from typing import Any, Callable
 
 from app.services.task_worker import ClaimedStep
 
 ToolHandler = Callable[[ClaimedStep], dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class ToolExecutionContext:
+    """Trusted server-created grants; never construct this from task input."""
+    approved_scopes: frozenset[str] = field(default_factory=frozenset)
 
 
 @dataclass(frozen=True)
@@ -19,6 +25,7 @@ class ToolDefinition:
     required_input_fields: frozenset[str]
     max_input_bytes: int
     handler: ToolHandler
+    requires_approval: bool = True
 
 
 class ToolRegistry:
@@ -28,7 +35,7 @@ class ToolRegistry:
     def register(self, definition: ToolDefinition) -> None:
         if definition.name in self._tools:
             raise ValueError(f"duplicate_tool:{definition.name}")
-        if not definition.name or definition.max_input_bytes < 1:
+        if not definition.name or not definition.permission_scope or definition.max_input_bytes < 1:
             raise ValueError("invalid_tool_definition")
         if not definition.required_input_fields <= definition.allowed_input_fields:
             raise ValueError("required_fields_must_be_allowed")
@@ -37,13 +44,22 @@ class ToolRegistry:
     def get(self, name: str) -> ToolDefinition | None:
         return self._tools.get(name)
 
-    def describe(self) -> list[dict[str, str]]:
+    def describe(self) -> list[dict[str, Any]]:
         return [
-            {"name": tool.name, "description": tool.description, "permission_scope": tool.permission_scope}
+            {
+                "name": tool.name,
+                "description": tool.description,
+                "permission_scope": tool.permission_scope,
+                "requires_approval": tool.requires_approval,
+            }
             for tool in sorted(self._tools.values(), key=lambda item: item.name)
         ]
 
-    def execute(self, step: ClaimedStep) -> dict[str, Any]:
+    def execute(
+        self,
+        step: ClaimedStep,
+        context: ToolExecutionContext | None = None,
+    ) -> dict[str, Any]:
         operation = step.input.get("operation")
         if not isinstance(operation, str):
             raise ValueError("unsupported_operation: operation must be a string")
@@ -61,4 +77,7 @@ class ToolRegistry:
             raise ValueError("invalid_tool_input: input must be JSON serializable") from exc
         if len(encoded) > tool.max_input_bytes:
             raise ValueError("tool_input_too_large")
+        grants = context.approved_scopes if context is not None else frozenset()
+        if tool.requires_approval and tool.permission_scope not in grants:
+            raise PermissionError(f"tool_approval_required:{tool.permission_scope}")
         return tool.handler(step)
