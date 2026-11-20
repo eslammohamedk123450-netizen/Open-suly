@@ -248,6 +248,40 @@ def get_task(
         raise HTTPException(status_code=503, detail="Could not load task.") from exc
 
 
+
+@router.post("/{task_id}/retry")
+def retry_failed_task(
+    task_id: UUID,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Retry failed steps for an owned task, within the persisted retry limit."""
+    client = _admin_client()
+    try:
+        with client:
+            result = client.rpc(
+                "retry_failed_task",
+                {"p_task_id": str(task_id), "p_user_id": user.id},
+            ).execute().data
+        if isinstance(result, list) and result:
+            result = result[0]
+        if not isinstance(result, dict):
+            raise HTTPException(status_code=503, detail="The retry service returned an invalid result.")
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        message = str(exc)
+        if "task_not_found" in message:
+            raise HTTPException(status_code=404, detail="Task not found.") from exc
+        if "task_not_failed" in message:
+            raise HTTPException(status_code=409, detail="Only failed tasks can be retried.") from exc
+        if "manual_retry_limit_reached" in message:
+            raise HTTPException(status_code=409, detail="The manual retry limit has been reached.") from exc
+        if "no_failed_steps_to_retry" in message:
+            raise HTTPException(status_code=409, detail="This task has no failed steps to retry.") from exc
+        raise HTTPException(status_code=503, detail="Could not retry the task.") from exc
+
+
 @router.post("/{task_id}/cancel")
 def request_task_cancellation(
     task_id: UUID,
