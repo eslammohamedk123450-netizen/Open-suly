@@ -6,11 +6,18 @@ from app.routers import project_files as files_module
 
 client = TestClient(app)
 PROJECT_ID = "00000000-0000-0000-0000-000000000001"
+REVISION_ID = "00000000-0000-0000-0000-000000000002"
 
 
 def test_project_files_require_authentication():
     assert client.get(f"/v1/projects/{PROJECT_ID}/files").status_code == 401
     assert client.put(f"/v1/projects/{PROJECT_ID}/file?path=main.py", json={"content": "print(1)"}).status_code == 401
+
+
+def test_project_file_history_requires_authentication():
+    assert client.get(f"/v1/projects/{PROJECT_ID}/file/history?path=main.py").status_code == 401
+    assert client.get(f"/v1/projects/{PROJECT_ID}/file/history/{REVISION_ID}").status_code == 401
+    assert client.post(f"/v1/projects/{PROJECT_ID}/file/history/{REVISION_ID}/restore").status_code == 401
 
 
 def test_project_file_path_rejects_traversal_before_database(monkeypatch):
@@ -44,7 +51,7 @@ def test_project_file_save_rejects_nul_content_before_database(monkeypatch):
     try:
         response = client.put(
             f"/v1/projects/{PROJECT_ID}/file?path=src/main.py",
-            json={"content": "print('safe')\u0000"},
+            json={"content": "print('safe')\\u0000"},
         )
     finally:
         app.dependency_overrides.clear()
