@@ -171,7 +171,10 @@ class TaskWorker:
                 "p_error_message": error_message[:2000],
             },
         ).execute()
-        return response.data or {"accepted": False}
+        data = response.data
+        if not isinstance(data, dict) or not isinstance(data.get("accepted"), bool):
+            return {"accepted": False}
+        return data
 
     def run_once(
         self,
@@ -235,12 +238,20 @@ class TaskWorker:
             if lease_lost.is_set():
                 return "lease_lost"
             # Exception text may contain prompts, provider payloads, or secrets.
-            self.fail(
-                step,
-                "tool_execution_failed",
-                "Step execution failed. Sensitive diagnostic details were not stored",
+            try:
+                failure_result = self.fail(
+                    step,
+                    "tool_execution_failed",
+                    "Step execution failed. Sensitive diagnostic details were not stored",
+                )
+            except Exception:
+                # A failed failure-write must never be reported as durably recorded.
+                return "failure_not_recorded"
+            return (
+                "failed_or_retry_scheduled"
+                if failure_result.get("accepted") is True
+                else "failure_not_recorded"
             )
-            return "failed_or_retry_scheduled"
         finally:
             heartbeat_stop.set()
             heartbeat.join()
