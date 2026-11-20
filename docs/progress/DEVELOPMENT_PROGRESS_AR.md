@@ -92,3 +92,13 @@ Commit تحديث هذا السجل: يتم ربطه بعد إنشائه.
 - Commits: `4b2631294ff6`, `fabebc485b09`, `c5fe327594ed`.
 - CI على آخر commit كان queued وقت الفحص. لم تطبق migration ولم يتم تشغيل reconciler دوريًا.
 - المصالحة الحالية تسوي حالة السجل في قاعدة البيانات فقط؛ لا تدّعي إيقاف Hermes أو أي process خارجي.
+
+
+## جلسة تطوير — 2026-11-20 (Agent routing وUpstream intake)
+
+- ربطنا Hermes path بمدير الوكلاء بدل توجيه مباشر للمحرك، وأضفنا كتالوج خمسة أدوار مع إبقاء coding/research/browser/workflow معطلة حتى توافر backends آمنة.
+- اختبارات agent catalog وrouting أضيفت؛ CI اكتشف أن bool يمر كـint في batch size، وأصلحناه صراحة.
+- Platform CI وRepository baseline checks على commit `7411adec258e` نجحا.
+- أضيف ملف مراجعة upstream مع SHAs ثابتة وتقييمات الترخيص والعزل، بما فيها قيود Dify وn8n وAGPL في Skyvern وأرشفة UI-TARS.
+- لم يتم تشغيل محركات OpenHands/OpenCode/Aider/Browser Use أو دمج source. OpenHands وBrowser Use لا يدخلان runtime قبل sandbox per-task.
+- CI للتوثيق الأخير كان queued وقت التحديث.
