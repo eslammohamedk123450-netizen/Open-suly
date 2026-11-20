@@ -17,7 +17,8 @@ from app.core.supabase import get_supabase_admin_client
 from app.services.ai_gateway import generate_reply
 from app.services.engine_contract import EngineRequest, EngineResult
 from app.services.engine_registry import EngineDefinition, EngineRegistry
-from app.services.hermes_agent import run_agent_turn
+from app.services.hermes_agent import HermesAgentCancelled, run_agent_turn
+from app.services.engine_run_store import EngineRunStore
 from app.services.task_worker import ClaimedStep, TaskWorker
 from app.services.tool_registry import ToolDefinition, ToolExecutionContext, ToolRegistry
 from app.services.tool_approvals import ToolApprovalStore
@@ -88,7 +89,7 @@ def build_engine_registry(cancel_event: Event | None = None) -> EngineRegistry:
     ])
 
 
-def hermes_agent_turn(step: ClaimedStep, cancel_event: Event | None = None) -> dict[str, Any]:
+def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = None) -> dict[str, Any]:
     prompt = step.input.get("prompt")
     if not isinstance(prompt, str):
         raise ValueError("hermes.agent.turn requires a string input.prompt")
@@ -99,9 +100,23 @@ def hermes_agent_turn(step: ClaimedStep, cancel_event: Event | None = None) -> d
         input_payload={"prompt": prompt},
         timeout_seconds=max(1, min(300, int(settings.hermes_agent_timeout_seconds))),
     )
+    cancel_event = context.cancel_event if context is not None else None
+    run_store = context.engine_run_store if context is not None else None
     if cancel_event is not None and cancel_event.is_set():
         raise RuntimeError("task_execution_cancelled")
-    result = build_engine_registry(cancel_event).execute("hermes-agent", request)
+    if run_store is None:
+        raise RuntimeError("engine_run_store_unavailable")
+    run_id = run_store.start(step, "hermes-agent")
+    try:
+        result = build_engine_registry(cancel_event).execute("hermes-agent", request)
+    except HermesAgentCancelled:
+        run_store.finish(run_id, step, "cancelled")
+        raise
+    except Exception:
+        run_store.finish(run_id, step, "failed", "engine_execution_failed")
+        raise
+    if not run_store.finish(run_id, step, "succeeded"):
+        raise RuntimeError("engine_run_lease_lost")
     return {
         "operation": "hermes.agent.turn",
         "engine": result.output["engine"],
@@ -174,9 +189,19 @@ def dispatch(
     # Fetch persisted consent immediately before execution so revocation takes
     # effect on the next attempt; never derive grants from task payloads.
     scopes = approval_store.active_scopes(str(step.user_id)) if approval_store else frozenset()
+    run_store = None
+    if step.input.get("operation") == "hermes.agent.turn":
+        client = get_supabase_admin_client()
+        if client is None:
+            raise RuntimeError("engine_run_store_unavailable")
+        run_store = EngineRunStore(client)
     return TOOL_REGISTRY.execute(
         step,
-        ToolExecutionContext(approved_scopes=scopes, cancel_event=cancel_event),
+        ToolExecutionContext(
+            approved_scopes=scopes,
+            cancel_event=cancel_event,
+            engine_run_store=run_store,
+        ),
     )
 
 
