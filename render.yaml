@@ -1,0 +1,28 @@
+# SULY API: free test deployment.
+# Render Free web services sleep after inactivity; this is for testing, not production.
+services:
+  - type: web
+    name: suly-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./services/api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: WORKER_ENABLED
+        value: "false"
+      - key: HERMES_AGENT_ENABLED
+        value: "false"
+      - key: AI_PROVIDER
+        value: disabled
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
