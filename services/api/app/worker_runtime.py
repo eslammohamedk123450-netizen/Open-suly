@@ -5,6 +5,7 @@ filesystem, or external provider calls are available in this runtime.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import signal
@@ -13,6 +14,7 @@ from typing import Any, Callable
 
 from app.core.config import get_settings
 from app.core.supabase import get_supabase_admin_client
+from app.services.ai_gateway import generate_reply
 from app.services.hermes_agent import run_agent_turn
 from app.services.task_worker import ClaimedStep, TaskWorker
 from app.services.tool_registry import ToolDefinition, ToolExecutionContext, ToolRegistry
@@ -33,6 +35,14 @@ def text_analyze(step: ClaimedStep) -> dict[str, Any]:
         "line_count": len(text.splitlines()) or (1 if text else 0),
         "preview": text[:500],
     }
+
+
+def ai_respond(step: ClaimedStep) -> dict[str, Any]:
+    prompt = step.input.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 20_000:
+        raise ValueError("ai.respond requires a prompt containing 1–20000 characters")
+    reply = asyncio.run(generate_reply([{"role": "user", "content": prompt.strip()}]))
+    return {"operation": "ai.respond", "content": reply}
 
 
 def hermes_agent_turn(step: ClaimedStep) -> dict[str, Any]:
@@ -73,6 +83,17 @@ def build_tool_registry() -> ToolRegistry:
         max_input_bytes=24_000,
         handler=text_analyze,
         requires_approval=False,
+    ))
+    registry.register(ToolDefinition(
+        name="ai.respond",
+        description="Generate one bounded response through the configured SULY AI provider",
+        permission_scope="ai.provider.run",
+        allowed_input_fields=frozenset({"prompt"}),
+        required_input_fields=frozenset({"prompt"}),
+        max_input_bytes=20_100,
+        handler=ai_respond,
+        requires_approval=True,
+        max_output_bytes=52_000,
     ))
     registry.register(ToolDefinition(
         name="hermes.agent.turn",
