@@ -412,7 +412,7 @@ def get_task_engine_approval_details(
                 raise HTTPException(status_code=409, detail="The task is no longer running.")
             runs = (
                 client.table("engine_runs")
-                .select("id,engine_id,status,upstream_run_id")
+                .select("id,step_id,engine_id,status,upstream_run_id")
                 .eq("id", str(run_id))
                 .eq("task_id", str(task_id))
                 .eq("user_id", user.id)
@@ -425,6 +425,21 @@ def get_task_engine_approval_details(
             run = runs[0]
             if run.get("engine_id") != "hermes-agent" or run.get("status") != "running":
                 raise HTTPException(status_code=409, detail="The Hermes run is no longer active.")
+
+            live_steps = (
+                client.table("task_steps")
+                .select("id,status,lease_expires_at")
+                .eq("id", str(run["step_id"]))
+                .eq("task_id", str(task_id))
+                .eq("user_id", user.id)
+                .eq("status", "running")
+                .gt("lease_expires_at", datetime.now(timezone.utc).isoformat())
+                .limit(1)
+                .execute()
+                .data
+            )
+            if not live_steps:
+                raise HTTPException(status_code=409, detail="The task worker no longer owns this approval.")
             events = (
                 client.table("engine_run_events")
                 .select("id")
@@ -554,11 +569,13 @@ def resolve_task_engine_approval(
                 .eq("id", str(engine_run["step_id"]))
                 .eq("task_id", str(task_id))
                 .eq("user_id", user.id)
+                .eq("status", "running")
+                .gt("lease_expires_at", datetime.now(timezone.utc).isoformat())
                 .limit(1)
                 .execute()
                 .data
             )
-            if not steps or steps[0].get("status") != "running" or not steps[0].get("lease_token"):
+            if not steps or not steps[0].get("lease_token"):
                 raise HTTPException(status_code=409, detail="The task worker no longer owns this run.")
 
             try:
