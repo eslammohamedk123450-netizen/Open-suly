@@ -137,7 +137,7 @@ export default function ActivityScreen() {
             <View style={styles.list}>
               <Text style={styles.count}>{tasks.length} مهمة حديثة</Text>
               {tasks.map((task) => (
-                <View key={task.id} style={styles.taskCard}>
+                <Pressable key={task.id} style={styles.taskCard} onPress={() => router.push({ pathname: "/task/[id]", params: { id: task.id } })}>
                   <View style={styles.taskHeader}>
                     <Text style={[styles.status, { color: statusColor(task.status) }]}>{statusLabel(task.status)}</Text>
                     <Text style={styles.taskTitle} numberOfLines={2}>{task.title}</Text>
@@ -148,7 +148,7 @@ export default function ActivityScreen() {
                     <Text style={styles.taskId}>{task.id.slice(0, 8)}</Text>
                   </View>
                   {!!task.error_message && <Text style={styles.error} numberOfLines={2}>{task.error_message}</Text>}
-                </View>
+                </Pressable>
               ))}
             </View>
           )}
