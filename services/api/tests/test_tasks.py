@@ -119,6 +119,9 @@ class _FakeAdmin:
 
 
 def test_auto_plan_generates_supported_text_analysis_plan(monkeypatch):
+    from types import SimpleNamespace
+    import app.core.config as config
+    monkeypatch.setattr(config, "get_settings", lambda: SimpleNamespace(worker_enabled=True))
     admin = _FakeAdmin({
         "id": "00000000-0000-0000-0000-000000000001",
         "user_id": "test-user",
