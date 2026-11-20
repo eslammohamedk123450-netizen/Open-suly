@@ -146,7 +146,7 @@ class RuntimeLease:
 class RuntimeLeaseProvider(Protocol):
     """Provider must enforce fresh runtime identity globally across workers."""
 
-    def acquire(self, task_id: str, engine_run_id: str, engine_id: str) -> RuntimeLease:
+    def acquire(self, task_id: str, engine_run_id: str, engine_id: str, *, files: list[dict] | None = None) -> RuntimeLease:
         ...
 
     def release(self, lease: RuntimeLease) -> bool:
@@ -188,7 +188,9 @@ class TaskScopedRuntimeBroker:
         self._pending_attempts: set[tuple[str, str, str]] = set()
         self._releasing_runtime_ids: set[str] = set()
 
-    def acquire(self, task_id: str, engine_run_id: str, engine_id: str) -> RuntimeLease:
+    def acquire(self, task_id: str, engine_run_id: str, engine_id: str, *, files: list[dict] | None = None) -> RuntimeLease:
+        if files is not None and (not isinstance(files, list) or len(files) > 200):
+            raise ValueError("runtime_workspace_snapshot_invalid")
         attempt = (task_id, engine_run_id, engine_id)
         with self._lock:
             if attempt in self._seen_attempts or attempt in self._pending_attempts:
@@ -196,7 +198,10 @@ class TaskScopedRuntimeBroker:
             self._pending_attempts.add(attempt)
 
         try:
-            lease = self._provider.acquire(task_id, engine_run_id, engine_id)
+            if files is None:
+                lease = self._provider.acquire(task_id, engine_run_id, engine_id)
+            else:
+                lease = self._provider.acquire(task_id, engine_run_id, engine_id, files=files)
             if not isinstance(lease, RuntimeLease):
                 raise RuntimeError("runtime_provider_returned_invalid_lease")
             try:
@@ -291,9 +296,11 @@ class TaskScopedRuntimeBroker:
         task_id: str,
         engine_run_id: str,
         engine_id: str,
+        *,
+        files: list[dict] | None = None,
     ) -> Iterator[RuntimeLease]:
         """Acquire one runtime lease and always attempt teardown after engine use."""
-        lease = self.acquire(task_id, engine_run_id, engine_id)
+        lease = self.acquire(task_id, engine_run_id, engine_id, files=files)
         try:
             yield lease
         finally:
