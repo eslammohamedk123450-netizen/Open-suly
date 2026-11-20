@@ -92,9 +92,11 @@ def test_long_handler_renews_lease_before_checkpoint():
     original_rpc = client.rpc
 
     def tracked_rpc(name, args):
-        if name == "renew_task_step_lease" and len(client.calls) >= 2:
+        prior_calls = len(client.calls)
+        result = original_rpc(name, args)
+        if name == "renew_task_step_lease" and prior_calls >= 2:
             heartbeat_seen.set()
-        return original_rpc(name, args)
+        return result
 
     client.rpc = tracked_rpc
 
@@ -118,8 +120,9 @@ def test_worker_never_checkpoints_after_heartbeat_loses_lease():
     original_rpc = client.rpc
 
     def tracked_rpc(name, args):
+        prior_calls = len(client.calls)
         result = original_rpc(name, args)
-        if name == "renew_task_step_lease" and len(client.calls) >= 3:
+        if name == "renew_task_step_lease" and prior_calls >= 2:
             heartbeat_seen.set()
         return result
 
