@@ -5,6 +5,7 @@ import json
 import re
 import time
 from collections.abc import Iterator
+from threading import Event
 from urllib.parse import urlsplit
 
 import httpx
@@ -75,10 +76,16 @@ class OpenCodeEventConsumer:
         self, *, user_id: str, run_id: str, session_id: str, base_url: str,
         gateway_path: str, runtime_token: str, sequence_start: int = 1,
         max_events: int = 500, max_seconds: int = 25,
+        stop_event: Event | None = None,
     ) -> int:
         if not _SESSION.fullmatch(session_id or ""):
             raise ValueError("opencode_session_id_invalid")
-        if not 1 <= max_events <= 500 or not 1 <= max_seconds <= 30 or sequence_start < 1:
+        if (
+            not 1 <= max_events <= 500
+            or not 1 <= max_seconds <= 1800
+            or sequence_start < 1
+            or (stop_event is not None and not isinstance(stop_event, Event))
+        ):
             raise ValueError("opencode_event_consumer_limits_invalid")
         url = self._url(base_url, gateway_path)
         deadline = time.monotonic() + max_seconds
@@ -93,11 +100,19 @@ class OpenCodeEventConsumer:
                     raise RuntimeError("opencode_event_stream_unavailable")
                 def chunks():
                     for chunk in response.iter_bytes(chunk_size=4096):
-                        if time.monotonic() > deadline or saved >= max_events:
+                        if (
+                            time.monotonic() > deadline
+                            or saved >= max_events
+                            or (stop_event is not None and stop_event.is_set())
+                        ):
                             break
                         yield chunk
                 for raw in iter_sse_data(chunks()):
-                    if time.monotonic() > deadline or saved >= max_events:
+                    if (
+                        time.monotonic() > deadline
+                        or saved >= max_events
+                        or (stop_event is not None and stop_event.is_set())
+                    ):
                         break
                     try:
                         envelope = json.loads(raw)
