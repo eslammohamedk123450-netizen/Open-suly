@@ -130,6 +130,7 @@ class OpenCodeTaskExecutor:
                 self._lifecycle.update_status(
                     user_id=user_id, run_id=lifecycle_run["id"], status="review_ready",
                 )
+                lifecycle_run["status"] = "review_ready"
                 self._lifecycle.append_event(
                     user_id=user_id, run_id=lifecycle_run["id"], sequence=2,
                     event_type="changes.collected",
