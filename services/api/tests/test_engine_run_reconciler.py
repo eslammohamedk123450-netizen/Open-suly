@@ -14,6 +14,11 @@ class FakeStore:
         self.finished = []
         self.claim_args = None
         self.reconciled_batches = []
+        self.missing_identity_count = 0
+
+    def count_missing_upstream_identity(self, min_age_seconds):
+        assert min_age_seconds == 30
+        return self.missing_identity_count
 
     def reconcile_orphans(self, batch_size):
         self.reconciled_batches.append(batch_size)
@@ -111,3 +116,11 @@ def test_reconciler_does_not_count_stop_when_claim_finalization_was_rejected():
         stop_handlers={"hermes-agent": lambda _run_id: True},
     )
     assert reconciler.run_once() == 0
+
+
+def test_reconciler_logs_count_of_runs_missing_upstream_identity(caplog):
+    store = FakeStore([])
+    store.missing_identity_count = 2
+    reconciler = EngineRunReconciler(store, stop_handlers={})
+    assert reconciler.run_once() == 0
+    assert "stop_pending without an upstream identity: 2" in caplog.text
