@@ -6,6 +6,7 @@ small execution boundary a separately hosted worker process can call.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from threading import Event, Thread
 from typing import Any, Callable
 from uuid import UUID
 
@@ -30,7 +31,13 @@ class ClaimedStep:
 class TaskWorker:
     """Executes one claimed step through server-only, token-guarded RPCs."""
 
-    def __init__(self, client: Client, worker_id: str, lease_seconds: int = 90) -> None:
+    def __init__(
+        self,
+        client: Client,
+        worker_id: str,
+        lease_seconds: int = 90,
+        heartbeat_interval_seconds: float | None = None,
+    ) -> None:
         normalized = worker_id.strip()
         if not normalized or len(normalized) > 120:
             raise ValueError("worker_id must contain 1–120 non-whitespace characters")
@@ -39,6 +46,10 @@ class TaskWorker:
         self._client = client
         self.worker_id = normalized
         self.lease_seconds = lease_seconds
+        interval = heartbeat_interval_seconds if heartbeat_interval_seconds is not None else max(1.0, lease_seconds / 3)
+        if not 0.01 <= interval <= lease_seconds / 2:
+            raise ValueError("heartbeat interval must be positive and no more than half the lease")
+        self.heartbeat_interval_seconds = interval
 
     def claim(self) -> ClaimedStep | None:
         response = self._client.rpc(
@@ -115,19 +126,43 @@ class TaskWorker:
         return response.data or {"accepted": False}
 
     def run_once(self, handler: Callable[[ClaimedStep], dict[str, Any]]) -> str:
-        """Claim and execute at most one step; handlers may call renew for long work."""
+        """Claim one step and keep its lease alive while a bounded handler runs."""
         step = self.claim()
         if step is None:
             return "idle"
-        # Revalidate the lease immediately before invoking a handler. This also
-        # observes a cancellation or lease revocation that raced with the claim.
         if not self.renew(step):
             return "lease_lost"
+
+        heartbeat_stop = Event()
+        lease_lost = Event()
+
+        def maintain_lease() -> None:
+            while not heartbeat_stop.wait(self.heartbeat_interval_seconds):
+                try:
+                    if not self.renew(step):
+                        lease_lost.set()
+                        return
+                except Exception:
+                    # A failed heartbeat is treated as lease loss: never commit
+                    # output when ownership can no longer be proven.
+                    lease_lost.set()
+                    return
+
+        heartbeat = Thread(
+            target=maintain_lease,
+            name=f"suly-lease-{step.step_id}",
+            daemon=True,
+        )
+        heartbeat.start()
         try:
             output = handler(step)
             if not isinstance(output, dict):
                 raise TypeError("A task handler must return a JSON object.")
         except Exception:
+            heartbeat_stop.set()
+            heartbeat.join()
+            if lease_lost.is_set():
+                return "lease_lost"
             # Exception text can contain user content, provider payloads, or secrets.
             # Persist a stable public-safe failure marker; keep raw diagnostics out
             # of task records and client-visible error fields.
@@ -137,4 +172,10 @@ class TaskWorker:
                 "Step execution failed. Sensitive diagnostic details were not stored.",
             )
             return "failed_or_retry_scheduled"
+        finally:
+            heartbeat_stop.set()
+            heartbeat.join()
+
+        if lease_lost.is_set():
+            return "lease_lost"
         return "completed" if self.complete(step, output) else "lease_lost"
