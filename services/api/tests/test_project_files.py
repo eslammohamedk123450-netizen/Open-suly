@@ -68,3 +68,17 @@ def test_project_file_save_rejects_oversized_utf8_content():
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 413
+
+
+def test_project_file_history_path_rejects_traversal_before_database(monkeypatch):
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="user-a", email=None)
+    monkeypatch.setattr(
+        files_module, "get_supabase_admin_client",
+        lambda: (_ for _ in ()).throw(AssertionError("Database must not be called")),
+    )
+    try:
+        response = client.get(f"/v1/projects/{PROJECT_ID}/file/history?path=../secrets.txt")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 422
+
