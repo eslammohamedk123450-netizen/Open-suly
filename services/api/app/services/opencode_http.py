@@ -115,6 +115,44 @@ class OpenCodeHTTPClient:
         except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
             raise OpenCodeTransportError("opencode_invalid_json") from exc
 
+    async def _request_bounded_json(
+        self,
+        method: str,
+        path: str,
+        *,
+        body: dict[str, Any] | None = None,
+        params: dict[str, str] | None = None,
+        allowed_statuses: frozenset[int],
+        max_bytes: int,
+    ) -> Any:
+        """Read a small JSON response with streaming byte limits and no redirects."""
+        if not (path.startswith("/api/session/") and len(path) <= 512):
+            raise ValueError("opencode_route_not_allowed")
+        try:
+            async with self._client.stream(method, path, json=body, params=params) as response:
+                if 300 <= response.status_code < 400:
+                    raise OpenCodeTransportError("opencode_redirect_rejected")
+                if response.status_code not in allowed_statuses:
+                    raise OpenCodeTransportError(f"opencode_upstream_status_{response.status_code}")
+                content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+                if content_type != "application/json":
+                    raise OpenCodeTransportError("opencode_invalid_content_type")
+                chunks: list[bytes] = []
+                total = 0
+                async for chunk in response.aiter_bytes():
+                    total += len(chunk)
+                    if total > max_bytes:
+                        raise OpenCodeTransportError("opencode_response_too_large")
+                    chunks.append(chunk)
+        except OpenCodeTransportError:
+            raise
+        except httpx.HTTPError as exc:
+            raise OpenCodeTransportError("opencode_runtime_unreachable") from exc
+        try:
+            return json.loads(b"".join(chunks))
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
+            raise OpenCodeTransportError("opencode_invalid_json") from exc
+
     async def health(self) -> dict[str, Any]:
         result = await self._request_json("GET", "/api/info")
         if not isinstance(result, dict) or not isinstance(result.get("version"), str):
@@ -187,20 +225,10 @@ class OpenCodeHTTPClient:
         path = f"/api/session/{session_id}/prompt"
         if not re.fullmatch(r"/api/session/ses[A-Za-z0-9_-]{1,128}/prompt", path):
             raise ValueError("opencode_route_not_allowed")
-        try:
-            response = await self._client.post(path, json={"text": prompt.strip()})
-        except httpx.HTTPError as exc:
-            raise OpenCodeTransportError("opencode_runtime_unreachable") from exc
-        if 300 <= response.status_code < 400:
-            raise OpenCodeTransportError("opencode_redirect_rejected")
-        if response.status_code != 200:
-            raise OpenCodeTransportError(f"opencode_upstream_status_{response.status_code}")
-        if len(response.content) > 16_384:
-            raise OpenCodeTransportError("opencode_response_too_large")
-        try:
-            value = response.json()
-        except (ValueError, json.JSONDecodeError) as exc:
-            raise OpenCodeTransportError("opencode_invalid_json") from exc
+        value = await self._request_bounded_json(
+            "POST", path, body={"text": prompt.strip()},
+            allowed_statuses=frozenset({200}), max_bytes=16_384,
+        )
         if not isinstance(value, dict) or not isinstance(value.get("data"), dict):
             raise OpenCodeTransportError("opencode_prompt_not_accepted")
 
@@ -211,20 +239,10 @@ class OpenCodeHTTPClient:
         path = f"/api/session/{session_id}/interrupt"
         if not re.fullmatch(r"/api/session/ses[A-Za-z0-9_-]{1,128}/interrupt", path):
             raise ValueError("opencode_route_not_allowed")
-        try:
-            response = await self._client.post(path, params={"resume": "false"})
-        except httpx.HTTPError as exc:
-            raise OpenCodeTransportError("opencode_runtime_unreachable") from exc
-        if 300 <= response.status_code < 400:
-            raise OpenCodeTransportError("opencode_redirect_rejected")
-        if response.status_code != 200:
-            raise OpenCodeTransportError(f"opencode_upstream_status_{response.status_code}")
-        if len(response.content) > 4096:
-            raise OpenCodeTransportError("opencode_response_too_large")
-        try:
-            value = response.json()
-        except (ValueError, json.JSONDecodeError) as exc:
-            raise OpenCodeTransportError("opencode_invalid_json") from exc
+        value = await self._request_bounded_json(
+            "POST", path, params={"resume": "false"},
+            allowed_statuses=frozenset({200}), max_bytes=4096,
+        )
         if not isinstance(value, dict) or not isinstance(value.get("interrupted"), bool):
             raise OpenCodeTransportError("opencode_interrupt_not_confirmed")
         return value["interrupted"]
