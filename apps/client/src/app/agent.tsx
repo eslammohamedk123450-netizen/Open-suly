@@ -52,6 +52,7 @@ export default function AgentScreen() {
   const [aiApproved, setAiApproved] = useState(false);
   const [aiAvailable, setAiAvailable] = useState(false);
   const [hermesAvailable, setHermesAvailable] = useState(false);
+  const [taskEngineAvailable, setTaskEngineAvailable] = useState(false);
   const [busy, setBusy] = useState(false);
   const [approving, setApproving] = useState(false);
   const [notice, setNotice] = useState("");
@@ -60,7 +61,9 @@ export default function AgentScreen() {
   const refreshCatalog = useCallback(async () => {
     try {
       const items = await getAgentToolCatalog();
+      const taskEngine = items.find((item) => item.name === "text.analyze");
       const hermes = items.find((item) => item.name === "hermes.agent.turn");
+      setTaskEngineAvailable(Boolean(taskEngine?.available));
       const ai = items.find((item) => item.name === "ai.respond");
       setApproved(Boolean(hermes?.approved));
       setHermesAvailable(Boolean(hermes?.available));
@@ -136,6 +139,10 @@ export default function AgentScreen() {
   const submit = async () => {
     if (!user) { router.push("/auth"); return; }
     if (!prompt.trim() || busy) return;
+    if (operation === "text.analyze" && !taskEngineAvailable) {
+      setNotice("عامل المهام غير مفعّل على الخادم حاليًا. لا يمكن وضع مهمة في قائمة انتظار لن يتم تنفيذها.");
+      return;
+    }
     if (operation === "ai.respond" && !aiAvailable) {
       setNotice("مزود الذكاء الاصطناعي غير مضبوط على الخادم بعد. يلزم إعداد AI_PROVIDER وAI_BASE_URL وAI_API_KEY وAI_MODEL.");
       return;
@@ -271,7 +278,7 @@ export default function AgentScreen() {
               maxLength={20000}
             />
             <Text style={styles.counter}>{prompt.length.toLocaleString("en-US")} / 20,000</Text>
-            <Pressable style={[styles.primaryButton, (!prompt.trim() || busy || (operation === "hermes.agent.turn" && !approved) || (operation === "ai.respond" && !aiApproved)) && styles.disabled]} onPress={submit} disabled={!prompt.trim() || busy || (operation === "hermes.agent.turn" && !approved) || (operation === "ai.respond" && !aiApproved)}>
+            <Pressable style={[styles.primaryButton, (!prompt.trim() || busy || (operation === "text.analyze" && !taskEngineAvailable) || (operation === "hermes.agent.turn" && (!hermesAvailable || !approved)) || (operation === "ai.respond" && (!aiAvailable || !aiApproved))) && styles.disabled]} onPress={submit} disabled={!prompt.trim() || busy || (operation === "text.analyze" && !taskEngineAvailable) || (operation === "hermes.agent.turn" && (!hermesAvailable || !approved)) || (operation === "ai.respond" && (!aiAvailable || !aiApproved))}>
               {busy ? <ActivityIndicator color={colors.background} /> : <Text style={styles.primaryText}>إنشاء المهمة وتشغيلها</Text>}
             </Pressable>
           </View>
