@@ -50,6 +50,9 @@ class ToolRegistry:
     def get(self, name: str) -> ToolDefinition | None:
         return self._tools.get(name)
 
+    def requires_approval_scope(self, scope: str) -> bool:
+        return any(tool.requires_approval and tool.permission_scope == scope for tool in self._tools.values())
+
     def describe(self) -> list[dict[str, Any]]:
         return [
             {
