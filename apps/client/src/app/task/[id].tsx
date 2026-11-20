@@ -34,6 +34,10 @@ function statusLabel(status: string): string {
   return labels[status] ?? status;
 }
 
+function approvalKey(engineRunId: string, requestId: string): string {
+  return engineRunId + ":" + requestId;
+}
+
 function formatDate(value?: string): string {
   if (!value) return "غير متاح";
   const date = new Date(value);
@@ -131,12 +135,13 @@ export default function TaskDetailsScreen() {
   };
 
   const showApprovalDetails = async (engineRunId: string, requestId: string) => {
+    const key = approvalKey(engineRunId, requestId);
     if (!snapshot || approvalDetailsLoadingId) return;
-    setApprovalDetailsLoadingId(requestId);
+    setApprovalDetailsLoadingId(key);
     setNotice("");
     try {
       const details = await getAgentApprovalDetails(snapshot.task.id, engineRunId, requestId);
-      setApprovalDetails((current) => ({ ...current, [requestId]: details }));
+      setApprovalDetails((current) => ({ ...current, [key]: details }));
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "تعذر تحميل تفاصيل العملية.");
     } finally {
@@ -145,8 +150,9 @@ export default function TaskDetailsScreen() {
   };
 
   const resolveApproval = async (engineRunId: string, requestId: string, choice: "once" | "deny") => {
+    const key = approvalKey(engineRunId, requestId);
     if (!snapshot || approvalBusyId) return;
-    setApprovalBusyId(requestId);
+    setApprovalBusyId(key);
     setNotice("");
     setActionMessage("");
     try {
@@ -324,13 +330,13 @@ export default function TaskDetailsScreen() {
                     <View key={event.id} style={styles.approvalCard}>
                       <Text style={styles.approvalTitle}>المحرك ينتظر قرارك</Text>
                       <Text style={styles.muted}>اعرض تفاصيل العملية أولًا. لن تتم الموافقة قبل عرض ما أرسله Hermes بعد تنقيح بياناته.</Text>
-                      {approvalDetails[event.approval_request_id!] ? (
+                      {approvalDetails[approvalKey(event.engine_run_id, event.approval_request_id!)] ? (
                         <View style={styles.approvalDetails}>
-                          {!!approvalDetails[event.approval_request_id!].description && (
-                            <Text style={styles.body}>{approvalDetails[event.approval_request_id!].description}</Text>
+                          {!!approvalDetails[approvalKey(event.engine_run_id, event.approval_request_id!)].description && (
+                            <Text style={styles.body}>{approvalDetails[approvalKey(event.engine_run_id, event.approval_request_id!)].description}</Text>
                           )}
-                          {!!approvalDetails[event.approval_request_id!].command && (
-                            <Text selectable style={styles.approvalCommand}>{approvalDetails[event.approval_request_id!].command}</Text>
+                          {!!approvalDetails[approvalKey(event.engine_run_id, event.approval_request_id!)].command && (
+                            <Text selectable style={styles.approvalCommand}>{approvalDetails[approvalKey(event.engine_run_id, event.approval_request_id!)].command}</Text>
                           )}
                         </View>
                       ) : (
@@ -339,19 +345,19 @@ export default function TaskDetailsScreen() {
                           disabled={approvalDetailsLoadingId !== null}
                           onPress={() => void showApprovalDetails(event.engine_run_id, event.approval_request_id!)}
                         >
-                          {approvalDetailsLoadingId === event.approval_request_id
+                          {approvalDetailsLoadingId === approvalKey(event.engine_run_id, event.approval_request_id!)
                             ? <ActivityIndicator color={colors.gold} />
                             : <Text style={styles.steerText}>عرض تفاصيل العملية</Text>}
                         </Pressable>
                       )}
-                      {!!approvalDetails[event.approval_request_id!] && (
+                      {!!approvalDetails[approvalKey(event.engine_run_id, event.approval_request_id!)] && (
                         <View style={styles.approvalActions}>
                           <Pressable
                             style={[styles.approveButton, approvalBusyId !== null && styles.disabledButton]}
                             disabled={approvalBusyId !== null}
                             onPress={() => void resolveApproval(event.engine_run_id, event.approval_request_id!, "once")}
                           >
-                            {approvalBusyId === event.approval_request_id
+                            {approvalBusyId === approvalKey(event.engine_run_id, event.approval_request_id!)
                               ? <ActivityIndicator color={colors.background} />
                               : <Text style={styles.approveText}>موافقة لمرة واحدة</Text>}
                           </Pressable>
