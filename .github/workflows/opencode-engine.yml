@@ -85,6 +85,29 @@ jobs:
       - name: Build isolated OpenCode runtime image
         run: docker build --pull=false -f engines/opencode/Dockerfile -t suly-opencode:ci .
 
+      - name: Smoke-test the original OpenCode server in Docker
+        shell: bash
+        run: |
+          set -euo pipefail
+          cleanup() { docker rm -f suly-opencode-smoke >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker run -d --name suly-opencode-smoke \
+            -p 127.0.0.1:4096:4096 \
+            -e OPENCODE_SERVER_USERNAME=suly \
+            -e OPENCODE_SERVER_PASSWORD=ci-smoke-password-not-for-production \
+            suly-opencode:ci
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error \
+              --user 'suly:ci-smoke-password-not-for-production' \
+              http://127.0.0.1:4096/api/info >/tmp/opencode-info.json; then
+              python -c "import json; d=json.load(open('/tmp/opencode-info.json')); assert isinstance(d, dict)"
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs suly-opencode-smoke
+          exit 1
+
   verify-docker-runtime:
     name: Verify isolated Docker runtime primitives
     runs-on: ubuntu-latest
