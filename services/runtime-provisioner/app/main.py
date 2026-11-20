@@ -349,7 +349,7 @@ def runtime_results(runtime_id: str, authorization: str | None = Header(default=
         changed = [item for item in files if baseline.get(item["path"]) != item["sha256"]]
         deleted = sorted(set(baseline) - set(current))
         return {"runtime_id": runtime_id, "file_count": len(files), "changed_count": len(changed),
-                "deleted_paths": deleted, "total_bytes": total, "files": files, "changed_files": changed}
+                "deleted_paths": deleted, "total_bytes": total, "changed_files": changed}
     except HTTPException:
         raise
     except Exception as exc:
