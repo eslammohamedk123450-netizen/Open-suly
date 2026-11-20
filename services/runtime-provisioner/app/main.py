@@ -239,9 +239,7 @@ async def runtime_gateway(runtime_id: str, path: str, request: Request, authoriz
     method = request.method
     if not _allowed_opencode_route(method, route):
         raise HTTPException(404, "route_not_allowed")
-    body = await request.body()
-    if len(body) > 65536:
-        raise HTTPException(413, "request_too_large")
+    body = await _read_bounded_request_body(request, limit=65536)
     headers = {"Accept": request.headers.get("accept", "application/json")}
     if body:
         headers["Content-Type"] = request.headers.get("content-type", "application/json")
@@ -269,6 +267,30 @@ async def runtime_gateway(runtime_id: str, path: str, request: Request, authoriz
                 return Response(content, status_code=upstream.status_code, headers=safe_headers)
     except httpx.HTTPError as exc:
         raise HTTPException(502, "runtime_unreachable") from exc
+
+
+async def _read_bounded_request_body(request: Request, *, limit: int) -> bytes:
+    """Enforce request limits while streaming; never buffer an unbounded body."""
+    if not 1 <= limit <= 1024 * 1024:
+        raise ValueError("request_body_limit_invalid")
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            declared_size = int(declared)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(400, "invalid_content_length") from exc
+        if declared_size < 0:
+            raise HTTPException(400, "invalid_content_length")
+        if declared_size > limit:
+            raise HTTPException(413, "request_too_large")
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > limit:
+            raise HTTPException(413, "request_too_large")
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _runtime_token_from_request(value: str | None) -> str:
