@@ -33,6 +33,28 @@ class EngineRunStore:
         except (TypeError, ValueError) as exc:
             raise RuntimeError("engine_run_start_failed") from exc
 
+    def attach_upstream_run_id(
+        self,
+        run_id: UUID,
+        step: ClaimedStep,
+        upstream_run_id: str,
+    ) -> bool:
+        # نرفض المعرف غير النصي أو الفارغ قبل إرساله إلى قاعدة البيانات.
+        if not isinstance(upstream_run_id, str) or not 1 <= len(upstream_run_id.strip()) <= 128:
+            raise ValueError("invalid_upstream_run_id")
+        # نربط تشغيل Hermes بسجل المحاولة باستخدام lease العامل نفسه.
+        response = self._client.rpc(
+            "attach_engine_upstream_run",
+            {
+                "p_run_id": str(run_id),
+                "p_step_id": str(step.step_id),
+                "p_lease_token": str(step.lease_token),
+                "p_upstream_run_id": upstream_run_id.strip(),
+            },
+        ).execute()
+        # false تعني أن العامل فقد ملكية الخطوة أو أن السجل لم يعد صالحًا.
+        return bool(response.data)
+
     def finish(
         self,
         run_id: UUID,
