@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { colors } from "@/theme/tokens";
 import { useAuth } from "@/providers/AuthProvider";
 import {
@@ -47,8 +47,10 @@ function statusLabel(status: string): string {
 
 export default function AgentScreen() {
   const { user } = useAuth();
-  const [operation, setOperation] = useState<AgentOperation>("text.analyze");
-  const [prompt, setPrompt] = useState("");
+  const params = useLocalSearchParams<{ prompt?: string | string[] }>();
+  const initialPrompt = typeof params.prompt === "string" ? params.prompt : "";
+  const [operation, setOperation] = useState<AgentOperation>(initialPrompt ? "ai.respond" : "text.analyze");
+  const [prompt, setPrompt] = useState(initialPrompt);
   const [snapshot, setSnapshot] = useState<AgentTaskSnapshot | null>(null);
   const [approved, setApproved] = useState(false);
   const [aiApproved, setAiApproved] = useState(false);
@@ -327,8 +329,16 @@ export default function AgentScreen() {
                   </View>
                   <Text style={styles.modeHint}>المحاولة {step.attempt_count} من {step.max_attempts}</Text>
                   {!!step.error_message && <Text style={styles.error}>{step.error_message}</Text>}
-                  {step.output && Object.keys(step.output).length > 0 && (
-                    <Text style={styles.output}>{JSON.stringify(step.output, null, 2)}</Text>
+                  {typeof step.output?.content === "string" && (
+                    <Text selectable style={styles.output}>{step.output.content}</Text>
+                  )}
+                  {typeof step.output?.preview === "string" && (
+                    <Text selectable style={styles.output}>{step.output.preview}</Text>
+                  )}
+                  {step.output && Object.keys(step.output).length > 0
+                    && typeof step.output.content !== "string"
+                    && typeof step.output.preview !== "string" && (
+                    <Text selectable style={styles.output}>{JSON.stringify(step.output, null, 2)}</Text>
                   )}
                 </View>
               ))}
