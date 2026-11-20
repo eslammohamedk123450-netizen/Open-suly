@@ -25,7 +25,6 @@ _ALLOWED_ROUTES = frozenset({
     ("GET", "/api/skill"),
     ("GET", "/api/provider"),
 })
-_ALLOWED_SESSION_ACTIONS = frozenset({"prompt_async", "abort"})
 
 
 class OpenCodeTransportError(RuntimeError):
