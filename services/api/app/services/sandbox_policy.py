@@ -81,12 +81,26 @@ class DockerSandboxCommandBuilder:
         task_id: str,
         workspace_path: str | Path,
         command: tuple[str, ...] | list[str],
+        *,
+        engine_run_id: str | None = None,
     ) -> tuple[str, ...]:
-        """Return argv; callers must apply an independent wall-clock timeout."""
+        """Return argv for one attempt; callers must enforce a wall-clock timeout.
+
+        engine_run_id must be supplied by production provisioners so retries of
+        one task cannot collide on a Docker name or accidentally share a runtime.
+        The task_id fallback exists only for backwards-compatible policy tests.
+        """
         try:
             normalized_task_id = str(UUID(task_id))
         except (TypeError, ValueError) as exc:
             raise ValueError("invalid_sandbox_task_id") from exc
+        if engine_run_id is None:
+            normalized_run_id = normalized_task_id
+        else:
+            try:
+                normalized_run_id = str(UUID(engine_run_id))
+            except (TypeError, ValueError) as exc:
+                raise ValueError("invalid_sandbox_engine_run_id") from exc
         if not isinstance(command, (tuple, list)) or not command:
             raise ValueError("sandbox_command_required")
         if any(
@@ -118,9 +132,15 @@ class DockerSandboxCommandBuilder:
         limits = self.limits
         argv = [
             "docker", "run", "--rm", "--pull=never", "--init",
-            "--name", f"suly-task-{normalized_task_id}",
+            "--name", f"suly-run-{normalized_run_id}",
             "--label", f"com.suly.task-id={normalized_task_id}",
+            "--label", f"com.suly.engine-run-id={normalized_run_id}",
             "--network", "none",
+            "--pid", "private",
+            "--ipc", "private",
+            "--uts", "private",
+            "--restart", "no",
+            "--log-driver", "none",
             "--read-only",
             "--cap-drop", "ALL",
             "--security-opt", "no-new-privileges:true",
