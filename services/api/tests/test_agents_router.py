@@ -36,3 +36,11 @@ def test_agent_catalog_keeps_every_role_unavailable_without_enabled_engines(monk
     monkeypatch.setattr(agents, "build_engine_registry", lambda **_kwargs: registry)
     response = agents.list_agents(AuthenticatedUser(id="user-1", email=None))
     assert all(item["available"] is False for item in response["items"])
+
+
+def test_agent_catalog_endpoint_requires_authentication():
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    response = TestClient(app).get("/v1/agents")
+    assert response.status_code == 401
