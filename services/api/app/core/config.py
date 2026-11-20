@@ -24,6 +24,14 @@ class Settings(BaseSettings):
     ai_timeout_seconds: float = Field(default=45.0, ge=5.0, le=180.0)
     ai_max_output_tokens: int = Field(default=1200, ge=64, le=8192)
 
+    # Hermes Agent sidecar bridge is opt-in and disabled until its sandbox/tool policy is verified.
+    hermes_agent_enabled: bool = False
+    hermes_agent_base_url: str | None = None
+    hermes_agent_api_key: SecretStr | None = None
+    hermes_agent_model: str = "hermes-agent"
+    hermes_agent_timeout_seconds: float = Field(default=90.0, ge=5.0, le=300.0)
+    hermes_agent_max_output_chars: int = Field(default=12000, ge=256, le=50000)
+
     # Worker runtime is opt-in; never starts merely because the API boots.
     worker_enabled: bool = False
     worker_lease_seconds: int = Field(default=90, ge=15, le=900)
