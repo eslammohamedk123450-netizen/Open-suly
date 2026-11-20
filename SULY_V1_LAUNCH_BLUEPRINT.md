@@ -228,3 +228,6 @@ The task database foundation is live, but it must not be described as autonomous
 - Registry handlers must return JSON-serializable objects.
 - Tool output is size-bounded (64 KB by default, configurable per tool); invalid or oversized outputs fail before checkpoint persistence.
 - This is output validation, not a sandbox or a hard execution timeout.
+- Registry input must be a JSON object; tool outputs must be strict JSON (finite numbers and string object keys only) before checkpoint persistence.
+- Tests reject non-object inputs, NaN/Infinity, and non-string output keys.
+
