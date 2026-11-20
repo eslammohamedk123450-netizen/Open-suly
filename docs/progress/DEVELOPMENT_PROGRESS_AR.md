@@ -253,3 +253,16 @@ undefined
 - تحقق Platform CI وRepository baseline checks على commit 9b23db3b3d2d بنجاح؛ سجل API tests عدد 321 اختبارًا ناجحًا، كما نجح typecheck وExpo compatibility وweb export. كان هناك فشل سابق على commit أقدم بسبب fixture لم يتضمن جدول الأحداث، وتم إصلاحه قبل هذا النجاح.
 - التغييرات اللاحقة الخاصة بالتوثيق وواجهة عرض الأحداث تنتظر نتائج CI على أحدث HEAD؛ لا تُنسب نتيجة 321 اختبارًا إلى commits أحدث قبل اكتمال فحوصاتها.
 - لا تزال migration غير مطبقة، ولا يوجد WebSocket أو Hermes runtime حي أو worker منشور. واجهة التقدم تعتمد حاليًا على polling شاشة المهمة.
+
+
+## جلسة تطوير — 2026-11-20 (التحكم في تشغيل Hermes من واجهة المهمة)
+
+- أضيف العميل steer_agent_run لإرسال توجيه محدود إلى تشغيل Hermes موجود فقط عبر POST /v1/runs/{run_id}/steer؛ لا ينشئ تشغيلًا جديدًا ولا يقبل معرف تشغيل غير آمن.
+- أضيف endpoint محمي POST /v1/tasks/{task_id}/engine-runs/{run_id}/steer. يتحقق من ملكية المستخدم للمهمة والمحرك، وحالة المهمة والتشغيل، ووجود lease صالح للخطوة، وإعدادات Hermes والعزل قبل الاتصال بالخدمة الخارجية.
+- بعد قبول التوجيه، يحاول الخادم تسجيل حدث metadata باسم run.steered فقط عبر RPC يعيد التحقق من lease؛ لا يتم تخزين نص التوجيه.
+- أضيفت اختبارات للـclient والـAPI: قبول التوجيه، رفض التشغيل المنتهي، ومنع الوصول لمهمة مستخدم آخر. أحدث تشغيل API CI على commit a7214c87: 329 passed, 2 warnings. نجاح API tests مؤكد؛ Client typecheck/export لنفس commit كان ما يزال قيد التنفيذ عند آخر فحص.
+- شاشة تفاصيل المهمة أصبحت تعرض حقل توجيه وزرًا فقط عندما يكون Hermes run نشطًا. Platform CI على commit 6b09cdb4 نجح: API tests + TypeScript typecheck + Expo compatibility + Web export.
+- أضيف تحديث توثيقي في HERMES_CAPABILITY_INTEGRATION_STATUS.md يوضح ما تم وما لا يزال مؤجلًا: موافقات Hermes الأصلية، clarify، sessions، skills، memory، وsubagents.
+- فشل تشغيل SULY Free Test Worker المجدول في GitHub Actions عند خطوة التحقق من الأسرار المطلوبة (SUPABASE_URL وSUPABASE_SECRET_KEY)، قبل تثبيت المتطلبات أو تشغيل worker؛ لذلك لم تُعالج أي مهام ولم يحدث تنفيذ حي عبر هذا التشغيل. لم نضف أسرارًا أو نفعّل worker.
+- لا تزال migration 20261120235000_engine_run_events.sql غير مطبقة، ولا يوجد deployment أو تشغيل Hermes حي. يجب تطبيق migration في disposable/staging أولًا قبل نشر API الذي يعتمد على الجدول.
+- آخر HEAD بعد تحديث التوثيق: 12eb2b3754b1؛ فحوصات هذا التحديث تنتظر الاكتمال، ولا تُنسب نتائج commits السابقة إليه.
