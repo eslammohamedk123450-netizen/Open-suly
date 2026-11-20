@@ -38,7 +38,11 @@ class Query:
         return self
 
     def execute(self):
-        return SimpleNamespace(data=self.rows)
+        rows = self.rows
+        if self.selection and self.selection != "*":
+            allowed = set(self.selection.split(","))
+            rows = [{key: value for key, value in row.items() if key in allowed} for row in rows]
+        return SimpleNamespace(data=rows)
 
 
 class Admin:
