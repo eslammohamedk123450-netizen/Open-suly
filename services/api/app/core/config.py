@@ -26,6 +26,8 @@ class Settings(BaseSettings):
 
     # Hermes Agent sidecar bridge is opt-in and disabled until its sandbox/tool policy is verified.
     hermes_agent_enabled: bool = False
+    # Operator attestation only; this does not create isolation. Keep false until a per-task runtime manager exists.
+    hermes_agent_isolation_confirmed: bool = False
     hermes_agent_base_url: str | None = None
     hermes_agent_api_key: SecretStr | None = None
     hermes_agent_model: str = "hermes-agent"
