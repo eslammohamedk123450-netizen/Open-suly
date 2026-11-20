@@ -11,7 +11,10 @@ class Workspace:
     def snapshot(self, *, user_id, project_id):
         return {
             "revision": "a" * 64,
-            "files": [{"path": "src/main.py", "content": "print('before')", "sha256": "b" * 64}],
+            "files": [
+                {"path": "src/main.py", "content": "print('before')", "sha256": "b" * 64},
+                {"path": "old.py", "content": "legacy = True", "sha256": "c" * 64},
+            ],
         }
 
 
