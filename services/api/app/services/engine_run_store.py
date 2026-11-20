@@ -74,3 +74,24 @@ class EngineRunStore:
             },
         ).execute()
         return bool(response.data)
+
+    def reconcile_orphans(self, batch_size: int = 100) -> int:
+        """أغلق سجلات المحركات اليتيمة بدفعة محدودة عبر RPC للخادم فقط.
+
+        لا يوقف هذا الإجراء عملية خارجية؛ إيقاف الـruntime مسؤولية reconciler
+        منفصل يستخدم معرف التشغيل الخارجي بعد التحقق من سياسة العزل.
+        """
+        if not isinstance(batch_size, int) or not 1 <= batch_size <= 500:
+            raise ValueError("invalid_reconciliation_batch_size")
+        response = self._client.rpc(
+            "reconcile_orphan_engine_runs",
+            {"p_batch_size": batch_size},
+        ).execute()
+        value = response.data
+        if isinstance(value, list):
+            value = value[0] if value else None
+        if isinstance(value, dict):
+            value = value.get("reconcile_orphan_engine_runs")
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0 or value > batch_size:
+            raise RuntimeError("engine_run_reconciliation_invalid_response")
+        return value
