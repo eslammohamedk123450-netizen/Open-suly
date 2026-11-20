@@ -302,6 +302,8 @@ class OpenCodeHTTPClient:
                     while b"\\n" in line_buffer:
                         raw_line, _, remainder = line_buffer.partition(b"\\n")
                         line_buffer = bytearray(remainder)
+                        if len(raw_line) > max_event_bytes:
+                            raise OpenCodeTransportError("opencode_event_too_large")
                         if raw_line.endswith(b"\\r"):
                             raw_line = raw_line[:-1]
                         if not raw_line:
