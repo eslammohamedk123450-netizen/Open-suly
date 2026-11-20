@@ -150,7 +150,13 @@ export async function retryAgentTask(taskId: string): Promise<{
   manual_retry_count: number;
   manual_retry_limit: number;
 }> {
-  return request("/v1/tasks/" + encodeURIComponent(taskId) + "/retry", {
+  return request<{
+    task_id: string;
+    status: string;
+    reset_steps: number;
+    manual_retry_count: number;
+    manual_retry_limit: number;
+  }>("/v1/tasks/" + encodeURIComponent(taskId) + "/retry", {
     method: "POST",
     body: "{}",
   });
