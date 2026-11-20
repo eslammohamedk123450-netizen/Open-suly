@@ -60,3 +60,32 @@ export async function deleteProjectFile(projectId: string, path: string): Promis
     { method: "DELETE" },
   );
 }
+
+export type ProjectFileRevision = {
+  id: string;
+  path: string;
+  size_bytes: number;
+  created_at: string;
+};
+
+export type ProjectFileRevisionContent = ProjectFileRevision & { content: string };
+
+export async function listProjectFileHistory(projectId: string, filePath: string): Promise<ProjectFileRevision[]> {
+  const result = await request<{ items: ProjectFileRevision[] }>(
+    "/v1/projects/" + encodeURIComponent(projectId) + "/file/history?path=" + encodeURIComponent(filePath),
+  );
+  return result.items ?? [];
+}
+
+export async function readProjectFileRevision(projectId: string, revisionId: string): Promise<ProjectFileRevisionContent> {
+  return request<ProjectFileRevisionContent>(
+    "/v1/projects/" + encodeURIComponent(projectId) + "/file/history/" + encodeURIComponent(revisionId),
+  );
+}
+
+export async function restoreProjectFileRevision(projectId: string, revisionId: string): Promise<{ restored: boolean; path: string; updated_at: string }> {
+  return request(
+    "/v1/projects/" + encodeURIComponent(projectId) + "/file/history/" + encodeURIComponent(revisionId) + "/restore",
+    { method: "POST", body: "{}" },
+  );
+}
