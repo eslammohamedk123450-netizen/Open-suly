@@ -260,3 +260,39 @@ For every engine:
 - أضيف اختبار يثبت عدم تكرار التنبيه عبر دورات reconciler متتالية.
 - Commits: `cd3dc4858a64` (deduplication), `61dc3432b595` (test).
 - Baseline على `cd3dc4858a64` نجح؛ CI للـHEAD الأحدث queued وقت التوثيق.
+
+## تحديث حالة Hermes — 2026-11-20 (بعد دفعات run lifecycle والموافقات)
+
+الحالة الموثقة الأحدث تتقدم على نقاط checkpoint التاريخية أعلاه عند التعارض:
+
+### المرحلة B — Engine lifecycle (الحالة الحالية)
+- [x] SULY-side run record لكل attempt مع lease guards
+- [x] معالجة orphan run وstop_pending مع reconciler اختياري
+- [x] idempotent run admission عبر Idempotency-Key وpersisted upstream run ID
+- [x] status polling محدود وSSE metadata-only مع event persistence
+- [x] cooperative stop مع انتظار terminal state محدود؛ لم يتم إثبات runtime حي
+- [ ] disposable Postgres/Supabase integration tests وتطبيق migrations على staging
+
+### المرحلة C — Hermes adapter (الحالة الحالية)
+- [x] immutable upstream pin ومراجعة Runs API وMIT license
+- [x] POST run وstatus polling وstop وsteer
+- [x] SSE allowlist وتخزين metadata آمن مربوط بالـlease
+- [x] exact-request approvals بقرار once أو deny فقط، دون session/always/resolve-all
+- [x] واجهة task تعرض progress وأزرار الموافقة والرفض والتوجيه
+- [ ] clarify وresolve-unknown، sessions، skills، memory، subagents
+- [ ] runtime manager فعلي per-task isolation مع image digest وworkspace lifecycle
+- [ ] CPU/memory/PID/disk limits داخل runtime فعلي واختبارها
+- [ ] egress proxy default-deny مع allowlist واختبارات SSRF
+- [ ] non-root/read-only/no-host-mount/no-Docker-socket داخل تشغيل فعلي
+- [ ] end-to-end Hermes runtime + provider smoke test بعد الموافقة الصريحة
+
+### تحقق CI لهذه الدفعة
+- Commit 74311d9a: Platform CI وRepository baseline checks نجحا بالكامل (API tests، TypeScript، Expo compatibility، Web export).
+- Commit 85abbbaa: Repository baseline checks نجح؛ API tests نجحت، وفحص Client كان قيد التنفيذ عند التسجيل.
+- Commits التالية الخاصة بدمج واجهة الموافقات والتوثيق ما زالت تحت CI حتى اكتمال أحدث run.
+- Migration 20261121010000_engine_run_approval_metadata.sql جديدة وغير مطبقة. يجب تشغيلها في قاعدة disposable/staging، مع التحقق من توقيع RPC الجديد وقيود البيانات قبل أي نشر.
+
+### حدود الأمان والتشغيل
+- Worker وHermes وprovider ما زالوا disabled افتراضيًا.
+- لا توجد migrations مطبقة على Supabase production ولا أي deployment تم في هذه الدفعة.
+- اختبارات HTTP mock لا تعادل اختبار Hermes container حقيقيًا؛ لا يتم وصف أي engine على أنه live أو production-ready.
