@@ -69,6 +69,52 @@ class EngineRunStore:
             raise RuntimeError("engine_run_attach_invalid_response")
         return response.data
 
+    def append_event(
+        self,
+        run_id: UUID,
+        step: ClaimedStep,
+        event: dict[str, str | int | float],
+    ) -> bool:
+        """Persist allow-listed progress metadata only while the task lease is valid."""
+        allowed_events = frozenset({
+            "tool.started", "tool.completed", "subagent.start", "subagent.complete",
+            "run.queued", "run.completed", "run.failed", "run.cancelled",
+            "run.interrupted", "run.stopping", "run.steered",
+            "approval.request", "approval.responded",
+        })
+        if not isinstance(event, dict):
+            raise ValueError("invalid_engine_run_event")
+        event_name = event.get("event")
+        if not isinstance(event_name, str) or event_name not in allowed_events:
+            raise ValueError("invalid_engine_run_event_name")
+        event_seq = event.get("seq")
+        if event_seq is not None and (
+            isinstance(event_seq, bool) or not isinstance(event_seq, int) or event_seq < 0
+        ):
+            raise ValueError("invalid_engine_run_event_sequence")
+        event_timestamp = event.get("timestamp")
+        if event_timestamp is not None and (
+            isinstance(event_timestamp, bool)
+            or not isinstance(event_timestamp, (int, float))
+            or not 0 <= event_timestamp <= 4_102_444_800
+        ):
+            raise ValueError("invalid_engine_run_event_timestamp")
+
+        response = self._client.rpc(
+            "append_engine_run_event",
+            {
+                "p_run_id": str(run_id),
+                "p_step_id": str(step.step_id),
+                "p_lease_token": str(step.lease_token),
+                "p_event_name": event_name,
+                "p_event_seq": event_seq,
+                "p_event_timestamp": event_timestamp,
+            },
+        ).execute()
+        if not isinstance(response.data, bool):
+            raise RuntimeError("engine_run_event_append_invalid_response")
+        return response.data
+
     def finish(
         self,
         run_id: UUID,
