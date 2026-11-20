@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import ipaddress
 import socket
+import unicodedata
 from typing import Callable, Iterable
 from urllib.parse import urlsplit
 
@@ -68,7 +69,12 @@ class BrowserNetworkPolicy:
 
     def validate(self, url: str) -> ValidatedBrowserTarget:
         """Validate one navigation target; call again for each redirect."""
-        if not isinstance(url, str) or not url or len(url) > 4096 or any(ord(ch) < 32 for ch in url):
+        if (
+            not isinstance(url, str)
+            or not url
+            or len(url) > 4096
+            or any(unicodedata.category(ch) in {"Cc", "Cf", "Cs"} for ch in url)
+        ):
             raise ValueError('browser_url_invalid')
         try:
             parsed = urlsplit(url)
