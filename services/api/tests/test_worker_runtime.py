@@ -116,4 +116,41 @@ def test_unsupported_planned_operation_is_failed_not_completed():
 
     assert result == "failed_or_retry_scheduled"
     assert rpc.calls[-1][0] == "fail_task_step"
-    assert rpc.calls[-1][1]["p_error_code"] == "ValueError"
+    assert rpc.calls[-1][1]["p_error_code"] == "tool_execution_failed"
+
+
+
+def test_worker_does_not_persist_raw_handler_exception_details():
+    secret_like_detail = "provider-key=do-not-store-this"
+    rpc = _RpcSequence([
+        STEP_DATA,
+        True,
+        {"accepted": True, "step_status": "pending"},
+    ])
+    worker = TaskWorker(rpc, "redaction-test-worker")
+
+    def failing_handler(_step):
+        raise RuntimeError(secret_like_detail)
+
+    result = worker.run_once(failing_handler)
+
+    assert result == "failed_or_retry_scheduled"
+    failure_args = rpc.calls[-1][1]
+    assert failure_args["p_error_code"] == "tool_execution_failed"
+    assert secret_like_detail not in failure_args["p_error_message"]
+    assert "Sensitive diagnostic details were not stored" in failure_args["p_error_message"]
+
+
+def test_worker_does_not_complete_when_handler_output_is_not_object():
+    rpc = _RpcSequence([
+        STEP_DATA,
+        True,
+        {"accepted": True, "step_status": "pending"},
+    ])
+    worker = TaskWorker(rpc, "invalid-output-worker")
+
+    result = worker.run_once(lambda _step: ["not", "an", "object"])
+
+    assert result == "failed_or_retry_scheduled"
+    assert rpc.calls[-1][0] == "fail_task_step"
+    assert all(call[0] != "complete_task_step" for call in rpc.calls)
