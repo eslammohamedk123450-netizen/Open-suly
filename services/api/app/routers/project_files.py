@@ -62,12 +62,12 @@ def list_project_files(
         with client:
             _owned_project(client, project_id, user.id)
             rows = (client.table("project_files")
-                .select("id,path,content,updated_at")
+                .select("id,path,size_bytes,updated_at")
                 .eq("project_id", str(project_id)).eq("user_id", user.id)
                 .order("path").limit(MAX_PROJECT_FILES).execute().data)
         return {"items": [
             {"id": row["id"], "path": row["path"],
-             "size": len(str(row.get("content") or "").encode("utf-8")),
+             "size": row["size_bytes"],
              "updated_at": row["updated_at"]}
             for row in (rows or [])
         ]}
@@ -128,6 +128,7 @@ def save_project_file(
             rows = (client.table("project_files").upsert({
                 "project_id": str(project_id), "user_id": user.id,
                 "path": safe_path, "content": request.content,
+                "size_bytes": len(request.content.encode("utf-8")),
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }, on_conflict="project_id,path").execute().data)
         if not rows:
