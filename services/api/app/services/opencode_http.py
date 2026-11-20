@@ -182,7 +182,7 @@ class OpenCodeHTTPClient:
             raise ValueError("opencode_session_id_invalid")
         if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > _MAX_PROMPT_CHARS:
             raise ValueError("opencode_prompt_invalid")
-        if any(ord(char) < 32 and char not in "\\n\\r\\t" for char in prompt):
+        if any(ord(char) < 32 and char not in "\n\r\t" for char in prompt):
             raise ValueError("opencode_prompt_invalid")
         path = f"/api/session/{session_id}/prompt"
         if not re.fullmatch(r"/api/session/ses[A-Za-z0-9_-]{1,128}/prompt", path):
