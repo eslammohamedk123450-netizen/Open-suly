@@ -18,6 +18,7 @@ from uuid import UUID
 
 logger = logging.getLogger("suly.runtime_broker")
 _ENGINE_ID = re.compile(r"^[a-z][a-z0-9-]{1,62}$")
+_TOKEN = re.compile(r"^[A-Za-z0-9._~+/-]{32,4096}={0,2}$")
 _DNS_HOST = re.compile(r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$")
 
 
@@ -105,11 +106,7 @@ class RuntimeLease:
             or self.engine_id != engine_id
         ):
             raise ValueError("runtime_lease_engine_mismatch")
-        if (
-            not isinstance(self.access_token, str)
-            or len(self.access_token) < 32
-            or not self.access_token.isascii()
-        ):
+        if not isinstance(self.access_token, str) or not _TOKEN.fullmatch(self.access_token):
             raise ValueError("runtime_lease_credential_invalid")
 
         try:
