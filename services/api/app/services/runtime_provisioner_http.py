@@ -157,6 +157,59 @@ class HTTPSRuntimeLeaseProvider:
             raise RuntimeProvisionerError("runtime_provisioner_expired_lease")
         return lease
 
+    def recover(
+        self,
+        runtime_id: str,
+        task_id: str,
+        engine_run_id: str,
+        engine_id: str = "opencode",
+    ) -> RuntimeLease:
+        """Rotate and recover a live task lease after an API/worker restart."""
+        try:
+            runtime, task, run = UUID(runtime_id), UUID(task_id), UUID(engine_run_id)
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise ValueError("runtime_recovery_identity_invalid") from exc
+        if (
+            str(runtime) != runtime_id
+            or str(task) != task_id
+            or str(run) != engine_run_id
+            or engine_id != "opencode"
+        ):
+            raise ValueError("runtime_recovery_identity_invalid")
+        try:
+            with self._client.stream(
+                "POST",
+                f"/v1/runtimes/{runtime_id}/recover",
+                json={"task_id": task_id, "engine_run_id": engine_run_id},
+            ) as response:
+                data = self._json(response, frozenset({200}))
+        except RuntimeProvisionerError:
+            raise
+        except httpx.HTTPError as exc:
+            raise RuntimeProvisionerError("runtime_recovery_unavailable") from exc
+        try:
+            lease = RuntimeLease(
+                runtime_id=str(data["runtime_id"]),
+                task_id=str(data["task_id"]),
+                engine_run_id=str(data["engine_run_id"]),
+                engine_id=str(data["engine_id"]),
+                base_url=str(data["base_url"]),
+                access_token=str(data["access_token"]),
+                expires_at=float(data["expires_at"]),
+                gateway_path=str(data["gateway_path"]),
+            )
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            raise RuntimeProvisionerError("runtime_recovery_invalid_lease") from exc
+        if (
+            lease.runtime_id != runtime_id
+            or lease.task_id != task_id
+            or lease.engine_run_id != engine_run_id
+            or lease.engine_id != engine_id
+            or lease.expires_at <= time()
+        ):
+            raise RuntimeProvisionerError("runtime_recovery_identity_mismatch")
+        return lease
+
     def run_task(self, lease: RuntimeLease, *, prompt: str, title: str = "SULY task") -> dict[str, Any]:
         """Execute a bounded prompt in the leased OpenCode runtime and collect its diff snapshot."""
         if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 32_000:
