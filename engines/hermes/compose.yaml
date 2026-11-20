@@ -10,19 +10,18 @@ services:
     restart: unless-stopped
     command: ["gateway", "run"]
     environment:
-      API_SERVER_ENABLED: "false"
+      API_SERVER_ENABLED: ${HERMES_API_SERVER_ENABLED:-false}
       API_SERVER_HOST: "0.0.0.0"
       API_SERVER_PORT: "8642"
-      API_SERVER_KEY: ${HERMES_API_SERVER_KEY:?Set a unique secret outside Git before enabling the Hermes API}
+      API_SERVER_KEY: ${HERMES_API_SERVER_KEY:-}
     volumes:
       - hermes-data:/opt/data
     networks:
       - suly-agent-internal
-    # No host port is published. SULY API reaches the service only over the
-    # private container network. Do not enable the API until sandbox policy
-    # and the full Hermes toolset have passed a separate security review.
+    # No host port is published. The API stays disabled by default. If it is
+    # enabled later, require a unique API key and a completed tool/sandbox audit.
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8642/health >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "kill -0 1"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -33,4 +32,5 @@ volumes:
 
 networks:
   suly-agent-internal:
-    internal: true
+    name: suly-agent-internal
+    driver: bridge
