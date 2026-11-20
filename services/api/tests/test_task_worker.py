@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from threading import Event
+from time import sleep
 from uuid import UUID
 
 import pytest
@@ -80,3 +82,58 @@ def test_run_once_reports_stale_lease_without_claiming_success():
     worker = TaskWorker(client, "worker-a")
     assert worker.run_once(lambda _step: {"ok": True}) == "lease_lost"
     assert client.calls[1][0] == "renew_task_step_lease"
+
+
+def test_long_handler_renews_lease_before_checkpoint():
+    client = FakeRpc([STEP, True, True, True])
+    worker = TaskWorker(client, "worker-heartbeat", heartbeat_interval_seconds=0.01)
+    heartbeat_seen = Event()
+
+    original_rpc = client.rpc
+
+    def tracked_rpc(name, args):
+        if name == "renew_task_step_lease" and len(client.calls) >= 2:
+            heartbeat_seen.set()
+        return original_rpc(name, args)
+
+    client.rpc = tracked_rpc
+
+    def long_handler(_step):
+        assert heartbeat_seen.wait(1)
+        return {"ok": True}
+
+    assert worker.run_once(long_handler) == "completed"
+    assert [call[0] for call in client.calls] == [
+        "claim_task_step",
+        "renew_task_step_lease",
+        "renew_task_step_lease",
+        "complete_task_step",
+    ]
+
+
+def test_worker_never_checkpoints_after_heartbeat_loses_lease():
+    client = FakeRpc([STEP, True, False])
+    worker = TaskWorker(client, "worker-lost-lease", heartbeat_interval_seconds=0.01)
+    heartbeat_seen = Event()
+    original_rpc = client.rpc
+
+    def tracked_rpc(name, args):
+        result = original_rpc(name, args)
+        if name == "renew_task_step_lease" and len(client.calls) >= 3:
+            heartbeat_seen.set()
+        return result
+
+    client.rpc = tracked_rpc
+
+    def long_handler(_step):
+        assert heartbeat_seen.wait(1)
+        sleep(0.02)
+        return {"ok": True}
+
+    assert worker.run_once(long_handler) == "lease_lost"
+    assert all(call[0] != "complete_task_step" for call in client.calls)
+
+
+def test_worker_rejects_heartbeat_interval_longer_than_half_lease():
+    with pytest.raises(ValueError, match="heartbeat interval"):
+        TaskWorker(object(), "worker-a", lease_seconds=30, heartbeat_interval_seconds=16)
