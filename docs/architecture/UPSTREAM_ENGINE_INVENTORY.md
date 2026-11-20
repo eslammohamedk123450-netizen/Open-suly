@@ -11,7 +11,7 @@
 - Select one backend per task/capability by policy. Do not run overlapping agents by default.
 - Never copy or vendor upstream code until the exact commit's LICENSE/NOTICE, dependency licenses, provenance, and security model have been reviewed.
 - GitHub metadata below is an initial discovery snapshot. The SPDX field is repository API metadata only; it is **not** a substitute for inspecting the exact pinned revision's LICENSE/NOTICE. `NOASSERTION` is a hard license-review blocker.
-- Only Hermes currently has an explicit source pin recorded in SULY: `9f47677483d1b4de4d1a88d37b3b7ca18b18b215`. Other projects must be pinned after their source and license audit.
+- Only Hermes currently has an explicit source pin recorded in SULY: `2de9f51b8008a7d49a49221c184f2f11cbfc4af1`. Other projects must be pinned after their source and license audit.
 
 ## Repository inventory
 
@@ -76,4 +76,4 @@ This first pass records GitHub repository metadata (default branch, primary lang
 
 ## Hermes exact-source audit update (2026-11-20)
 
-The immutable Hermes source pin in `engines/hermes/compose.yaml` is verified as commit `9f47677483d1b4de4d1a88d37b3b7ca18b18b215`; its exact `LICENSE` is MIT. The pinned source includes the native Runs API for run creation, status polling, SSE events, stop requests, and idempotent admission. Upstream explicitly describes Hermes as a single-tenant personal agent and requires whole-process OS isolation for untrusted/shared production use. SULY will not expose one shared Hermes process as a multi-tenant security boundary. Per-tenant/task isolation, egress controls, resource limits, and full dependency/license review remain mandatory blockers.
+The current immutable Hermes source pin in `engines/hermes/compose.yaml` and `engines/hermes/README.md` is `2de9f51b8008a7d49a49221c184f2f11cbfc4af1`; the earlier `9f47677483d1b4de4d1a88d37b3b7ca18b18b215` was a valid older commit and has been superseded. The exact current revision's LICENSE is MIT. It includes the native Runs API for run creation, status polling, SSE events, stop requests, and idempotent admission. Upstream explicitly describes Hermes as a single-tenant personal agent and requires whole-process OS isolation for untrusted/shared production use. SULY will not expose one shared Hermes process as a multi-tenant security boundary. Per-tenant/task isolation, egress controls, resource limits, and full dependency/license review remain mandatory blockers.
