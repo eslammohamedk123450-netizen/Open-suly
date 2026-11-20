@@ -30,5 +30,4 @@ def list_opencode_sessions(
             )
         return {"items": rows}
     except Exception as exc:
-        # Do not reveal whether another user's project or session exists.
-        raise HTTPException(status_code=404, detail="Project sessions are unavailable.") from exc
+        raise HTTPException(status_code=503, detail="Could not load project sessions.") from exc
