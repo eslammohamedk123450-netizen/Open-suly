@@ -458,7 +458,7 @@ async def _bounded_opencode_json(client: httpx.AsyncClient, path: str, payload: 
 async def execute(runtime_id: str, body: ExecuteRequest, authorization: str | None = Header(default=None)):
     row = _runtime(runtime_id, _runtime_token_from_request(authorization))
     base = f"http://127.0.0.1:{row['host_port']}"
-    auth = ("suly", _runtime_token_from_request(authorization))
+    auth = ("opencode", _runtime_token_from_request(authorization))
     try:
         async with httpx.AsyncClient(base_url=base, auth=auth, timeout=httpx.Timeout(900, connect=5), trust_env=False) as client:
             session_id = body.session_id
