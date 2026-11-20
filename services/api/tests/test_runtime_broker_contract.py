@@ -375,3 +375,25 @@ def test_failed_execution_releases_runtime_immediately():
         broker.run_task(TASK_ID, RUN_ID, ENGINE_ID, files=[], prompt="fail")
     assert broker.active_count == 0
     assert provider.released == [lease.runtime_id]
+
+def test_runtime_broker_recovers_lease_after_process_restart():
+    lease = make_lease()
+
+    class RecoveringProvider(FakeProvider):
+        def recover(self, runtime_id, task_id, engine_run_id, engine_id="opencode"):
+            assert runtime_id == lease.runtime_id
+            assert task_id == TASK_ID
+            assert engine_run_id == RUN_ID
+            assert engine_id == ENGINE_ID
+            return lease
+
+    broker = TaskScopedRuntimeBroker(
+        RecoveringProvider([]),
+        allowed_origins=ORIGINS,
+    )
+
+    recovered = broker.recover(lease.runtime_id, TASK_ID, RUN_ID, ENGINE_ID)
+
+    assert recovered is lease
+    assert broker.active_count == 1
+    assert broker.lease_for_attempt(TASK_ID, RUN_ID, ENGINE_ID) is lease
