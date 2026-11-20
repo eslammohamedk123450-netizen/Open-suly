@@ -81,3 +81,10 @@ A pure validation module now exists at `services/api/app/services/browser_networ
 - Unit tests cover URL parsing, host/subdomain policy, ports, private DNS answers, IPv4/IPv6 literals, shorthand/integer/hex IPv4, and resolver failures.
 
 This is only a preflight policy helper. It does not make network requests, pin DNS answers to the actual browser connection, inspect redirects/subresources, or replace a default-deny egress proxy. The Browser Use runtime must re-run policy on every redirect and the network layer must enforce the resolved destination at connection time. The module is not yet wired into a live browser runner; Browser Use remains disabled.
+
+
+### Additional URL canonicalization checks
+
+- The preflight rejects Unicode control/format/surrogate characters, including bidi overrides, in the input URL.
+- It rejects legacy numeric IPv4 forms such as abbreviated, integer, and hexadecimal host encodings in addition to ordinary IPv4/IPv6 literals.
+- Explicit port zero is rejected rather than treated as an omitted/default port.
