@@ -89,3 +89,26 @@ export async function restoreProjectFileRevision(projectId: string, revisionId: 
     { method: "POST", body: JSON.stringify({ expected_updated_at: expectedUpdatedAt }) },
   );
 }
+
+
+export type ProjectFileDiffPreview = {
+  path: string;
+  has_changes: boolean;
+  base_updated_at: string | null;
+  diff: string;
+};
+
+export async function previewProjectFile(
+  projectId: string,
+  path: string,
+  content: string,
+  expectedUpdatedAt: string | null,
+): Promise<ProjectFileDiffPreview> {
+  if (new TextEncoder().encode(content).byteLength > 256 * 1024) {
+    throw new Error("الحد الأقصى لحجم الملف 256 كيلوبايت.");
+  }
+  return request(
+    "/v1/projects/" + encodeURIComponent(projectId) + "/file/preview?path=" + encodeURIComponent(path),
+    { method: "POST", body: JSON.stringify({ content, expected_updated_at: expectedUpdatedAt }) },
+  );
+}
