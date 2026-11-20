@@ -162,3 +162,56 @@ def test_auto_plan_fails_closed_for_unsupported_task(monkeypatch):
 def test_auto_plan_requires_authentication():
     response = client.post("/v1/tasks/00000000-0000-0000-0000-000000000001/auto-plan")
     assert response.status_code == 401
+
+
+class _RetryRpc:
+    def __init__(self, result=None, error=None):
+        self.result = result
+        self.error = error
+        self.calls = []
+    def __enter__(self): return self
+    def __exit__(self, *_args): return False
+    def rpc(self, name, args):
+        self.calls.append((name, args))
+        def execute():
+            if self.error:
+                raise RuntimeError(self.error)
+            return SimpleNamespace(data=self.result)
+        return SimpleNamespace(execute=execute)
+
+
+def test_retry_failed_task_calls_bounded_owner_scoped_rpc(monkeypatch):
+    admin = _RetryRpc({
+        "task_id": "00000000-0000-0000-0000-000000000001",
+        "status": "ready",
+        "reset_steps": 1,
+        "manual_retry_count": 1,
+        "manual_retry_limit": 2,
+    })
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    try:
+        response = client.post("/v1/tasks/00000000-0000-0000-0000-000000000001/retry")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ready"
+    assert response.json()["manual_retry_count"] == 1
+    assert admin.calls == [("retry_failed_task", {
+        "p_task_id": "00000000-0000-0000-0000-000000000001",
+        "p_user_id": "test-user",
+    })]
+
+
+def test_retry_failed_task_rejects_manual_retry_limit(monkeypatch):
+    admin = _RetryRpc(error="manual_retry_limit_reached")
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    try:
+        response = client.post("/v1/tasks/00000000-0000-0000-0000-000000000001/retry")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 409
+    assert "retry limit" in response.json()["detail"]
