@@ -28,6 +28,8 @@ Arabic-first with correct RTL, English support, a chat-first home screen, a dedi
 - [Fresh product architecture](./SULY_MASTER_ARCHITECTURE.md)
 - [New delivery roadmap](./SULY_V1_LAUNCH_BLUEPRINT.md)
 - [Open-source engine integration architecture](./docs/architecture/OPEN_SOURCE_ENGINE_INTEGRATION.md)
+- [Engine adapter contract](./docs/architecture/ENGINE_ADAPTER_CONTRACT.md)
+- [Upstream engine inventory](./docs/architecture/UPSTREAM_ENGINE_INVENTORY.md)
 - [Supabase clean-slate record](./docs/operations/supabase-clean-slate.md)
 - [Agent runtime local smoke test](./docs/testing/AGENT_RUNTIME_SMOKE_TEST.md)
 - [Hermes integration status](./docs/architecture/HERMES_CAPABILITY_INTEGRATION_STATUS.md)
