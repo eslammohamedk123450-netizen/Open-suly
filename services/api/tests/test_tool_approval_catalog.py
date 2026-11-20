@@ -71,6 +71,10 @@ def test_catalog_reports_hermes_available_only_when_runtime_is_configured(monkey
             return frozenset()
 
     class FakeSettings:
+        ai_provider = "disabled"
+        ai_base_url = None
+        ai_api_key = None
+        ai_model = None
         hermes_agent_enabled = True
         hermes_agent_base_url = "http://hermes.internal:8642"
         hermes_agent_api_key = object()
