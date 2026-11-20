@@ -173,6 +173,24 @@ export async function getAgentTask(taskId: string): Promise<AgentTaskSnapshot> {
   return request<AgentTaskSnapshot>("/v1/tasks/" + encodeURIComponent(taskId));
 }
 
+export async function steerAgentRun(
+  taskId: string,
+  engineRunId: string,
+  input: string,
+): Promise<{ task_id: string; engine_run_id: string; accepted: boolean }> {
+  const cleanInput = input.trim();
+  if (!cleanInput) throw new Error("اكتب التوجيه أولًا.");
+  if (cleanInput.length > 20000) throw new Error("التوجيه يتجاوز الحد المسموح.");
+  return request<{ task_id: string; engine_run_id: string; accepted: boolean }>(
+    "/v1/tasks/" + encodeURIComponent(taskId)
+      + "/engine-runs/" + encodeURIComponent(engineRunId) + "/steer",
+    {
+      method: "POST",
+      body: JSON.stringify({ input: cleanInput }),
+    },
+  );
+}
+
 
 export async function retryAgentTask(taskId: string): Promise<{
   task_id: string;
