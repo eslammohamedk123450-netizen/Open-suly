@@ -110,3 +110,40 @@ def test_acquire_rejects_invalid_content_length_header():
             client.acquire(str(uuid4()), str(uuid4()), "opencode")
     finally:
         client.close()
+
+
+
+def test_acquire_sends_bounded_workspace_snapshot_and_parses_gateway_path():
+    task, run, runtime = str(uuid4()), str(uuid4()), str(uuid4())
+    seen = {}
+
+    def handler(request):
+        seen["body"] = request.read().decode()
+        return httpx.Response(201, json={
+            "runtime_id": runtime, "task_id": task, "engine_run_id": run,
+            "engine_id": "opencode", "base_url": ORIGIN,
+            "gateway_path": f"/v1/runtime-gateway/{runtime}",
+            "access_token": "t" * 48, "expires_at": time() + 600,
+        })
+
+    client = provider(handler)
+    try:
+        lease = client.acquire(task, run, "opencode", files=[
+            {"path": "src/main.py", "content": "print('ok')"}
+        ])
+    finally:
+        client.close()
+    assert lease.gateway_path == f"/v1/runtime-gateway/{runtime}"
+    assert '"src/main.py"' in seen["body"]
+    assert '"sha256"' in seen["body"]
+
+
+def test_acquire_rejects_secret_paths_in_workspace_snapshot():
+    client = provider(lambda request: httpx.Response(201, json={}))
+    try:
+        with pytest.raises(ValueError, match="reserved"):
+            client.acquire(str(uuid4()), str(uuid4()), "opencode", files=[
+                {"path": ".env.production", "content": "secret"}
+            ])
+    finally:
+        client.close()
