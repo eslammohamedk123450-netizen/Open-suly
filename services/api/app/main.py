@@ -1,10 +1,9 @@
 from fastapi import Depends, FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.config import get_settings
-from app.core.ratelimit import RateLimitExceeded, apply_rate_limit, rate_limit_settings
+from app.core.ratelimit import RateLimitExceeded, apply_rate_limit
 from app.routers.agents import router as agents_router
 from app.routers.chat import router as chat_router
 from app.routers.projects import router as projects_router
@@ -12,6 +11,9 @@ from app.routers.project_files import router as project_files_router
 from app.routers.tasks import router as tasks_router
 from app.routers.tool_approvals import router as tool_approvals_router
 from app.routers.opencode_sessions import router as opencode_sessions_router
+from app.routers.opencode_tasks import router as opencode_tasks_router
+from app.services.runtime_broker_contract import TaskScopedRuntimeBroker
+from app.services.runtime_provisioner_http import HTTPSRuntimeLeaseProvider
 
 settings = get_settings()
 
@@ -30,6 +32,42 @@ app.include_router(projects_router)
 app.include_router(project_files_router)
 app.include_router(tool_approvals_router)
 app.include_router(opencode_sessions_router)
+app.include_router(opencode_tasks_router)
+
+@app.on_event("startup")
+def configure_opencode_runtime() -> None:
+    """Enable the isolated runtime broker only with a complete explicit configuration."""
+    current = get_settings()
+    configured = (
+        current.runtime_provisioner_url,
+        current.runtime_provisioner_token,
+        current.runtime_provisioner_allowed_origins,
+    )
+    app.state.runtime_broker = None
+    app.state.runtime_provider = None
+    if not any(configured):
+        return
+    if not all(configured):
+        raise RuntimeError("OpenCode runtime provider configuration is incomplete")
+    allowed = frozenset(current.runtime_provisioner_allowed_origins)
+    provider = HTTPSRuntimeLeaseProvider(
+        base_url=current.runtime_provisioner_url,
+        bearer_token=current.runtime_provisioner_token.get_secret_value(),
+        allowed_origins=allowed,
+        timeout_seconds=current.runtime_provisioner_timeout_seconds,
+    )
+    app.state.runtime_provider = provider
+    app.state.runtime_broker = TaskScopedRuntimeBroker(
+        provider, allowed_origins=allowed
+    )
+
+
+@app.on_event("shutdown")
+def close_opencode_runtime_provider() -> None:
+    provider = getattr(app.state, "runtime_provider", None)
+    if provider is not None:
+        provider.close()
+
 
 
 def rate_limit_dependency(
@@ -86,11 +124,10 @@ async def health() -> dict[str, str]:
 async def readiness() -> JSONResponse:
     """Check required Supabase connection configuration, without probing live services.
 
-    This is a configuration check only; it does not prove network
-    reachability or database health.
+    هذا فحص إعدادات فقط؛ لا يثبت إمكانية الوصول إلى الشبكة أو صحة قاعدة البيانات.
     """
     current = get_settings()
-    # Check only that the required settings exist; never expose key values or addresses.
+    # نتحقق من وجود الإعدادات الأساسية فقط، ولا نعرض قيم المفاتيح أو العناوين.
     missing = []
     if not current.supabase_url:
         missing.append("supabase_url")
