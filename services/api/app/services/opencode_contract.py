@@ -7,11 +7,13 @@ from __future__ import annotations
 
 import math
 import re
+import unicodedata
 from typing import Any
 
 _SESSION_ID = re.compile(r"^ses[A-Za-z0-9_-]{1,128}$")
 _PERMISSION_ID = re.compile(r"^per[A-Za-z0-9_-]{1,128}$")
 _EVENT_ID = re.compile(r"^evt_[A-Za-z0-9_-]{1,128}$")
+_SAFE_ACTION = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
 _SAFE_DECISIONS = frozenset({"once", "reject"})
 _SESSION_EVENTS = frozenset({
     "session.execution.started",
@@ -48,7 +50,7 @@ def normalize_permission_request(payload: object, expected_session_id: str) -> d
         raise ValueError("opencode_permission_session_mismatch")
     action = payload.get("action")
     resources = payload.get("resources")
-    if not isinstance(action, str) or not action or len(action) > 128:
+    if not isinstance(action, str) or not _SAFE_ACTION.fullmatch(action):
         raise ValueError("opencode_permission_action_invalid")
     if not isinstance(resources, list) or not 1 <= len(resources) <= 64:
         raise ValueError("opencode_permission_resources_invalid")
@@ -56,7 +58,7 @@ def normalize_permission_request(payload: object, expected_session_id: str) -> d
     for resource in resources:
         if not isinstance(resource, str) or not resource or len(resource) > 1024:
             raise ValueError("opencode_permission_resource_invalid")
-        if any(ord(char) < 32 or ord(char) == 127 for char in resource):
+        if any(unicodedata.category(char) in {"Cc", "Cf", "Cs"} for char in resource):
             raise ValueError("opencode_permission_resource_invalid")
         safe_resources.append(resource)
     return {
