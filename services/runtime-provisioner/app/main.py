@@ -154,7 +154,8 @@ def create_runtime(body: CreateRuntime, authorization: str | None = Header(defau
     return {
         "runtime_id": result["runtime_id"], "task_id": task_id,
         "engine_run_id": run_id, "engine_id": body.engine_id,
-        "base_url": f"{PUBLIC_GATEWAY_ORIGIN.rstrip('/')}/v1/runtime-gateway/{result['runtime_id']}",
+        "base_url": PUBLIC_GATEWAY_ORIGIN.rstrip("/"),
+        "gateway_path": f"/v1/runtime-gateway/{result['runtime_id']}",
         "access_token": result["access_token"], "expires_at": result["expires_at"],
     }
 
