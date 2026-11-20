@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     hermes_agent_timeout_seconds: float = Field(default=90.0, ge=5.0, le=300.0)
     hermes_agent_max_output_chars: int = Field(default=12000, ge=256, le=50000)
 
+    # OpenCode isolated runtime provider; disabled unless all values are configured.
+    runtime_provisioner_url: str | None = None
+    runtime_provisioner_token: SecretStr | None = None
+    runtime_provisioner_allowed_origins: list[str] = Field(default_factory=list)
+    runtime_provisioner_timeout_seconds: float = Field(default=10.0, ge=1.0, le=30.0)
+
     # Worker runtime is opt-in; never starts merely because the API boots.
     worker_enabled: bool = False
     worker_lease_seconds: int = Field(default=90, ge=15, le=900)
