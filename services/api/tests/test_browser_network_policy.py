@@ -86,6 +86,17 @@ def test_browser_policy_rejects_legacy_numeric_ipv4_host_encodings(host):
         policy().validate(f"https://{host}/")
 
 
+@pytest.mark.parametrize("host", [
+    "9" * 80,
+    "0x" + "f" * 80,
+])
+def test_browser_policy_rejects_oversized_ambiguous_numeric_hosts(host):
+    with pytest.raises(ValueError):
+        policy(allowed_hosts=frozenset({host}))
+    with pytest.raises(ValueError, match="private_hostname"):
+        policy().validate(f"https://{host}/")
+
+
 def test_browser_policy_rejects_private_dns_answers_even_for_allowlisted_host():
     with pytest.raises(ValueError, match='private_address'):
         policy(resolver=lambda *_args: ('10.0.0.5',)).validate('https://example.com/')
