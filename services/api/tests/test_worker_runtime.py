@@ -630,7 +630,8 @@ def test_hermes_adapter_forwards_metadata_event_callback(monkeypatch):
     from app.services.engine_contract import EngineRequest
 
     received = {}
-    callback = lambda event: True
+    def callback(_event):
+        return None
 
     def fake_run(prompt, **kwargs):
         received.update(kwargs)
