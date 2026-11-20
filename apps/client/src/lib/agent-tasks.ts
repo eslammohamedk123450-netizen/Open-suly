@@ -47,6 +47,8 @@ export type AgentEngineEvent = {
   event_name: string;
   event_seq?: number | null;
   event_timestamp?: number | null;
+  approval_request_id?: string | null;
+  approval_choice?: "once" | "deny" | null;
   received_at: string;
 };
 
@@ -171,6 +173,25 @@ export async function listAgentTasks(limit = 30): Promise<AgentTask[]> {
 
 export async function getAgentTask(taskId: string): Promise<AgentTaskSnapshot> {
   return request<AgentTaskSnapshot>("/v1/tasks/" + encodeURIComponent(taskId));
+}
+
+export async function resolveAgentApproval(
+  taskId: string,
+  engineRunId: string,
+  requestId: string,
+  choice: "once" | "deny",
+): Promise<{ task_id: string; engine_run_id: string; request_id: string; choice: "once" | "deny"; accepted: boolean }> {
+  if (!/^[A-Za-z0-9_.:@-]{1,256}$/.test(requestId)) {
+    throw new Error("معرّف طلب الموافقة غير صالح.");
+  }
+  return request(
+    "/v1/tasks/" + encodeURIComponent(taskId)
+      + "/engine-runs/" + encodeURIComponent(engineRunId) + "/approvals",
+    {
+      method: "POST",
+      body: JSON.stringify({ request_id: requestId, choice }),
+    },
+  );
 }
 
 export async function steerAgentRun(
