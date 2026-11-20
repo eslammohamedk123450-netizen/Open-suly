@@ -532,6 +532,19 @@ def test_safe_approval_response_keeps_only_supported_choice():
     }
 
 
+def test_safe_approval_event_ignores_unhashable_choice_value():
+    event = hermes_agent._safe_run_event({
+        "run_id": "run_approval_123",
+        "event": "approval.responded",
+        "request_id": "approval-req_123",
+        "choice": {"unexpected": "object"},
+    }, "run_approval_123")
+    assert event == {
+        "event": "approval.responded",
+        "approval_request_id": "approval-req_123",
+    }
+
+
 def test_safe_approval_event_drops_invalid_request_id_and_permanent_choice():
     event = hermes_agent._safe_run_event({
         "run_id": "run_approval_123",
