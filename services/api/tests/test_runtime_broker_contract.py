@@ -105,7 +105,7 @@ def test_runtime_lease_rejects_task_attempt_or_engine_mismatch():
             engine_run_id=RUN_ID,
             engine_id=ENGINE_ID,
             allowed_origins=ORIGINS,
-            now=1_900_000_000.0,
+            now=time(),
         )
 
 
