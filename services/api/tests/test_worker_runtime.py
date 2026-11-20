@@ -543,3 +543,24 @@ def test_worker_runtime_runs_optional_reconciler_before_claiming_tasks():
 def test_worker_runtime_validates_reconciliation_interval():
     with pytest.raises(ValueError, match="reconcile interval"):
         WorkerRuntime(object(), reconcile_interval_seconds=5)
+
+
+def test_hermes_engine_requires_isolation_even_when_feature_flag_is_enabled(monkeypatch):
+    import app.worker_runtime as runtime_module
+    from types import SimpleNamespace
+    from app.services.tool_registry import ToolExecutionContext
+
+    monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        hermes_agent_enabled=True,
+        hermes_agent_isolation_confirmed=False,
+        hermes_agent_base_url="http://hermes:8642",
+        hermes_agent_api_key=object(),
+        hermes_agent_timeout_seconds=90.0,
+    ))
+    store = FakeEngineRunStore()
+    with pytest.raises(RuntimeError, match="engine_disabled_or_unisolated"):
+        runtime_module.hermes_agent_turn(
+            make_step({"operation": "hermes.agent.turn", "prompt": "safe"}),
+            ToolExecutionContext(engine_run_store=store),
+        )
+    assert store.events == []
