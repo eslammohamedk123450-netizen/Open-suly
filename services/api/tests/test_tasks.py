@@ -497,6 +497,63 @@ def test_task_approval_cannot_resolve_request_from_another_engine_run(monkeypatc
     assert response.status_code == 404
 
 
+def test_task_owner_can_fetch_redacted_details_for_their_pending_approval(monkeypatch):
+    from types import SimpleNamespace
+
+    admin = _SteerAdmin()
+    admin.tables["engine_run_events"] = [{
+        "id": 1,
+        "engine_run_id": "00000000-0000-0000-0000-000000000099",
+        "event_name": "approval.request",
+        "approval_request_id": "approval-req_123",
+    }]
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    monkeypatch.setattr(tasks_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
+        hermes_agent_enabled=True,
+        hermes_agent_isolation_confirmed=True,
+        hermes_agent_base_url="http://hermes:8642",
+        hermes_agent_api_key=object(),
+    ))
+    monkeypatch.setattr(tasks_module, "get_agent_approval_details", lambda upstream_id, request_id: {
+        "request_id": request_id,
+        "command": "git status",
+        "description": "Review repository status",
+    })
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    try:
+        response = client.get(
+            "/v1/tasks/00000000-0000-0000-0000-000000000001/engine-runs/00000000-0000-0000-0000-000000000099/approvals/approval-req_123",
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200
+    assert response.json()["command"] == "git status"
+    assert response.json()["description"] == "Review repository status"
+
+
+def test_task_approval_details_rejects_answered_or_untracked_request(monkeypatch):
+    admin = _SteerAdmin()
+    admin.tables["engine_run_events"] = [{
+        "id": 1,
+        "engine_run_id": "00000000-0000-0000-0000-000000000099",
+        "event_name": "approval.responded",
+        "approval_request_id": "approval-req_123",
+    }]
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    monkeypatch.setattr(tasks_module, "get_agent_approval_details", lambda *_args: (_ for _ in ()).throw(
+        AssertionError("Answered request details must not be returned")
+    ))
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    try:
+        response = client.get(
+            "/v1/tasks/00000000-0000-0000-0000-000000000001/engine-runs/00000000-0000-0000-0000-000000000099/approvals/approval-req_123",
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 404
+
+
 def test_task_owner_can_resolve_one_exact_hermes_approval_once(monkeypatch):
     from types import SimpleNamespace
 
