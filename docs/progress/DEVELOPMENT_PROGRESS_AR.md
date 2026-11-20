@@ -453,3 +453,13 @@ undefined
 - اختبارات URL تشمل صيغ IPv4 المختصرة والعددية وhex، وUnicode control/bidi، بالإضافة إلى DNS الخاص أو المختلط.
 - Platform CI على commit 84fc162c: API tests نجحت، 440 passed و2 warnings. فحص TypeScript/Expo/Web export كان ما زال جاريًا وقت التحقق.
 - تغييرات التوثيق بعد ذلك على HEAD 782e08a4 لم تُتحقق بعد في Platform CI؛ لا نخلط نجاح 84fc162c بنتيجة HEAD الأحدث.
+
+
+## تحديث Browser Use ونتائج CI — 2026-11-20
+
+- تم تدقيق سياسة URL قبل تشغيل Browser Use، ثم تشديد canonical DNS allowlist ورفض IP literals وlegacy IPv4 وnumeric-only host forms، مع فحص Unicode controls/bidi والـports وDNS answers الخاصة.
+- تمت إضافة اختبارات لعناوين مثل 127.1 وinteger IPv4 وhex IPv4، وoversized numeric/hex، والـzero port، وأسماء DNS غير canonical.
+- Platform CI على commit 782e08a4 نجح بالكامل: 440 API tests passed، وTypeScript typecheck، وExpo dependency compatibility، وWeb export جميعها نجحت.
+- Repository baseline على commit 782e08a4 نجح أيضًا.
+- تعديلات إضافية بعد هذا التحقق على browser_network_policy.py واختباراته (commits b70ea81f وa4b584dc) قيد CI؛ لا ننسب إليها نتيجة 440 حتى يكتمل CI على أحدث HEAD.
+- Browser Use لا يزال disabled؛ لا يوجد browser process أو MCP server أو egress proxy فعلي، ولا يُعد preflight وحده حماية SSRF كاملة.
