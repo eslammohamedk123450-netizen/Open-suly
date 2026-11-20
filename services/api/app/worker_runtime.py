@@ -1,20 +1,20 @@
 """Allow-listed, provider-independent task worker runtime.
 
-Only explicitly registered operations can execute. No arbitrary Python, shell,
-browser, or external provider calls are available in this runtime.
+Only registered operations can execute. No arbitrary Python, shell, browser,
+filesystem, or external provider calls are available in this runtime.
 """
 from __future__ import annotations
 
 import logging
 import os
 import signal
-import time
 from threading import Event
-from typing import Any, Callable
+from typing import Any
 
 from app.core.config import get_settings
 from app.core.supabase import get_supabase_admin_client
 from app.services.task_worker import ClaimedStep, TaskWorker
+from app.services.tool_registry import ToolDefinition, ToolRegistry
 
 logger = logging.getLogger("suly.worker")
 
@@ -33,16 +33,25 @@ def text_analyze(step: ClaimedStep) -> dict[str, Any]:
     }
 
 
-HANDLERS: dict[str, Callable[[ClaimedStep], dict[str, Any]]] = {
-    "text.analyze": text_analyze,
-}
+def build_tool_registry() -> ToolRegistry:
+    registry = ToolRegistry()
+    registry.register(ToolDefinition(
+        name="text.analyze",
+        description="Count words, characters, and lines in supplied text",
+        permission_scope="task.text.analyze",
+        allowed_input_fields=frozenset({"text"}),
+        required_input_fields=frozenset({"text"}),
+        max_input_bytes=24_000,
+        handler=text_analyze,
+    ))
+    return registry
+
+
+TOOL_REGISTRY = build_tool_registry()
 
 
 def dispatch(step: ClaimedStep) -> dict[str, Any]:
-    operation = step.input.get("operation")
-    if not isinstance(operation, str) or operation not in HANDLERS:
-        raise ValueError("unsupported_operation: task step must name an allow-listed operation")
-    return HANDLERS[operation](step)
+    return TOOL_REGISTRY.execute(step)
 
 
 class WorkerRuntime:
