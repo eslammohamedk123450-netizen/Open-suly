@@ -304,18 +304,18 @@ class OpenCodeHTTPClient:
                 # arbitrarily large unterminated line before application limits run.
                 async for chunk in response.aiter_bytes(chunk_size=4096):
                     line_buffer.extend(chunk)
-                    if len(line_buffer) > max_event_bytes and b"\\n" not in line_buffer:
+                    if len(line_buffer) > max_event_bytes and b"\n" not in line_buffer:
                         raise OpenCodeTransportError("opencode_event_too_large")
-                    while b"\\n" in line_buffer:
-                        raw_line, _, remainder = line_buffer.partition(b"\\n")
+                    while b"\n" in line_buffer:
+                        raw_line, _, remainder = line_buffer.partition(b"\n")
                         line_buffer = bytearray(remainder)
                         if len(raw_line) > max_event_bytes:
                             raise OpenCodeTransportError("opencode_event_too_large")
-                        if raw_line.endswith(b"\\r"):
+                        if raw_line.endswith(b"\r"):
                             raw_line = raw_line[:-1]
                         if not raw_line:
                             if data_lines:
-                                raw = "\\n".join(data_lines)
+                                raw = "\n".join(data_lines)
                                 data_lines.clear()
                                 event_size = 0
                                 try:
