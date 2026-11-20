@@ -4,9 +4,10 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import { createClient } from "@supabase/supabase-js";
 
-// Configuration must come from EXPO_PUBLIC_* environment variables.
-// Never bake a project URL or publishable key into the client as a fallback:
-// a stale embedded key keeps working silently and blocks key rotation.
+// Supabase configuration must come from the build environment. A publishable
+// key is designed to be public, but hard-coding it as a silent fallback makes
+// key rotation dangerous and can hide a misconfigured build. Missing values
+// must surface as an explicit "not configured" state instead.
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
 const supabasePublishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
 
