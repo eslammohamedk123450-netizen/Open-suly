@@ -54,7 +54,7 @@ async def test_create_session_always_uses_fail_closed_ask_permissions():
 
     async def handler(request):
         seen["body"] = request.read().decode()
-        return httpx.Response(200, json={"id": "ses_test_123456", "title": "SULY task"})
+        return httpx.Response(200, json={"data": {"id": "ses_test_123456", "title": "SULY task"}})
 
     async with OpenCodeHTTPClient(
         lease(), task_id=TASK_ID, engine_run_id=RUN_ID,
