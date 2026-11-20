@@ -173,6 +173,8 @@ def test_event_gateway_forwards_sse_without_buffering(monkeypatch):
 def test_runtime_recovery_rotates_token_only_for_exact_task_owner(tmp_path, monkeypatch):
     import hashlib
     import time
+    import pytest
+    from fastapi import HTTPException
     from uuid import uuid4
 
     runtime_id, task_id, run_id = map(str, (uuid4(), uuid4(), uuid4()))
