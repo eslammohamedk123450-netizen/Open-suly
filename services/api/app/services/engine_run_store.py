@@ -85,7 +85,9 @@ class EngineRunStore:
                 "p_error_code": error_code,
             },
         ).execute()
-        return bool(response.data)
+        if not isinstance(response.data, bool):
+            raise RuntimeError("engine_stop_reconciliation_invalid_response")
+        return response.data
 
     def reconcile_orphans(self, batch_size: int = 100) -> int:
         """أغلق سجلات المحركات اليتيمة بدفعة محدودة عبر RPC للخادم فقط.
