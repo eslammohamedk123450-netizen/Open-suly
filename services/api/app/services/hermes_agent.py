@@ -191,3 +191,60 @@ def run_agent_turn(
                 raise HermesAgentError("Hermes run request failed.") from exc
 
     return asyncio.run(request())
+
+
+def stop_agent_run(upstream_run_id: str, *, timeout_seconds: float = 30.0) -> bool:
+    """Request upstream stop and confirm a terminal state without reading output.
+
+    لا تعتبر استجابة طلب الإيقاف وحدها دليلاً على توقف المحرك؛ ننتظر حالة
+    نهائية مؤكدة، وإلا نعيد خطأ آمنًا كي يعيد reconciler المحاولة لاحقًا.
+    """
+    settings = get_settings()
+    if not settings.hermes_agent_enabled or not settings.hermes_agent_isolation_confirmed:
+        raise HermesAgentUnavailable("Hermes isolated runtime is not enabled.")
+    if not settings.hermes_agent_base_url or not settings.hermes_agent_api_key:
+        raise HermesAgentUnavailable("Hermes agent runtime is not configured.")
+    if not isinstance(upstream_run_id, str) or not _RUN_ID_PATTERN.fullmatch(upstream_run_id):
+        raise ValueError("Hermes upstream run identifier is invalid.")
+    if (
+        isinstance(timeout_seconds, bool)
+        or not isinstance(timeout_seconds, (int, float))
+        or not 1 <= timeout_seconds <= 60
+    ):
+        raise ValueError("Hermes stop timeout is outside the allowed range.")
+
+    base_url = _validate_base_url(settings.hermes_agent_base_url)
+    token = settings.hermes_agent_api_key.get_secret_value()
+
+    async def stop_and_confirm() -> bool:
+        deadline = asyncio.get_running_loop().time() + timeout_seconds
+        headers = {"Authorization": f"Bearer {token}"}
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
+            try:
+                response = await client.post(
+                    f"{base_url}/v1/runs/{upstream_run_id}/stop",
+                    headers=headers,
+                )
+                response.raise_for_status()
+                while asyncio.get_running_loop().time() < deadline:
+                    status_response = await client.get(
+                        f"{base_url}/v1/runs/{upstream_run_id}",
+                        headers=headers,
+                    )
+                    status_response.raise_for_status()
+                    payload = status_response.json()
+                    if not isinstance(payload, dict):
+                        raise HermesAgentError("Hermes returned an invalid run status.")
+                    status = payload.get("status")
+                    if status in _TERMINAL_STATUSES:
+                        return True
+                    if status not in {"started", "running", "stopping"}:
+                        raise HermesAgentError("Hermes returned an unknown run status.")
+                    await asyncio.sleep(min(0.5, max(0.05, deadline - asyncio.get_running_loop().time())))
+                return False
+            except HermesAgentError:
+                raise
+            except (httpx.HTTPError, ValueError, TypeError) as exc:
+                raise HermesAgentError("Hermes stop reconciliation failed.") from exc
+
+    return asyncio.run(stop_and_confirm())
