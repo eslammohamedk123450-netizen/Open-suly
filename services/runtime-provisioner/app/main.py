@@ -34,7 +34,7 @@ MAX_RESULT_BYTES = 8 * 1024 * 1024
 MAX_RESULT_FILES = 500
 _ID = re.compile(r"^[0-9a-f-]{36}$")
 _ALLOWED_PROXY = {
-    ("GET", "/event"), ("GET", "/api/info"), ("POST", "/api/session"),
+    ("GET", "/api/event"), ("GET", "/api/info"), ("POST", "/api/session"),
     ("GET", "/api/skill"), ("GET", "/api/provider"),
 }
 
