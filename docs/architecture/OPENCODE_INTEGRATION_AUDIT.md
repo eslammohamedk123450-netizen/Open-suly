@@ -4,11 +4,11 @@ Audit date: 2026-11-20
 
 ## Source identity
 
-- Upstream: https://github.com/anomalyco/opencode
-- Pinned revision: `4cca18d80450a3dd6a9a4142028bde84ccb3116e`
+- Upstream repository: `anomalyco/opencode`
+- Immutable revision: `4cca18d80450a3dd6a9a4142028bde84ccb3116e`
 - Server package: `@opencode/server` version `2.3.0`
-- License: MIT (root LICENSE and server package metadata inspected)
-- No upstream source has been copied or modified by this audit.
+- License: MIT (root LICENSE and package metadata inspected)
+- This audit does not copy or modify upstream source.
 
 ## Findings from the pinned source
 
@@ -18,20 +18,20 @@ Audit date: 2026-11-20
 - `packages/server/src/auth.ts` issues a 30-day session token derived from that server password. It does not map a credential to a SULY user, task, or tenant.
 - The server authorization layer is therefore a perimeter gate for one OpenCode server, not a tenant isolation boundary.
 
-### Sessions are scoped to server instance/location, not to SULY tenants
+### Sessions and locations are not SULY tenant scopes
 
 - `packages/server/src/handlers/session.ts` resolves session IDs through the server's Session service and performs session/form ownership checks within that server.
 - `packages/server/src/middleware/session-location.ts` resolves a session's location and provides location-specific services; it does not bind a session to a SULY user.
 - `packages/server/src/location.ts` accepts a working directory from query/header (or process cwd) and resolves location services. A caller must never be allowed to choose an arbitrary host path.
 - OpenCode's native session IDs and its internal location scoping cannot replace SULY's task ownership, workspace authorization, or lease checks.
 
-### Process responsibilities are broad
+### The server process owns a broad execution surface
 
-The server package wires filesystem, shell, persistent PTY, worktree, MCP, credentials, plugins, automation, jobs, and session services. A shared server process would create a large cross-task attack surface even if SULY hides its session IDs.
+The server package wires filesystem, shell, persistent PTY, worktree, MCP, credentials, plugins, automation, jobs, and session services. A shared server process would create a large cross-task attack surface even if SULY hides session IDs.
 
 ## Required SULY integration design
 
-OpenCode remains disabled and unavailable until all of the following exist and are tested:
+OpenCode remains disabled and unavailable until all of the following are implemented and tested:
 
 1. A dedicated ephemeral runtime/container per SULY task attempt (not merely a per-session directory).
 2. A pinned image digest and immutable OpenCode revision, non-root user, read-only base filesystem, bounded writable task workspace, and CPU/memory/PID/disk/time limits.
