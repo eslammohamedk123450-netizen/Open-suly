@@ -41,3 +41,5 @@ for each row execute function public.capture_project_file_revision();
 
 comment on table public.project_file_revisions is
   'Immutable previous versions of owner-scoped text project files, captured before content changes.';
+
+revoke all on function public.capture_project_file_revision() from public, anon, authenticated;
