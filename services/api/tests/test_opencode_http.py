@@ -178,3 +178,77 @@ async def test_catalog_endpoints_unwrap_upstream_envelopes_and_drop_sensitive_fi
     ) as client:
         assert await client.list_skills() == [{"name": "python", "description": "Python helper"}]
         assert await client.list_providers() == [{"id": "openai", "name": "OpenAI"}]
+
+
+@pytest.mark.asyncio
+async def test_pending_permissions_are_session_bound_and_reduced():
+    async def handler(request):
+        assert request.url.path == f"/api/session/ses_taskrun_123456789/permission"
+        return httpx.Response(200, json={"data": [{
+            "id": "per_request_123456",
+            "sessionID": "ses_taskrun_123456789",
+            "action": "bash",
+            "resources": ["git status"],
+            "message": "private model text",
+            "metadata": {"secret": "drop"},
+        }]})
+
+    async with OpenCodeHTTPClient(
+        lease(), task_id=TASK_ID, engine_run_id=RUN_ID,
+        allowed_origins=ORIGINS, transport=httpx.MockTransport(handler),
+    ) as client:
+        result = await client.list_pending_permissions(session_id="ses_taskrun_123456789")
+
+    assert result == [{
+        "request_id": "per_request_123456",
+        "session_id": "ses_taskrun_123456789",
+        "action": "bash",
+        "resources": ["git status"],
+    }]
+
+
+@pytest.mark.asyncio
+async def test_permission_reply_only_allows_once_or_reject_and_never_remember():
+    seen = {}
+
+    async def handler(request):
+        seen["path"] = request.url.path
+        seen["body"] = request.read().decode()
+        return httpx.Response(204)
+
+    async with OpenCodeHTTPClient(
+        lease(), task_id=TASK_ID, engine_run_id=RUN_ID,
+        allowed_origins=ORIGINS, transport=httpx.MockTransport(handler),
+    ) as client:
+        await client.reply_permission(
+            session_id="ses_taskrun_123456789",
+            request_id="per_request_123456",
+            decision="once",
+        )
+        with pytest.raises(ValueError, match="decision_invalid"):
+            await client.reply_permission(
+                session_id="ses_taskrun_123456789",
+                request_id="per_request_123456",
+                decision="always",
+            )
+
+    assert seen["path"] == "/api/session/ses_taskrun_123456789/permission/per_request_123456/reply"
+    assert seen["body"] == '{"decision":"once"}'
+
+
+@pytest.mark.asyncio
+async def test_pending_permissions_reject_cross_session_payload():
+    async def handler(request):
+        return httpx.Response(200, json={"data": [{
+            "id": "per_request_123456",
+            "sessionID": "ses_other_session_123456",
+            "action": "bash",
+            "resources": ["git status"],
+        }]})
+
+    async with OpenCodeHTTPClient(
+        lease(), task_id=TASK_ID, engine_run_id=RUN_ID,
+        allowed_origins=ORIGINS, transport=httpx.MockTransport(handler),
+    ) as client:
+        with pytest.raises(ValueError, match="session_mismatch"):
+            await client.list_pending_permissions(session_id="ses_taskrun_123456789")
