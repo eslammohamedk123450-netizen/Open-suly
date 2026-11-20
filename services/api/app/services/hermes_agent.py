@@ -133,7 +133,7 @@ def run_agent_turn(
     cancel_event: Event | None = None,
     idempotency_key: str | None = None,
     on_run_started: Callable[[str], bool] | None = None,
-    on_event: Callable[[dict[str, str | int | float]], None] | None = None,
+    on_event: Callable[[dict[str, str | int | float]], bool | None] | None = None,
 ) -> dict[str, str]:
     """Create and poll one durable Hermes run; stop it when SULY signals cancellation.
 
