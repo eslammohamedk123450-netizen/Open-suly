@@ -7,7 +7,9 @@ SULY owns authorization, task leases, and the durable upstream run reference.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
+from contextlib import suppress
 from threading import Event
 from typing import Callable
 from urllib.parse import urlsplit
@@ -32,6 +34,70 @@ class HermesAgentCancelled(RuntimeError):
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled", "interrupted"})
 _MAX_PROMPT_CHARS = 20_000
 _RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+_SSE_EVENT_NAMES = frozenset({
+    "tool.started", "tool.completed", "subagent.start", "subagent.complete",
+    "run.queued", "run.completed", "run.failed", "run.cancelled",
+    "run.interrupted", "run.stopping", "run.steered",
+    "approval.request", "approval.responded",
+})
+
+
+def _safe_run_event(payload: object, expected_run_id: str) -> dict[str, str | int | float] | None:
+    """Return metadata-only progress; never forward previews, prompts, or tool output."""
+    if not isinstance(payload, dict) or payload.get("run_id") != expected_run_id:
+        return None
+    name = payload.get("event")
+    if not isinstance(name, str) or name not in _SSE_EVENT_NAMES:
+        return None
+    summary: dict[str, str | int | float] = {"event": name}
+    seq = payload.get("seq")
+    if isinstance(seq, int) and not isinstance(seq, bool) and seq >= 0:
+        summary["seq"] = seq
+    timestamp = payload.get("timestamp")
+    if isinstance(timestamp, (int, float)) and not isinstance(timestamp, bool):
+        summary["timestamp"] = float(timestamp)
+    return summary
+
+
+async def _consume_run_events(
+    client: httpx.AsyncClient,
+    base_url: str,
+    run_id: str,
+    headers: dict[str, str],
+    callback: Callable[[dict[str, str | int | float]], None],
+) -> None:
+    """Consume Hermes SSE as a best-effort metadata-only progress channel."""
+    try:
+        async with client.stream(
+            "GET",
+            f"{base_url}/v1/runs/{run_id}/events",
+            headers=headers,
+            timeout=httpx.Timeout(30.0, connect=5.0),
+        ) as response:
+            response.raise_for_status()
+            data_lines: list[str] = []
+            async for line in response.aiter_lines():
+                if len(line) > 65_536:
+                    data_lines.clear()
+                    continue
+                if line.startswith("data:"):
+                    data_lines.append(line[5:].strip())
+                elif line == "" and data_lines:
+                    try:
+                        payload = json.loads("\\n".join(data_lines))
+                        summary = _safe_run_event(payload, run_id)
+                        if summary is not None:
+                            try:
+                                await asyncio.to_thread(callback, summary)
+                            except Exception:
+                                # Progress delivery must never change task execution outcome.
+                                pass
+                    except (ValueError, TypeError):
+                        pass
+                    data_lines.clear()
+    except (httpx.HTTPError, ValueError, TypeError):
+        # Status polling remains authoritative if the optional event stream is unavailable.
+        return
 
 
 def _validate_base_url(value: str) -> str:
@@ -56,6 +122,7 @@ def run_agent_turn(
     cancel_event: Event | None = None,
     idempotency_key: str | None = None,
     on_run_started: Callable[[str], bool] | None = None,
+    on_event: Callable[[dict[str, str | int | float]], None] | None = None,
 ) -> dict[str, str]:
     """Create and poll one durable Hermes run; stop it when SULY signals cancellation.
 
@@ -99,6 +166,7 @@ def run_agent_turn(
         headers = {"Authorization": f"Bearer {token}"}
         deadline = asyncio.get_running_loop().time() + timeout
         run_id: str | None = None
+        event_task: asyncio.Task | None = None
 
         async with httpx.AsyncClient(timeout=per_request_timeout) as client:
             try:
@@ -134,6 +202,12 @@ def run_agent_turn(
                         # سجل stop_pending (إن تم حفظه متأخرًا) سيعيد محاولة الإيقاف من reconciler.
                         pass
                     raise HermesAgentError("SULY could not persist the Hermes run reference.")
+
+                # Events are supplementary; the status endpoint remains authoritative.
+                if on_event is not None:
+                    event_task = asyncio.create_task(
+                        _consume_run_events(client, base_url, run_id, headers, on_event)
+                    )
 
                 while True:
                     # عند الإلغاء نطلب الإيقاف من Hermes ثم ننتظر الحالة النهائية بحد زمني.
@@ -209,6 +283,11 @@ def run_agent_turn(
             except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
                 # لا نمرر جسم الاستجابة أو نص الخطأ الخارجي لأنه قد يحتوي على أسرار.
                 raise HermesAgentError("Hermes run request failed.") from exc
+            finally:
+                if event_task is not None:
+                    event_task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await event_task
 
     return asyncio.run(request())
 
