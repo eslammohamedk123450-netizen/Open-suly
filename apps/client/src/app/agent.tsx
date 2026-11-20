@@ -152,7 +152,7 @@ export default function AgentScreen() {
       return;
     }
     if (operation === "ai.respond" && !aiAvailable) {
-      setNotice("مزود الذكاء الاصطناعي غير مضبوط على الخادم بعد. يلزم إعداد AI_PROVIDER وAI_BASE_URL وAI_API_KEY وAI_MODEL.");
+      setNotice("مزود الذكاء الاصطناعي غير مضبوط على الخادم بعد. يلزم إعداد AI_PROVIDER وAI_BASE_URL وAI_MODEL، ومفتاح AI_API_KEY عند استخدام مزود متوافق فقط.");
       return;
     }
     if (operation === "ai.respond" && !aiApproved) {
