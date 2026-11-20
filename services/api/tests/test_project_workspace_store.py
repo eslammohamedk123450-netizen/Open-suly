@@ -64,7 +64,7 @@ def test_snapshot_refuses_missing_or_foreign_project():
 
 def test_snapshot_rejects_project_file_over_limit():
     user, project = str(uuid4()), str(uuid4())
-    rows = [{"project_id": project, "user_id": user, "path": f"src/{i}.txt", "content": "x" * (256 * 1024 + 1)}]
+    rows = [{"project_id": project, "user_id": user, "path": "src/large.txt", "content": "x" * (256 * 1024 + 1)}]
     client = Client({"projects": [{"id": project, "user_id": user}], "project_files": rows})
     with pytest.raises(ProjectWorkspaceError, match="file_too_large"):
         ProjectWorkspaceStore(client).snapshot(user_id=user, project_id=project)
