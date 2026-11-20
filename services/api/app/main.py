@@ -1,8 +1,10 @@
 from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.config import get_settings
+from app.core.ratelimit import RateLimitExceeded, apply_rate_limit, rate_limit_settings
 from app.routers.agents import router as agents_router
 from app.routers.chat import router as chat_router
 from app.routers.projects import router as projects_router
@@ -30,6 +32,46 @@ app.include_router(tool_approvals_router)
 app.include_router(opencode_sessions_router)
 
 
+def rate_limit_dependency(
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthenticatedUser:
+    """Apply the per-user API rate limit after authentication.
+
+    Unauthenticated probes are not rate-limited here on purpose: they are
+    already rejected with 401 by the authentication dependency, and
+    anonymous floods must be handled at the reverse proxy layer.
+    """
+    apply_rate_limit(user.id)
+    return user
+
+
+# Scope a stricter limit to the AI gateway endpoints.
+def ai_rate_limit_dependency(
+    user: AuthenticatedUser = Depends(rate_limit_dependency),
+) -> AuthenticatedUser:
+    """Apply a stricter per-user limit on provider-backed endpoints.
+
+    The AI gateway has a smaller budget because each accepted request can
+    consume provider tokens and long-running worker capacity.
+    """
+    apply_rate_limit(f"ai:{user.id}", capacity=6, refill_seconds=10.0)
+    return user
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_exception_handler(
+    _request, exc: RateLimitExceeded
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Too many requests. Please slow down and try again shortly."},
+        headers={
+            "Retry-After": str(max(1, int(exc.retry_after) + 1)),
+            "X-RateLimit-Remaining": "0",
+        },
+    )
+
+
 @app.get("/health", tags=["health"])
 async def health() -> dict[str, str]:
     """Liveness endpoint; does not expose credentials or claim DB readiness."""
@@ -44,10 +86,11 @@ async def health() -> dict[str, str]:
 async def readiness() -> JSONResponse:
     """Check required Supabase connection configuration, without probing live services.
 
-    هذا فحص إعدادات فقط؛ لا يثبت إمكانية الوصول إلى الشبكة أو صحة قاعدة البيانات.
+    This is a configuration check only; it does not prove network
+    reachability or database health.
     """
     current = get_settings()
-    # نتحقق من وجود الإعدادات الأساسية فقط، ولا نعرض قيم المفاتيح أو العناوين.
+    # Check only that the required settings exist; never expose key values or addresses.
     missing = []
     if not current.supabase_url:
         missing.append("supabase_url")
