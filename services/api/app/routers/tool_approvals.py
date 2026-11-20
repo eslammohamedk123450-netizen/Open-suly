@@ -123,7 +123,7 @@ def list_available_tools(
             elif tool["name"] == "ai.respond":
                 available = ai_provider_available
             else:
-                available = True
+                available = settings.worker_enabled
             items.append({
                 **tool,
                 "approved": (
