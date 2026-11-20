@@ -99,6 +99,23 @@ class EngineRunStore:
             or not 0 <= event_timestamp <= 4_102_444_800
         ):
             raise ValueError("invalid_engine_run_event_timestamp")
+        approval_request_id = event.get("approval_request_id")
+        if approval_request_id is not None and (
+            not isinstance(approval_request_id, str)
+            or not 1 <= len(approval_request_id) <= 256
+            or not approval_request_id.isascii()
+            or any(not (ch.isalnum() or ch in "_-.:@") for ch in approval_request_id)
+        ):
+            raise ValueError("invalid_engine_run_approval_request_id")
+        approval_choice = event.get("approval_choice")
+        if event_name == "approval.request":
+            if approval_request_id is None or approval_choice is not None:
+                raise ValueError("invalid_engine_run_approval_metadata")
+        elif event_name == "approval.responded":
+            if approval_request_id is None or approval_choice not in {"once", "deny"}:
+                raise ValueError("invalid_engine_run_approval_metadata")
+        elif approval_request_id is not None or approval_choice is not None:
+            raise ValueError("invalid_engine_run_approval_metadata")
 
         response = self._client.rpc(
             "append_engine_run_event",
@@ -109,6 +126,8 @@ class EngineRunStore:
                 "p_event_name": event_name,
                 "p_event_seq": event_seq,
                 "p_event_timestamp": event_timestamp,
+                "p_approval_request_id": approval_request_id,
+                "p_approval_choice": approval_choice,
             },
         ).execute()
         if not isinstance(response.data, bool):
