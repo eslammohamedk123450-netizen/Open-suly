@@ -276,6 +276,8 @@ def test_hermes_operation_routes_through_registry_after_approval(monkeypatch):
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
         hermes_agent_enabled=True, hermes_agent_timeout_seconds=90.0,
     ))
+    monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: object())
+    monkeypatch.setattr(runtime_module, "EngineRunStore", FakeEngineRunStore)
     monkeypatch.setattr(runtime_module, "run_agent_turn", lambda prompt, **_kwargs: {
         "engine": "hermes-agent", "content": f"processed: {prompt}",
     })
