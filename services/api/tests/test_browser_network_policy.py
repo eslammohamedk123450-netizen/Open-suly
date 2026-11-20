@@ -64,6 +64,16 @@ def test_browser_policy_rejects_private_or_ip_literal_hosts(url):
         policy(allowed_hosts=frozenset({'example.com', 'localhost', '169.254.169.254', '127.0.0.1', '::1'})).validate(url)
 
 
+@pytest.mark.parametrize("host", [
+    "127.1",
+    "2130706433",
+    "0x7f000001",
+])
+def test_browser_policy_rejects_legacy_numeric_ipv4_host_encodings(host):
+    with pytest.raises(ValueError, match="ip_literal"):
+        policy(allowed_hosts=frozenset({host})).validate(f"https://{host}/")
+
+
 def test_browser_policy_rejects_private_dns_answers_even_for_allowlisted_host():
     with pytest.raises(ValueError, match='private_address'):
         policy(resolver=lambda *_args: ('10.0.0.5',)).validate('https://example.com/')
