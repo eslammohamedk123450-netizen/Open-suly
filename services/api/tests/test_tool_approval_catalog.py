@@ -93,3 +93,33 @@ def test_catalog_reports_hermes_available_only_when_runtime_is_configured(monkey
     hermes = next(item for item in response.json()["items"] if item["name"] == "hermes.agent.turn")
     assert hermes["available"] is True
     assert hermes["approved"] is False
+
+
+def test_catalog_reports_ai_provider_available_only_when_fully_configured(monkeypatch):
+    class FakeStore:
+        def active_scopes(self, _user_id):
+            return frozenset()
+
+    class FakeSettings:
+        ai_provider = "openai-compatible"
+        ai_base_url = "https://provider.example/v1"
+        ai_api_key = object()
+        ai_model = "test-model"
+        hermes_agent_enabled = False
+        hermes_agent_base_url = None
+        hermes_agent_api_key = None
+
+    monkeypatch.setattr(approvals_router, "_store", lambda: FakeStore())
+    monkeypatch.setattr(approvals_router, "get_settings", lambda: FakeSettings())
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+        id="ai-ready-user", email=None
+    )
+    try:
+        response = client.get("/v1/tools/approvals/catalog")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    ai_tool = next(item for item in response.json()["items"] if item["name"] == "ai.respond")
+    assert ai_tool["available"] is True
+    assert ai_tool["approved"] is False
