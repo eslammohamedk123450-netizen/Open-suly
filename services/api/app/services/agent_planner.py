@@ -81,6 +81,13 @@ def validate_agent_plan(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
     known = set(by_key)
     if any(dependencies - known for dependencies in by_key.values()):
         raise UnsupportedTaskRequest("Agent plan references a missing dependency.")
+    positions = {step["step_key"]: index for index, step in enumerate(normalized)}
+    if any(
+        positions[dependency] >= positions[key]
+        for key, dependencies in by_key.items()
+        for dependency in dependencies
+    ):
+        raise UnsupportedTaskRequest("Agent plan dependencies must refer to earlier steps.")
     remaining = {key: set(dependencies) for key, dependencies in by_key.items()}
     completed: set[str] = set()
     while remaining:
