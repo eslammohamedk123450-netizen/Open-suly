@@ -5,8 +5,9 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+import os
 import re
 from uuid import UUID
 
@@ -24,8 +25,8 @@ class SandboxLimits:
     pids_limit: int = 128
     timeout_seconds: int = 300
     tmpfs_mb: int = 128
-    container_uid: int = 10001
-    container_gid: int = 10001
+    container_uid: int = field(default_factory=os.getuid)
+    container_gid: int = field(default_factory=os.getgid)
 
     def validate(self) -> None:
         if isinstance(self.cpu_count, bool) or not isinstance(self.cpu_count, (int, float)) or not 0.1 <= self.cpu_count <= 8:
@@ -60,11 +61,20 @@ class DockerSandboxCommandBuilder:
         self.workspace_root = Path(workspace_root).resolve(strict=True)
         if not self.workspace_root.is_dir():
             raise ValueError("sandbox_workspace_root_must_be_directory")
+        self._validate_private_directory(self.workspace_root)
         if not _SAFE_PATH.fullmatch(str(self.workspace_root)):
             raise ValueError("sandbox_workspace_path_contains_unsupported_characters")
         self.image_ref = image_ref
         self.limits = limits or SandboxLimits()
         self.limits.validate()
+
+    def _validate_private_directory(self, path: Path) -> None:
+        """تأكد أن مساحة العمل خاصة ومملوكة لهوية المستخدم غير الجذر داخل الحاوية."""
+        info = path.stat()
+        if info.st_uid != self.limits.container_uid or info.st_gid != self.limits.container_gid:
+            raise ValueError("sandbox_workspace_owner_mismatch")
+        if info.st_mode & 0o077:
+            raise ValueError("sandbox_workspace_permissions_too_open")
 
     def build(
         self,
@@ -101,6 +111,7 @@ class DockerSandboxCommandBuilder:
             raise ValueError("sandbox_workspace_outside_root") from exc
         if not workspace.is_dir():
             raise ValueError("sandbox_workspace_must_be_directory")
+        self._validate_private_directory(workspace)
         if not _SAFE_PATH.fullmatch(str(workspace)):
             raise ValueError("sandbox_workspace_path_contains_unsupported_characters")
 
