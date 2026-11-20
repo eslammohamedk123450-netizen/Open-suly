@@ -244,3 +244,41 @@ def test_cancel_aware_dispatch_refuses_to_start_after_cancellation():
     step = make_step({"operation": "text.analyze", "text": "must not execute"})
     with pytest.raises(RuntimeError, match="task_execution_cancelled"):
         dispatch_cancel_aware(step, cancelled)
+
+
+def test_hermes_operation_routes_through_registry_after_approval(monkeypatch):
+    import app.worker_runtime as runtime_module
+    from types import SimpleNamespace
+
+    class ApprovedScopes:
+        def active_scopes(self, _user_id):
+            return frozenset({"agent.hermes.run"})
+
+    monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        hermes_agent_enabled=True, hermes_agent_timeout_seconds=90.0,
+    ))
+    monkeypatch.setattr(runtime_module, "run_agent_turn", lambda prompt: {
+        "engine": "hermes-agent", "content": f"processed: {prompt}",
+    })
+    result = dispatch(
+        make_step({"operation": "hermes.agent.turn", "prompt": "safe task"}),
+        ApprovedScopes(),
+    )
+    assert result == {
+        "operation": "hermes.agent.turn",
+        "engine": "hermes-agent",
+        "content": "processed: safe task",
+    }
+
+
+def test_hermes_engine_stays_disabled_without_feature_flag(monkeypatch):
+    import app.worker_runtime as runtime_module
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        hermes_agent_enabled=False, hermes_agent_timeout_seconds=90.0,
+    ))
+    with pytest.raises(RuntimeError, match="engine_disabled"):
+        runtime_module.hermes_agent_turn(
+            make_step({"operation": "hermes.agent.turn", "prompt": "hello"})
+        )
