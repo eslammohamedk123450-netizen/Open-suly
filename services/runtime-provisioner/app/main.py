@@ -4,7 +4,9 @@ Deploy behind TLS on a dedicated worker host. This service alone owns Docker acc
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import logging
 import hmac
 import json
 import os
@@ -48,6 +50,9 @@ def _allowed_opencode_route(method: str, route: str) -> bool:
         ("POST", r"/api/session/ses[A-Za-z0-9_-]{1,128}/interrupt"),
     )
     return any(method == expected and re.fullmatch(pattern, route) for expected, pattern in patterns)
+logger = logging.getLogger("suly.runtime_provisioner")
+_cleanup_task: asyncio.Task | None = None
+
 app = FastAPI(title="SULY Runtime Provisioner", docs_url=None, redoc_url=None, openapi_url=None)
 _runtime_manager: DockerTaskRuntimeManager | None = None
 _runtime_manager_lock = Lock()
@@ -158,15 +163,50 @@ def _runtime(runtime_id: str, token: str | None):
     return row
 
 
+async def _cleanup_expired_loop() -> None:
+    while True:
+        try:
+            await asyncio.to_thread(_get_manager().cleanup_expired)
+            db = _db()
+            try:
+                db.execute("DELETE FROM runtimes WHERE expires_at<=?", (time.time(),))
+                db.commit()
+            finally:
+                db.close()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # Do not log container env, access tokens, or user workspace contents.
+            logger.exception("runtime_cleanup_failed")
+        await asyncio.sleep(30)
+
+
 @app.on_event("startup")
-def startup() -> None:
+async def startup() -> None:
+    global _cleanup_task
     if not SULY_TOKEN:
         raise RuntimeError("SULY_PROVISIONER_TOKEN is required")
+    if not IMAGE or not re.fullmatch(r"[A-Za-z0-9./:_-]+@sha256:[0-9a-f]{64}", IMAGE):
+        raise RuntimeError("OPENCODE_RUNTIME_IMAGE must be digest-pinned")
     parsed = httpx.URL(PUBLIC_GATEWAY_ORIGIN)
     if (parsed.scheme != "https" or not parsed.host or parsed.path not in ("", "/")
             or parsed.query or parsed.fragment or parsed.username or parsed.password):
         raise RuntimeError("RUNTIME_GATEWAY_ORIGIN must be an HTTPS origin without path or credentials")
-    _db().close()
+    db = _db()
+    db.close()
+    _cleanup_task = asyncio.create_task(_cleanup_expired_loop(), name="suly-runtime-cleanup")
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    global _cleanup_task
+    if _cleanup_task is not None:
+        _cleanup_task.cancel()
+        try:
+            await _cleanup_task
+        except asyncio.CancelledError:
+            pass
+        _cleanup_task = None
 
 
 @app.post("/v1/runtimes", status_code=201)
