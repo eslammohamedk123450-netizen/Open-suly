@@ -120,3 +120,13 @@ Commit تحديث هذا السجل: يتم ربطه بعد إنشائه.
 - أضيف رفض symlinks والمسارات خارج الجذر والصلاحيات غير الخاصة وmutable image tags.
 - الاختبارات تغطي حدود الموارد، هوية non-root، workspace permissions، mount restrictions وعدم تمرير Docker socket.
 - لم يُنشأ Docker runner ولم يُبنَ image ولم تُشغّل حاوية؛ السياسة وحدها لا تثبت عزلًا فعليًا. نحتاج egress proxy آمن قبل السماح باتصال نماذج الذكاء الاصطناعي.
+
+
+## جلسة تطوير — 2026-11-20 (Agent planning وlate run identity)
+
+- أصبح planner يدعم طلبًا صريحًا `agent:` أو `وكيل:` لتوجيه المهمة إلى general-agent فقط بعد اكتمال إعداد Hermes وتأكيد العزل والتفعيل؛ وإلا يرفض الخطة.
+- تم تشديد validation في AgentManager وEngineRegistry، واختبارات القيم والأنواع غير الصالحة.
+- أضيفت معالجة سباق run_id: إذا فقد العامل lease قبل حفظ معرف Hermes، يبقى السجل stop_pending ويقبل المعرف المتأخر دون إعادة ملكية التنفيذ؛ ثم يُطلب الإيقاف وتتم المصالحة.
+- Hermes bridge يعيد محاولة حفظ المعرف مرة واحدة، ثم يطلب الإيقاف عند فشل الحفظ.
+- API tests على commit `3598544eed8d` نجحت؛ بقية CI قيد التنفيذ.
+- Sandbox command builder صار يرفض سحب الصور وقت التشغيل ويمنع swap، لكن لا يوجد Docker runner فعلي ولا صورة محرك مبنية أو تشغيل حاويات.
