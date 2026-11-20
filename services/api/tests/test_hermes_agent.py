@@ -253,3 +253,37 @@ def test_hermes_bridge_stops_run_if_suly_cannot_persist_reference(monkeypatch):
             on_run_started=lambda _run_id: False,
         )
     assert calls[-1].endswith("/run_unpersisted_123/stop")
+
+
+
+@pytest.mark.parametrize("run_id", ["../outside", "run/with/slash", "id with spaces", "é-run", ""])
+def test_hermes_bridge_rejects_unsafe_upstream_run_id(monkeypatch, run_id):
+    # لا نسمح لمعرف خارجي بتغيير مسار API أو حقن قيم غير متوقعة.
+    class Client:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+        async def post(self, *_args, **_kwargs):
+            return Response({"run_id": run_id}, 202)
+
+    persisted = []
+    with pytest.raises(hermes_agent.HermesAgentError, match="invalid run identifier"):
+        invoke(monkeypatch, Client(), on_run_started=lambda value: persisted.append(value) or True)
+    assert persisted == []
+
+
+def test_hermes_bridge_rejects_non_object_status_payload(monkeypatch):
+    # رد الحالة يجب أن يكون كائن JSON، وإلا نوقف المسار برسالة آمنة.
+    class Client:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+        async def post(self, *_args, **_kwargs):
+            return Response({"run_id": "run_safe_123"}, 202)
+        async def get(self, *_args, **_kwargs):
+            return Response(["unexpected", "payload"])
+
+    with pytest.raises(hermes_agent.HermesAgentError, match="invalid run status"):
+        invoke(monkeypatch, Client())
