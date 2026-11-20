@@ -1,3 +1,5 @@
+import pytest
+
 from app.services.opencode_contract import safe_event_metadata, permission_reply_body
 from app.services.opencode_event_consumer import OpenCodeEventConsumer
 
