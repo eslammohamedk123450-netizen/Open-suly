@@ -61,3 +61,10 @@ Browser Use remains disabled until all of the following are implemented and test
 - It requires a task-specific host allowlist, defaults to ports 80/443, rejects userinfo and non-HTTP(S) schemes, blocks IP literals/localhost/.local/.internal names, and rejects any DNS answer that is not globally routable.
 - Resolver injection keeps tests deterministic and prevents test suites from making network requests.
 - This helper is not wired to Browser Use. It cannot stop DNS rebinding or browser subresource/redirect traffic on its own; the required egress proxy must pin DNS answers at connection time and revalidate every redirect.
+
+
+## URL parser hardening — 2026-11-20
+
+- Browser URL preflight now rejects Unicode control, format, surrogate, and bidi-control code points before parsing, in addition to the existing scheme/userinfo/host/port/IP/DNS checks.
+- Tests cover literal newline, tab, right-to-left override, and right-to-left mark characters in navigation URLs.
+- This remains preflight validation only. It does not pin DNS answers at the socket layer, constrain redirects/subresources, or replace the required default-deny egress proxy. Browser Use remains disabled.
