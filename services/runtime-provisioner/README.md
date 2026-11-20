@@ -39,10 +39,21 @@ pip install -r requirements.txt
 export SULY_PROVISIONER_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
 export RUNTIME_GATEWAY_ORIGIN="https://runtime-gateway.example.com"
 export OPENCODE_RUNTIME_IMAGE="registry.example/opencode@sha256:<digest>"
-uvicorn app.main:app --host 0.0.0.0 --port 8080
+# Recommended: run the provisioner on the dedicated Docker worker host.
+# If containerized, host networking is required because task ports are published
+# only on the worker host's 127.0.0.1. Add only the Docker socket's numeric group.
+docker run --rm --network host \
+  --group-add "$(stat -c '%g' /var/run/docker.sock)" \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /var/lib/suly-runtime:/var/lib/suly-runtime \
+  --env-file /etc/suly-runtime.env \
+  suly-runtime-provisioner:local
+
+# Or run uvicorn directly on the dedicated host:
+uvicorn app.main:app --host 127.0.0.1 --port 8080
 ```
 
-The service must have access to its dedicated Docker daemon. Build the OpenCode image from repository root with `engines/opencode/Dockerfile`.
+The service must have access to its dedicated Docker daemon. Treat Docker socket access as host-root-equivalent. Build the OpenCode image from repository root with `engines/opencode/Dockerfile`. Put the TLS reverse proxy in front of the loopback-bound provisioner API; do not publish port 8080 or any task container port directly.
 
 ## Verification
 
