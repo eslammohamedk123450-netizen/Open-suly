@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import re
 from typing import Any
-from urllib.parse import urlsplit
 
 import httpx
 
@@ -86,21 +85,28 @@ class OpenCodeHTTPClient:
         if (method, path) not in _ALLOWED_ROUTES:
             raise ValueError("opencode_route_not_allowed")
         try:
-            response = await self._client.request(method, path, json=body)
+            async with self._client.stream(method, path, json=body) as response:
+                if 300 <= response.status_code < 400:
+                    raise OpenCodeTransportError("opencode_redirect_rejected")
+                if response.status_code < 200 or response.status_code >= 300:
+                    raise OpenCodeTransportError(f"opencode_upstream_status_{response.status_code}")
+                content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+                if content_type != "application/json":
+                    raise OpenCodeTransportError("opencode_invalid_content_type")
+                chunks: list[bytes] = []
+                total = 0
+                async for chunk in response.aiter_bytes():
+                    total += len(chunk)
+                    if total > _MAX_RESPONSE_BYTES:
+                        raise OpenCodeTransportError("opencode_response_too_large")
+                    chunks.append(chunk)
+        except OpenCodeTransportError:
+            raise
         except httpx.HTTPError as exc:
             # Deliberately omit URL, request headers, response body and exception text.
             raise OpenCodeTransportError("opencode_runtime_unreachable") from exc
-        if 300 <= response.status_code < 400:
-            raise OpenCodeTransportError("opencode_redirect_rejected")
-        if response.status_code < 200 or response.status_code >= 300:
-            raise OpenCodeTransportError(f"opencode_upstream_status_{response.status_code}")
-        if len(response.content) > _MAX_RESPONSE_BYTES:
-            raise OpenCodeTransportError("opencode_response_too_large")
-        content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
-        if content_type != "application/json":
-            raise OpenCodeTransportError("opencode_invalid_content_type")
         try:
-            return response.json()
+            return json.loads(b"".join(chunks))
         except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
             raise OpenCodeTransportError("opencode_invalid_json") from exc
 
@@ -159,11 +165,3 @@ class OpenCodeHTTPClient:
                     "name": name[:120] if isinstance(name, str) else provider_id,
                 })
         return safe
-
-    async def aclose_session(self, session_id: str) -> None:
-        # Session deletion is intentionally not exposed until durable SULY session
-        # ownership and cleanup/reconciliation are implemented.
-        if not _SESSION_ID.fullmatch(session_id) if isinstance(session_id, str) else True:
-            raise ValueError("opencode_session_id_invalid")
-        raise NotImplementedError("opencode_session_cleanup_requires_durable_session_binding")
-
