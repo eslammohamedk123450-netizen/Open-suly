@@ -50,6 +50,17 @@ def _safe_run_event(payload: object, expected_run_id: str) -> dict[str, str | in
     if not isinstance(name, str) or name not in _SSE_EVENT_NAMES:
         return None
     summary: dict[str, str | int | float] = {"event": name}
+    if name == "approval.request":
+        request_id = payload.get("request_id")
+        if isinstance(request_id, str) and 1 <= len(request_id) <= 256 and request_id.isascii() and all(ch.isalnum() or ch in "_-.:@" for ch in request_id):
+            summary["approval_request_id"] = request_id
+    elif name == "approval.responded":
+        request_id = payload.get("request_id")
+        choice = payload.get("choice")
+        if isinstance(request_id, str) and 1 <= len(request_id) <= 256 and request_id.isascii() and all(ch.isalnum() or ch in "_-.:@" for ch in request_id):
+            summary["approval_request_id"] = request_id
+        if choice in {"once", "deny"}:
+            summary["approval_choice"] = choice
     seq = payload.get("seq")
     if isinstance(seq, int) and not isinstance(seq, bool) and seq >= 0:
         summary["seq"] = seq
@@ -401,3 +412,65 @@ def steer_agent_run(
                 raise HermesAgentError("Hermes steer request failed.") from exc
 
     return asyncio.run(send_steer())
+
+
+
+def resolve_agent_approval(
+    upstream_run_id: str,
+    request_id: str,
+    choice: str,
+    *,
+    timeout_seconds: float = 15.0,
+) -> bool:
+    """Resolve exactly one pending Hermes approval; persistent grants are never exposed."""
+    settings = get_settings()
+    if not settings.hermes_agent_enabled or not settings.hermes_agent_isolation_confirmed:
+        raise HermesAgentUnavailable("Hermes approvals are disabled or isolation is not confirmed.")
+    if not settings.hermes_agent_base_url or not settings.hermes_agent_api_key:
+        raise HermesAgentUnavailable("Hermes agent runtime is not configured.")
+    if not isinstance(upstream_run_id, str) or not _RUN_ID_PATTERN.fullmatch(upstream_run_id):
+        raise ValueError("Hermes upstream run identifier is invalid.")
+    if (
+        not isinstance(request_id, str)
+        or not 1 <= len(request_id) <= 256
+        or not request_id.isascii()
+        or any(not (ch.isalnum() or ch in "_-.:@") for ch in request_id)
+    ):
+        raise ValueError("Hermes approval request identifier is invalid.")
+    if choice not in {"once", "deny"}:
+        raise ValueError("Hermes approval choice must be once or deny.")
+    if (
+        isinstance(timeout_seconds, bool)
+        or not isinstance(timeout_seconds, (int, float))
+        or not 1 <= timeout_seconds <= 30
+    ):
+        raise ValueError("Hermes approval timeout is outside the allowed range.")
+
+    base_url = _validate_base_url(settings.hermes_agent_base_url)
+    token = settings.hermes_agent_api_key.get_secret_value()
+
+    async def resolve() -> bool:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds, connect=5.0)) as client:
+            try:
+                response = await client.post(
+                    f"{base_url}/v1/runs/{upstream_run_id}/approval",
+                    headers={"Authorization": f"Bearer {token}"},
+                    json={"request_id": request_id, "choice": choice},
+                )
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict):
+                    raise HermesAgentError("Hermes returned an invalid approval response.")
+                if payload.get("run_id") != upstream_run_id:
+                    raise HermesAgentError("Hermes approval response run identifier did not match.")
+                if payload.get("request_id") != request_id:
+                    raise HermesAgentError("Hermes approval response request identifier did not match.")
+                if payload.get("choice") != choice or payload.get("resolved") != 1:
+                    raise HermesAgentError("Hermes did not resolve the requested approval.")
+                return True
+            except HermesAgentError:
+                raise
+            except (httpx.HTTPError, ValueError, TypeError) as exc:
+                raise HermesAgentError("Hermes approval request failed.") from exc
+
+    return asyncio.run(resolve())
