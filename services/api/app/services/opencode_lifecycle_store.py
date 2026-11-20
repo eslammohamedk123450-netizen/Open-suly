@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime, timezone
 import re
 from typing import Any, Callable
 from uuid import UUID
@@ -108,9 +109,9 @@ class OpenCodeLifecycleStore:
             raise ValueError("opencode_error_code_invalid")
         payload: dict[str, Any] = {"status": status, "error_code": error_code}
         if status in {"running", "provisioning"}:
-            payload["started_at"] = "now()"
+            payload["started_at"] = datetime.now(timezone.utc).isoformat()
         if status in {"completed", "failed", "cancelled", "expired"}:
-            payload["finished_at"] = "now()"
+            payload["finished_at"] = datetime.now(timezone.utc).isoformat()
         rows = self._client.table("opencode_task_runs").update(payload).eq(
             "id", run_id
         ).eq("user_id", user_id).execute().data
@@ -180,13 +181,22 @@ class OpenCodeLifecycleStore:
         if not row:
             return False
         item = row[0]
-        # Dispatch only after owner and pending-state checks; upstream must enforce
-        # its own permission ID/session scope. The DB transition below is conditional.
-        dispatch_upstream(item["session_id"], item["upstream_permission_id"], decision)
+        claimed = self._client.table("opencode_approvals").update({
+            "status": "processing",
+        }).eq("id", approval_id).eq("user_id", user_id).eq("status", "pending").execute().data
+        if not claimed:
+            return False
+        try:
+            dispatch_upstream(item["session_id"], item["upstream_permission_id"], decision)
+        except Exception:
+            self._client.table("opencode_approvals").update({
+                "status": "pending",
+            }).eq("id", approval_id).eq("user_id", user_id).eq("status", "processing").execute()
+            raise
         status = {"once": "approved_once", "always": "approved_always", "reject": "rejected"}[decision]
         updated = self._client.table("opencode_approvals").update({
-            "status": status, "decided_at": "now()",
-        }).eq("id", approval_id).eq("user_id", user_id).eq("status", "pending").execute().data
+            "status": status, "decided_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", approval_id).eq("user_id", user_id).eq("status", "processing").execute().data
         return bool(updated)
 
     def create_change_set(
