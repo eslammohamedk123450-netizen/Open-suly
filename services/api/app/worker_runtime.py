@@ -373,8 +373,8 @@ def main() -> None:
     reconciler = None
     if (
         settings.engine_reconciler_enabled
-        and settings.hermes_agent_enabled
-        and settings.hermes_agent_isolation_confirmed
+        and settings.hermes_agent_base_url
+        and settings.hermes_agent_api_key is not None
     ):
         reconciler = EngineRunReconciler(
             EngineRunStore(client),
