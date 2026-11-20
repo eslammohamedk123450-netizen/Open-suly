@@ -58,3 +58,11 @@ An `EngineDefinition` declares:
 3. Integrate registry lookup behind the existing worker dispatch boundary without changing approval semantics.
 4. Add Hermes adapter lifecycle support (run ID, events, cancellation) after sandbox review.
 5. Add one specialist adapter at a time, beginning with the coding/browser candidate selected by benchmark and license review.
+
+
+## Initial engine and agent catalogues — 2026-11-20
+
+- `engine_catalog.py` records immutable upstream provenance and capability declarations for Hermes, OpenCode, and Browser Use.
+- `agent_catalog.py` maps SULY's general, coding, and browser agent roles to those engine IDs.
+- Both catalogues are metadata-only. All roles and runtimes remain disabled; no external adapter is constructed or invoked.
+- The next integration step is transport-specific: Hermes native Runs API, OpenCode's supported server/API surface, and Browser Use's MCP stdio server. Each requires a bounded isolated runtime and task-scoped workspace.
