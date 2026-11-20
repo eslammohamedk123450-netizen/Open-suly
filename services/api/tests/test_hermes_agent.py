@@ -499,6 +499,113 @@ def test_hermes_bridge_stops_run_when_run_id_persistence_raises(monkeypatch):
 
 
 
+def test_safe_approval_event_keeps_only_opaque_request_identity():
+    event = hermes_agent._safe_run_event({
+        "run_id": "run_approval_123",
+        "event": "approval.request",
+        "seq": 10,
+        "request_id": "approval-req_123",
+        "command": "rm -rf /",
+        "description": "sensitive command preview",
+    }, "run_approval_123")
+    assert event == {
+        "event": "approval.request",
+        "seq": 10,
+        "approval_request_id": "approval-req_123",
+    }
+
+
+def test_safe_approval_response_keeps_only_supported_choice():
+    event = hermes_agent._safe_run_event({
+        "run_id": "run_approval_123",
+        "event": "approval.responded",
+        "seq": 11,
+        "request_id": "approval-req_123",
+        "choice": "once",
+        "description": "must not persist",
+    }, "run_approval_123")
+    assert event == {
+        "event": "approval.responded",
+        "seq": 11,
+        "approval_request_id": "approval-req_123",
+        "approval_choice": "once",
+    }
+
+
+def test_safe_approval_event_drops_invalid_request_id_and_permanent_choice():
+    event = hermes_agent._safe_run_event({
+        "run_id": "run_approval_123",
+        "event": "approval.responded",
+        "request_id": "bad request id",
+        "choice": "always",
+    }, "run_approval_123")
+    assert event == {"event": "approval.responded"}
+
+
+def test_hermes_approval_resolves_exact_request_with_once_choice(monkeypatch):
+    calls = []
+
+    class Client:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+        async def post(self, url, **kwargs):
+            calls.append((url, kwargs))
+            return Response({
+                "run_id": "run_approval_123",
+                "request_id": "approval-req_123",
+                "choice": "once",
+                "resolved": 1,
+            })
+
+    monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
+    monkeypatch.setattr(hermes_agent.httpx, "AsyncClient", lambda **_kw: Client())
+    assert hermes_agent.resolve_agent_approval(
+        "run_approval_123", "approval-req_123", "once"
+    ) is True
+    assert calls == [(
+        "http://hermes:8642/v1/runs/run_approval_123/approval",
+        {
+            "headers": {"Authorization": "Bearer test-only-token"},
+            "json": {"request_id": "approval-req_123", "choice": "once"},
+        },
+    )]
+
+
+@pytest.mark.parametrize("choice", ["always", "session", "approve", ""])
+def test_hermes_approval_rejects_persistent_or_unknown_choices(monkeypatch, choice):
+    monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
+    with pytest.raises(ValueError, match="once or deny"):
+        hermes_agent.resolve_agent_approval("run_approval_123", "approval-req_123", choice)
+
+
+def test_hermes_approval_rejects_invalid_request_id(monkeypatch):
+    monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
+    with pytest.raises(ValueError, match="request identifier"):
+        hermes_agent.resolve_agent_approval("run_approval_123", "bad request id", "once")
+
+
+def test_hermes_approval_rejects_mismatched_or_unresolved_response(monkeypatch):
+    class Client:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+        async def post(self, *_args, **_kwargs):
+            return Response({
+                "run_id": "run_approval_123",
+                "request_id": "another-request",
+                "choice": "once",
+                "resolved": 1,
+            })
+
+    monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
+    monkeypatch.setattr(hermes_agent.httpx, "AsyncClient", lambda **_kw: Client())
+    with pytest.raises(hermes_agent.HermesAgentError, match="request identifier"):
+        hermes_agent.resolve_agent_approval("run_approval_123", "approval-req_123", "once")
+
+
 def test_hermes_steer_targets_one_existing_run_with_bounded_input(monkeypatch):
     calls = []
 
