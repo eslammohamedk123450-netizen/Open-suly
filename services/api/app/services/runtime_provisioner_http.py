@@ -210,7 +210,14 @@ class HTTPSRuntimeLeaseProvider:
             raise RuntimeProvisionerError("runtime_recovery_identity_mismatch")
         return lease
 
-    def run_task(self, lease: RuntimeLease, *, prompt: str, title: str = "SULY task") -> dict[str, Any]:
+    def run_task(
+        self,
+        lease: RuntimeLease,
+        *,
+        prompt: str,
+        title: str = "SULY task",
+        on_session_created: Any | None = None,
+    ) -> dict[str, Any]:
         """Execute a bounded prompt in the leased OpenCode runtime and collect its diff snapshot."""
         if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 32_000:
             raise ValueError("runtime_prompt_invalid")
@@ -222,9 +229,40 @@ class HTTPSRuntimeLeaseProvider:
             raise ValueError("runtime_lease_invalid") from exc
         if lease.gateway_path != f"/v1/runtime-gateway/{lease.runtime_id}":
             raise ValueError("runtime_gateway_path_invalid")
+        # Create and persist the session before submitting the long-running prompt.
+        # This makes permission polling and lease recovery possible while the agent works.
+        try:
+            with self._client.stream(
+                "POST",
+                lease.gateway_path + "/api/session",
+                json={
+                    "title": title.strip(),
+                    "permissions": [{"action": "*", "resource": "*", "effect": "ask"}],
+                },
+                headers={"Authorization": f"Bearer {lease.access_token}"},
+            ) as response:
+                session_payload = self._json(response, frozenset({200, 201}))
+        except RuntimeProvisionerError:
+            raise
+        except httpx.HTTPError as exc:
+            raise RuntimeProvisionerError("runtime_session_creation_unavailable") from exc
+        session_data = session_payload.get("data", session_payload)
+        session_id = session_data.get("id") if isinstance(session_data, dict) else None
+        if not isinstance(session_id, str) or not re.fullmatch(r"ses[A-Za-z0-9_-]{1,128}", session_id):
+            raise RuntimeProvisionerError("runtime_session_creation_invalid_response")
+        if on_session_created is not None:
+            if not callable(on_session_created):
+                raise ValueError("runtime_session_callback_invalid")
+            on_session_created(lease, session_id)
+
         route = lease.gateway_path + "/execute"
         try:
-            with self._client.stream("POST", route, json={"prompt": prompt.strip(), "title": title.strip()}, headers={"Authorization": f"Bearer {lease.access_token}"}, timeout=httpx.Timeout(900, connect=5)) as response:
+            with self._client.stream(
+                "POST", route,
+                json={"prompt": prompt.strip(), "title": title.strip(), "session_id": session_id},
+                headers={"Authorization": f"Bearer {lease.access_token}"},
+                timeout=httpx.Timeout(900, connect=5),
+            ) as response:
                 if response.status_code != 200 or response.headers.get("content-type", "").split(";", 1)[0].lower() != "application/json":
                     raise RuntimeProvisionerError("runtime_execution_failed")
                 chunks, total = [], 0
