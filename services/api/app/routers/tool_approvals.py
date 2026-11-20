@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.core.auth import AuthenticatedUser, get_current_user
+from app.core.config import get_settings
 from app.core.supabase import get_supabase_admin_client
 from app.services.tool_approvals import ToolApprovalStore
 from app.worker_runtime import TOOL_REGISTRY
@@ -100,14 +101,22 @@ def list_available_tools(
     """Return registered worker tools and approval status for the current user."""
     try:
         approved_scopes = _store().active_scopes(user.id)
+        settings = get_settings()
+        hermes_available = bool(
+            settings.hermes_agent_enabled
+            and settings.hermes_agent_base_url
+            and settings.hermes_agent_api_key
+        )
         items = []
         for tool in TOOL_REGISTRY.describe():
+            available = tool["name"] != "hermes.agent.turn" or hermes_available
             items.append({
                 **tool,
                 "approved": (
                     not tool["requires_approval"]
                     or tool["permission_scope"] in approved_scopes
                 ),
+                "available": available,
             })
         return {"items": items}
     except HTTPException:
