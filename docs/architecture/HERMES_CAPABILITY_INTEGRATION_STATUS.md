@@ -149,3 +149,9 @@ The authenticated tool catalog now publishes each registered tool's allowed and 
 - The command/description text is not written to the SULY event ledger or database; it exists only in the API response and client memory for display. Persistent storage remains limited to opaque request identity and once/deny decision.
 - If Hermes no longer reports the exact request as waiting_for_approval, or no safe display text is available, the details endpoint fails closed and the UI does not expose decision buttons.
 - Tests cover run/request binding, waiting status, response validation, and display-field allowlisting. All runtime tests remain HTTP mocks; no live approval was exercised.
+
+
+### Approval details transport hardening — 2026-11-20
+- The task-owner approval-details endpoint now sends Cache-Control: private, no-store, max-age=0, Pragma: no-cache, and Vary: Authorization. Approval command text is a transient display response and must not be retained by intermediary caches.
+- Client-side approval detail/busy state is keyed by the pair (engine_run_id, request_id), preventing collisions if an upstream request identifier is reused by a later run.
+- The API test asserts the no-store headers. This is additive; no production setting or runtime toggle was changed.
