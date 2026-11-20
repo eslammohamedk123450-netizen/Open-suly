@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.supabase import get_supabase_admin_client
 from app.services.agent_planner import UnsupportedTaskRequest, plan_request, validate_agent_plan
+from app.services.hermes_agent import HermesAgentError, HermesAgentUnavailable, steer_agent_run
 
 router = APIRouter(prefix="/v1/tasks", tags=["tasks"])
 
@@ -28,6 +29,10 @@ class TaskPlanStep(BaseModel):
 
 class CreateTaskPlanRequest(BaseModel):
     steps: list[TaskPlanStep] = Field(min_length=1, max_length=32)
+
+
+class SteerEngineRunRequest(BaseModel):
+    input: str = Field(min_length=1, max_length=20000)
 
 
 def _admin_client():
@@ -278,6 +283,97 @@ def get_task(
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Could not load task.") from exc
 
+
+
+@router.post("/{task_id}/engine-runs/{run_id}/steer")
+def steer_task_engine_run(
+    task_id: UUID,
+    run_id: UUID,
+    request: SteerEngineRunRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Allow the authenticated task owner to steer only their active Hermes run."""
+    client = _admin_client()
+    try:
+        with client:
+            task = _owned_task(client, task_id, user.id)
+            if task.get("status") != "running":
+                raise HTTPException(status_code=409, detail="Only a running task can receive steering input.")
+
+            runs = (
+                client.table("engine_runs")
+                .select("id,step_id,engine_id,status,upstream_run_id")
+                .eq("id", str(run_id))
+                .eq("task_id", str(task_id))
+                .eq("user_id", user.id)
+                .limit(1)
+                .execute()
+                .data
+            )
+            if not runs:
+                raise HTTPException(status_code=404, detail="Engine run not found.")
+            engine_run = runs[0]
+            upstream_run_id = engine_run.get("upstream_run_id")
+            if (
+                engine_run.get("engine_id") != "hermes-agent"
+                or engine_run.get("status") != "running"
+                or not isinstance(upstream_run_id, str)
+            ):
+                raise HTTPException(status_code=409, detail="This engine run is not accepting steering input.")
+
+            settings = get_settings()
+            if (
+                not settings.worker_enabled
+                or not settings.hermes_agent_enabled
+                or not settings.hermes_agent_isolation_confirmed
+                or not settings.hermes_agent_base_url
+                or settings.hermes_agent_api_key is None
+            ):
+                raise HTTPException(status_code=503, detail="Hermes steering is not available.")
+
+            steps = (
+                client.table("task_steps")
+                .select("id,lease_token,status")
+                .eq("id", str(engine_run["step_id"]))
+                .eq("task_id", str(task_id))
+                .eq("user_id", user.id)
+                .limit(1)
+                .execute()
+                .data
+            )
+            if not steps or steps[0].get("status") != "running" or not steps[0].get("lease_token"):
+                raise HTTPException(status_code=409, detail="The task worker no longer owns this run.")
+
+            try:
+                steer_agent_run(upstream_run_id, request.input)
+            except HermesAgentUnavailable as exc:
+                raise HTTPException(status_code=503, detail="Hermes steering is unavailable.") from exc
+            except HermesAgentError as exc:
+                raise HTTPException(status_code=502, detail="Hermes did not accept the steering request.") from exc
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail="The steering request is invalid.") from exc
+
+            # Store only a metadata event. The RPC re-checks the lease to close races
+            # between the owner check above and the upstream control request.
+            try:
+                client.rpc("append_engine_run_event", {
+                    "p_run_id": str(run_id),
+                    "p_step_id": str(engine_run["step_id"]),
+                    "p_lease_token": str(steps[0]["lease_token"]),
+                    "p_event_name": "run.steered",
+                    "p_event_seq": None,
+                    "p_event_timestamp": None,
+                }).execute()
+            except Exception:
+                pass
+
+        return {"task_id": str(task_id), "engine_run_id": str(run_id), "accepted": True}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        if "task_not_found" in str(exc):
+            raise HTTPException(status_code=404, detail="Task not found.") from exc
+        raise HTTPException(status_code=503, detail="Could not steer the engine run.") from exc
 
 
 @router.post("/{task_id}/retry")
