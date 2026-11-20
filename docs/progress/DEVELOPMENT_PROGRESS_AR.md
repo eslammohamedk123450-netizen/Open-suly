@@ -266,3 +266,12 @@ undefined
 - فشل تشغيل SULY Free Test Worker المجدول في GitHub Actions عند خطوة التحقق من الأسرار المطلوبة (SUPABASE_URL وSUPABASE_SECRET_KEY)، قبل تثبيت المتطلبات أو تشغيل worker؛ لذلك لم تُعالج أي مهام ولم يحدث تنفيذ حي عبر هذا التشغيل. لم نضف أسرارًا أو نفعّل worker.
 - لا تزال migration 20261120235000_engine_run_events.sql غير مطبقة، ولا يوجد deployment أو تشغيل Hermes حي. يجب تطبيق migration في disposable/staging أولًا قبل نشر API الذي يعتمد على الجدول.
 - آخر HEAD بعد تحديث التوثيق: 12eb2b3754b1؛ فحوصات هذا التحديث تنتظر الاكتمال، ولا تُنسب نتائج commits السابقة إليه.
+
+
+## تحقق نهائي للجلسة — 2026-11-20
+
+- HEAD الذي تم التحقق منه قبل هذا التحديث: 7422195709611597414df4a6dc8a347d076ed983.
+- Platform CI على هذا الـHEAD نجح بالكامل: 329 API tests passed، وTypeScript typecheck، وExpo dependency compatibility، وWeb export جميعها ناجحة. Repository baseline checks ناجحة أيضًا.
+- التحذيران في API tests من Starlette/httpx واسم HTTP 422 deprecated؛ لم يؤثرا على نجاح الاختبارات.
+- لا يوجد نشر أو تطبيق migrations أو تشغيل Hermes. فشل Free Test Worker المجدول كان قبل runtime بسبب عدم وجود أسرار Supabase المطلوبة، ولم يبدأ تنفيذ المهام.
+- تحديث هذا السجل نفسه ينتج commit جديدًا، لذلك يجب إعادة التحقق من CI على HEAD النهائي بعده قبل اعتباره آخر checkpoint معتمد.
