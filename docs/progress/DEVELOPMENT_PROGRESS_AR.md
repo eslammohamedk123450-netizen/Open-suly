@@ -392,3 +392,13 @@ undefined
 - أثناء مراجعة CI اكتشفت أن تعديلًا سابقًا استهدف تعريف acquire داخل Protocol بدل class، ما أدى لفشل جمع الاختبارات. استعدت Protocol وTaskScopedRuntimeBroker كاملين في commit 772207dc، وسجلت السبب في وثيقة عقد broker.
 - Repository baseline checks على commit 772207dc بدأت، وPlatform CI كان queued عند آخر فحص. لا أعتبر الإصلاح مجتازًا حتى تظهر نتيجة ناجحة على HEAD النهائي.
 - لا يوجد provider حقيقي بعد، ولا يتم إنشاء حاويات أو تفعيل أي محرك. الحماية الحالية داخل process واحد فقط.
+
+
+## دفعة Browser Use — سياسة URL/SSRF تمهيدية — 2026-11-20
+
+- أضيف browser_network_policy.py كطبقة preflight لاختيار عناوين التصفح، مع allowlist لكل مهمة، ومنافذ محددة، ورفض userinfo وIP literals وlocalhost و.local و.internal وأي DNS answer غير public.
+- أضيفت اختبارات تستخدم DNS resolver وهميًا؛ لا يوجد أي اتصال خارجي أثناء الاختبارات. تشمل exact host/subdomain، ports، private/mixed DNS answers، metadata IP، وURL malformed.
+- راجعنا Browser Use MCP source عند pin ccbdb8095fbaf903c748880a600054a34c7b6191. MCP browser_exec يشغل Python داخل نفس process ويستطيع قراءة environment والملفات؛ لذلك لا يمكن تشغيله في API أو worker مشترك. لا يتم استخدام Browser Use Cloud أو أي API مدفوع.
+- وثقنا ضرورة per-attempt browser process/profile وegress proxy يثبت DNS عند الاتصال ويعيد فحص redirects والـsubresources؛ BrowserNetworkPolicy مجرد preflight ولا يمنع DNS rebinding بمفرده.
+- Platform CI على commit 772207dc نجح في API tests: **415 passed, 2 warnings**. Client typecheck/export كانا قيد التنفيذ عند آخر فحص؛ commit 852ddd1f أضاف تحديث التوثيق فقط وفحوصاته queued.
+- لا يوجد Browser Use adapter أو runtime provider أو egress proxy فعلي، ولذلك المحرك ما زال disabled. لا توجد migrations أو deployments أو browser sessions حية.
