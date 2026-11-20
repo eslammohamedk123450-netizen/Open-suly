@@ -10,22 +10,13 @@ services:
     restart: unless-stopped
     command: ["gateway", "run"]
     environment:
-      API_SERVER_ENABLED: ${HERMES_API_SERVER_ENABLED:-false}
-      API_SERVER_HOST: "0.0.0.0"
-      API_SERVER_PORT: "8642"
-      API_SERVER_KEY: ${HERMES_API_SERVER_KEY:-}
+      API_SERVER_ENABLED: "false"
     volumes:
       - hermes-data:/opt/data
     networks:
       - suly-agent-internal
     # No host port is published. The API stays disabled by default. If it is
     # enabled later, require a unique API key and a completed tool/sandbox audit.
-    healthcheck:
-      test: ["CMD-SHELL", "kill -0 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 90s
 
 volumes:
   hermes-data:
