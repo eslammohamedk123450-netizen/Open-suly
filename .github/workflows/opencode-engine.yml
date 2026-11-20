@@ -1,0 +1,50 @@
+name: OpenCode upstream engine verification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".gitmodules"
+      - "engines/opencode/**"
+      - ".github/workflows/opencode-engine.yml"
+  pull_request:
+    paths:
+      - ".gitmodules"
+      - "engines/opencode/**"
+      - ".github/workflows/opencode-engine.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: opencode-engine-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-upstream:
+    name: Verify pinned upstream and server workspace
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout SULY and pinned submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Verify immutable upstream provenance
+        run: python engines/opencode/verify_upstream.py
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Install upstream workspace from lockfile
+        working-directory: engines/opencode/upstream
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck original OpenCode server package
+        working-directory: engines/opencode/upstream
+        run: bun run --cwd packages/server typecheck
