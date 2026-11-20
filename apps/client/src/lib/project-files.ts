@@ -44,13 +44,13 @@ export async function readProjectFile(projectId: string, path: string): Promise<
   );
 }
 
-export async function saveProjectFile(projectId: string, path: string, content: string): Promise<ProjectFile> {
+export async function saveProjectFile(projectId: string, path: string, content: string, expectedUpdatedAt: string | null): Promise<ProjectFile> {
   if (new TextEncoder().encode(content).byteLength > 256 * 1024) {
     throw new Error("الحد الأقصى لحجم الملف 256 كيلوبايت.");
   }
   return request<ProjectFile>(
     "/v1/projects/" + encodeURIComponent(projectId) + "/file?path=" + encodeURIComponent(path),
-    { method: "PUT", body: JSON.stringify({ content }) },
+    { method: "PUT", body: JSON.stringify({ content, expected_updated_at: expectedUpdatedAt }) },
   );
 }
 
@@ -83,9 +83,9 @@ export async function readProjectFileRevision(projectId: string, revisionId: str
   );
 }
 
-export async function restoreProjectFileRevision(projectId: string, revisionId: string): Promise<{ restored: boolean; path: string; updated_at: string }> {
+export async function restoreProjectFileRevision(projectId: string, revisionId: string, expectedUpdatedAt: string): Promise<{ restored: boolean; path: string; updated_at: string }> {
   return request(
     "/v1/projects/" + encodeURIComponent(projectId) + "/file/history/" + encodeURIComponent(revisionId) + "/restore",
-    { method: "POST", body: "{}" },
+    { method: "POST", body: JSON.stringify({ expected_updated_at: expectedUpdatedAt }) },
   );
 }
