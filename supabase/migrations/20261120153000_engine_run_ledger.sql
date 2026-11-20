@@ -95,7 +95,7 @@ as $$
 declare
   v_rows integer;
 begin
-  if p_status not in ('succeeded','failed','cancelled') then
+  if p_status is null or p_status not in ('succeeded','failed','cancelled') then
     raise exception 'invalid_engine_run_terminal_status';
   end if;
 
@@ -116,6 +116,7 @@ begin
      and s.id = r.step_id
      and s.status = 'running'
      and s.lease_token = p_lease_token
+     and s.lease_expires_at > now()
      and r.status = 'running'
      and s.task_id = r.task_id
      and s.user_id = r.user_id;
