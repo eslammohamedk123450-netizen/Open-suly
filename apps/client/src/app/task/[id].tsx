@@ -5,13 +5,14 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { colors } from "@/theme/tokens";
 import { useAuth } from "@/providers/AuthProvider";
-import { cancelAgentTask, getAgentTask, retryAgentTask, type AgentTaskSnapshot } from "@/lib/agent-tasks";
+import { cancelAgentTask, getAgentTask, retryAgentTask, steerAgentRun, type AgentTaskSnapshot } from "@/lib/agent-tasks";
 
 const terminalStatuses = new Set(["completed", "failed", "cancelled"]);
 
@@ -73,6 +74,9 @@ export default function TaskDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+  const [steerDraft, setSteerDraft] = useState("");
+  const [steeringRunId, setSteeringRunId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id || !user) return;
@@ -120,6 +124,23 @@ export default function TaskDetailsScreen() {
       setNotice(error instanceof Error ? error.message : "تعذر طلب إلغاء المهمة.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const steer = async (engineRunId: string) => {
+    if (!snapshot || !steerDraft.trim() || steeringRunId) return;
+    setSteeringRunId(engineRunId);
+    setNotice("");
+    setActionMessage("");
+    try {
+      await steerAgentRun(snapshot.task.id, engineRunId, steerDraft);
+      setSteerDraft("");
+      await load();
+      setActionMessage("تم إرسال التوجيه إلى Hermes.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "تعذر إرسال التوجيه.");
+    } finally {
+      setSteeringRunId(null);
     }
   };
 
@@ -225,6 +246,29 @@ export default function TaskDetailsScreen() {
                       <Text style={styles.muted}>بدأت: {formatDate(run.started_at)}</Text>
                       {!!run.completed_at && <Text style={styles.muted}>انتهت: {formatDate(run.completed_at)}</Text>}
                       {!!run.error_code && <Text style={styles.error}>رمز الخطأ: {run.error_code}</Text>}
+                      {run.engine_id === "hermes-agent" && run.status === "running" && (
+                        <View style={styles.steerBox}>
+                          <TextInput
+                            value={steerDraft}
+                            onChangeText={setSteerDraft}
+                            placeholder="أرسل توجيهًا إضافيًا إلى الوكيل..."
+                            placeholderTextColor={colors.faint}
+                            multiline
+                            maxLength={20000}
+                            style={styles.steerInput}
+                            textAlign="right"
+                          />
+                          <Pressable
+                            style={[styles.steerButton, (!steerDraft.trim() || steeringRunId !== null) && styles.disabledButton]}
+                            onPress={() => void steer(run.id)}
+                            disabled={!steerDraft.trim() || steeringRunId !== null}
+                          >
+                            {steeringRunId === run.id
+                              ? <ActivityIndicator color={colors.gold} />
+                              : <Text style={styles.steerText}>إرسال توجيه</Text>}
+                          </Pressable>
+                        </View>
+                      )}
                     </View>
                   ))}
                 </>
@@ -252,6 +296,7 @@ export default function TaskDetailsScreen() {
             </>
           ) : null}
           {!!notice && !!snapshot && <Text style={styles.error}>{notice}</Text>}
+          {!!actionMessage && <Text style={styles.success}>{actionMessage}</Text>}
         </ScrollView>
       </View>
     </SafeAreaView>
@@ -290,6 +335,12 @@ const styles = StyleSheet.create({
   eventRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border },
   eventCopy: { flex: 1, gap: 4 },
   eventDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.gold },
+  steerBox: { marginTop: 8, gap: 8 },
+  steerInput: { minHeight: 72, maxHeight: 150, color: colors.text, backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1, borderRadius: 10, padding: 10, fontSize: 13, textAlignVertical: "top" },
+  steerButton: { alignSelf: "flex-start", borderWidth: 1, borderColor: colors.goldDark, borderRadius: 9, paddingHorizontal: 14, paddingVertical: 9, minWidth: 110, alignItems: "center" },
+  steerText: { color: colors.gold, fontSize: 12, fontWeight: "800" },
+  disabledButton: { opacity: 0.45 },
+  success: { color: colors.gold, fontSize: 12, textAlign: "right" },
   primaryButton: { backgroundColor: colors.gold, padding: 13, borderRadius: 10, marginTop: 12 },
   primaryText: { color: colors.background, fontWeight: "800" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24, gap: 12 },
