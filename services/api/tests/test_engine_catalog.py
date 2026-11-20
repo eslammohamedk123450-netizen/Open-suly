@@ -47,3 +47,30 @@ def test_catalog_rejects_mutable_upstream_revision():
 def test_catalog_rejects_duplicate_engine_ids():
     with pytest.raises(ValueError, match="duplicate_engine_manifest"):
         validate_engine_manifests((ENGINE_MANIFESTS[0], ENGINE_MANIFESTS[0]))
+
+
+class StubAdapter:
+    def execute(self, request):
+        from app.services.engine_contract import EngineResult
+        return EngineResult("hermes-agent", {"task": request.task_id})
+
+
+def test_catalog_allows_only_explicit_valid_runtime_override():
+    adapter = StubAdapter()
+    registry = build_engine_registry({"hermes-agent": (True, adapter)})
+
+    assert registry.get("hermes-agent").enabled is True
+    assert registry.get("hermes-agent").adapter is adapter
+    assert registry.get("opencode").enabled is False
+    assert registry.get("browser-use").enabled is False
+    assert registry.candidates("agent.general")[0].engine_id == "hermes-agent"
+
+
+@pytest.mark.parametrize("overrides, error", [
+    ({"unknown-engine": (True, StubAdapter())}, "unknown_engine_runtime_override"),
+    ({"hermes-agent": (True, None)}, "enabled_engine_requires_adapter"),
+    ({"hermes-agent": (1, StubAdapter())}, "invalid_engine_runtime_override"),
+])
+def test_catalog_rejects_unsafe_runtime_overrides(overrides, error):
+    with pytest.raises(ValueError, match=error):
+        build_engine_registry(overrides)
