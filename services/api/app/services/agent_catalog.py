@@ -62,7 +62,7 @@ AGENT_DEFINITIONS: tuple[AgentDefinition, ...] = (
 
 
 def build_agent_manager(engines: EngineRegistry | None = None) -> AgentManager:
-    """Enable only roles backed by an enabled engine for every role capability."""
+    """Enable a role only when at least one requested capability has an enabled engine."""
     registry = engines if engines is not None else build_engine_registry()
     definitions = []
     for agent in AGENT_DEFINITIONS:
