@@ -47,8 +47,12 @@ The tables have RLS enabled. Authenticated users receive read-only access to the
 
 ## Recovery and operational limits
 
-The runtime lease registry is process-local. If the API process restarts, the in-memory lease token is lost; the provisioner still has its own TTL and Docker cleanup metadata, but the API cannot transparently resume an active permission exchange. Such a run must be reconciled as interrupted and its runtime allowed to expire or be explicitly reaped. A durable encrypted lease vault and worker-level heartbeat/reconciliation are still required for seamless recovery across API restarts.
+The runtime lease registry remains process-local, but the provisioner derives a stable per-runtime access credential with HMAC-SHA256 from the server-only provisioner secret and the canonical runtime/task/run IDs. Only the credential digest is stored in SQLite. After an API process restart, a trusted API worker can recover the same lease through the owner-bound recovery endpoint using the persisted `runtime_id`; concurrent API instances can reconstruct the same credential without rotating it or persisting plaintext tokens.
 
-The event consumer is a bounded component and the event feed is volatile. It must be run concurrently with prompt execution by the task worker to capture all events; reconnecting after a completed prompt cannot replay missed events. The current API route surfaces persisted events but does not itself start a background event-consumer task.
+This recovers access to a still-live runtime, but it does not by itself resume a lost worker's Python call stack or guarantee exactly-once prompt execution. Durable worker heartbeats, task reconciliation, and safe retry semantics remain required before claiming seamless recovery across worker crashes.
+
+The runtime gateway forwards `GET /api/event` as a true streaming response instead of buffering an unbounded SSE connection. The event consumer remains a bounded component and must be started concurrently with prompt execution by the task worker to capture all events. The current API routes expose persisted events and recover permission access, but they do not themselves start a background event-consumer task or prove that the worker invokes it for every run.
+
+Task containers use an internal Docker network with outbound egress disabled by default. If an operator enables `RUNTIME_ALLOW_EGRESS=true`, the dedicated runtime host must also enforce the documented outbound firewall allowlist; this environment flag alone is not a firewall.
 
 The CI Docker smoke test starts the pinned OpenCode image and checks `/api/info`. It is not a multi-tenant concurrency test and does not prove host firewall policy, production TLS termination, or a complete LLM-backed task execution. Those require a dedicated runtime host and an explicitly configured model provider.
