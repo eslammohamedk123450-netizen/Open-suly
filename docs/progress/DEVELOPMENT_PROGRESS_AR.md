@@ -311,3 +311,14 @@ undefined
 - شددنا عرض موافقات Hermes بإزالة Unicode control/format/bidi characters من command/description قبل عرضهما، مع اختبارات.
 - CI: Platform CI وRepository baseline على commit `01e8e88b9e267b138bbfc0fbd24599be36294441` نجحا بالكامل: 364 API tests passed، TypeScript typecheck، Expo compatibility، Web export. Commit `b1666a9c` فشل بسبب fixture اختبار كتب newline/NUL كنص حرفي؛ تم إصلاح fixture في `01e8e88b` ثم نجح CI. أحدث HEAD عند كتابة هذا السطر هو `7232a4d886714bf70d10359dbef7f0726f6d9142` وفحوصاته queued؛ لا ننسب إليه نجاح commit السابق حتى تكتمل.
 - لا worker أو Hermes/OpenCode runtime أو provider مفعّل، ولا migrations مطبقة، ولا deployment.
+
+
+## دفعة تطوير إضافية — عزل هوية كل تشغيل OpenCode/Hermes — 2026-11-20
+
+- راجعنا كود OpenCode المثبت عند revision 4cca18d80450a3dd6a9a4142028bde84ccb3116e. مصادقة OpenCode أصلًا server-wide وليست مصادقة SULY tenant؛ جلساته ومجلداته لا تمثل حد عزل بين مستخدمي SULY. لذلك لا يجوز تشغيل خادم مشترك أو تمرير مسار filesystem يختاره العميل.
+- أضفنا تدقيقًا معماريًا في OPENCODE_INTEGRATION_AUDIT.md يحدد متطلبات runtime مؤقت لكل task attempt، وbroker يفحص المالك والـlease، وcredentials قصيرة العمر، وإغلاق العمليات وتنظيف المساحة بعد الإلغاء أو فقد lease.
+- شددنا DockerSandboxCommandBuilder دون تشغيل Docker: أصبح يقبل engine_run_id اختياريًا، ويولّد اسم container وlabels على مستوى المحاولة، ويضبط PID/IPC/UTS namespaces على private ويمنع restart ويعطل container logs افتراضيًا.
+- بقيت القيود السابقة كما هي: image digest ثابت، network none، root filesystem read-only، drop ALL capabilities، no-new-privileges، seccomp default، non-root، حدود CPU/RAM/PIDs/tmpfs، mount واحد لمساحة العمل، لا host mounts ولا Docker socket.
+- أضفنا اختبارات لتمييز retries لنفس task بهويات تشغيل مستقلة والتحقق من private namespaces. هذا اختبار بناء command فقط؛ لا يثبت تشغيل container أو منع cross-tenant escape.
+- CI: Repository baseline على commit 6289ed2e نجح، وPlatform CI كان قيد التشغيل عند آخر فحص. تغييرات الاختبارات والتوثيق اللاحقة على commits 1ab4cede وf4cb68bc تحتاج انتظار CI النهائي على أحدث HEAD.
+- Hermes وOpenCode وBrowser Use والـworker ما زالت disabled افتراضيًا. لم يتم تشغيل Docker أو تطبيق migration أو نشر أي خدمة.
