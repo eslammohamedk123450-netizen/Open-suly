@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     supabase_publishable_key: SecretStr | None = None
     supabase_secret_key: SecretStr | None = None
 
-    # Provider-independent OpenAI-compatible gateway. Disabled by default.
+    # Server-side AI gateway: OpenAI-compatible providers or self-hosted Ollama. Disabled by default.
     ai_provider: str = "disabled"
     ai_base_url: str | None = None
     ai_api_key: SecretStr | None = None
