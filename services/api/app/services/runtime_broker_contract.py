@@ -156,31 +156,9 @@ class RuntimeLeaseProvider(Protocol):
         ...
 
     def run_task(
-        self,
-        task_id: str,
-        engine_run_id: str,
-        engine_id: str,
-        *,
-        files: list[dict] | None,
-        prompt: str,
-        title: str = "SULY task",
+        self, lease: RuntimeLease, *, prompt: str, title: str = "SULY task"
     ) -> dict:
-        """Execute through the configured provider and always release the runtime."""
-        runner = getattr(self._provider, "run_task", None)
-        if not callable(runner):
-            raise RuntimeError("runtime_provider_execution_not_supported")
-        lease = self.acquire(task_id, engine_run_id, engine_id, files=files)
-        try:
-            result = runner(lease, prompt=prompt, title=title)
-            if not isinstance(result, dict):
-                raise RuntimeError("runtime_provider_invalid_execution_result")
-            return result
-        finally:
-            try:
-                if not self.release(lease):
-                    logger.warning("Runtime teardown was not confirmed for runtime %s", lease.runtime_id)
-            except Exception:
-                logger.warning("Runtime teardown failed for runtime %s", lease.runtime_id)
+        ...
 
     def release(self, lease: RuntimeLease) -> bool:
         ...
@@ -292,6 +270,56 @@ class TaskScopedRuntimeBroker:
         finally:
             with self._lock:
                 self._pending_attempts.discard(attempt)
+
+    def run_task(
+        self,
+        task_id: str,
+        engine_run_id: str,
+        engine_id: str,
+        *,
+        files: list[dict] | None,
+        prompt: str,
+        title: str = "SULY task",
+    ) -> dict:
+        """Execute and retain the lease for approvals/review until explicit release.
+
+        Failed executions are torn down immediately. Successful runtimes remain
+        task-scoped and expire at the provisioner TTL if the API worker crashes.
+        """
+        runner = getattr(self._provider, "run_task", None)
+        if not callable(runner):
+            raise RuntimeError("runtime_provider_execution_not_supported")
+        lease = self.acquire(task_id, engine_run_id, engine_id, files=files)
+        try:
+            result = runner(lease, prompt=prompt, title=title)
+            if not isinstance(result, dict):
+                raise RuntimeError("runtime_provider_invalid_execution_result")
+            safe_result = dict(result)
+            execution = safe_result.get("execution")
+            if isinstance(execution, dict):
+                execution = dict(execution)
+                execution["runtime_id"] = lease.runtime_id
+                safe_result["execution"] = execution
+            return safe_result
+        except Exception:
+            try:
+                self.release(lease)
+            except Exception:
+                logger.warning("Runtime teardown failed after task error %s", lease.runtime_id)
+            raise
+
+    def lease_for_attempt(
+        self, task_id: str, engine_run_id: str, engine_id: str
+    ) -> RuntimeLease | None:
+        attempt = (task_id, engine_run_id, engine_id)
+        with self._lock:
+            runtime_id = self._active_by_attempt.get(attempt)
+            active = self._active_by_runtime.get(runtime_id) if runtime_id else None
+            return active[1] if active and active[0] == attempt else None
+
+    def release_attempt(self, task_id: str, engine_run_id: str, engine_id: str) -> bool:
+        lease = self.lease_for_attempt(task_id, engine_run_id, engine_id)
+        return self.release(lease) if lease is not None else False
 
     def release(self, lease: RuntimeLease) -> bool:
         if not isinstance(lease, RuntimeLease):
