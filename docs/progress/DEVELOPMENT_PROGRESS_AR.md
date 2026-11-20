@@ -421,3 +421,11 @@ undefined
 - مسارات عرض تفاصيل الموافقة وحلها تتحقق من lease ما زال حيًا قبل إظهار command أو إرسال القرار؛ تم إضافة no-store headers لرد تفاصيل الموافقة.
 - API tests على commit 06c46b4d نجحت: **427 passed, 2 warnings**. TypeScript typecheck وExpo compatibility نجحا، وكان Web export قيد التنفيذ عند آخر فحص. تغييرات المنفذ 0 واختباره على HEAD a858ea69 تنتظر CI.
 - ما زال Browser Use مجرد policy helper بلا egress proxy أو runtime provider، وOpenCode بلا adapter/runtime. لا توجد محركات مفعلة أو migrations مطبقة أو deployment حي.
+
+
+## تحقق إضافي — اكتمال Platform CI على دفعة موافقات Hermes — 2026-11-20
+
+- Commit 06c46b4d: Platform CI اكتمل بنجاح بالكامل؛ API tests: 427 passed، وClient typecheck + Expo dependency compatibility + Web export نجحت.
+- بعد ذلك أضيفت مراجعات SSRF preflight للمتصفح: رفض صيغ IPv4 الرقمية المختصرة/العشرية/hex، ثم رفض محارف Unicode control/format/bidi في URL.
+- BrowserNetworkPolicy لا ينفذ طلبات ولا يمثل egress proxy؛ هو preflight فقط، ويظل Browser Use disabled إلى أن يوجد proxy فعلي يفرض DNS/IP pinning على كل redirect وsubresource.
+- أحدث commits التي تحمل تغييرات URL الأخيرة لها Platform CI قيد التشغيل عند تحديث هذا السجل؛ لا ننسب نجاح 06c46b4d إلى هذه التغييرات اللاحقة.
