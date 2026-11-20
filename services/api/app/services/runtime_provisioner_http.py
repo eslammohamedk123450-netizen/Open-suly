@@ -167,6 +167,8 @@ class HTTPSRuntimeLeaseProvider:
             lease.validate(task_id=lease.task_id, engine_run_id=lease.engine_run_id, engine_id=lease.engine_id, allowed_origins=frozenset({lease.base_url}))
         except ValueError as exc:
             raise ValueError("runtime_lease_invalid") from exc
+        if lease.gateway_path != f"/v1/runtime-gateway/{lease.runtime_id}":
+            raise ValueError("runtime_gateway_path_invalid")
         route = lease.gateway_path + "/execute"
         try:
             with self._client.stream("POST", route, json={"prompt": prompt.strip(), "title": title.strip()}, headers={"Authorization": f"Bearer {lease.access_token}"}, timeout=httpx.Timeout(900, connect=5)) as response:
