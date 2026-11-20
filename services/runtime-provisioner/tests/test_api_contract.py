@@ -7,7 +7,9 @@ os.environ.setdefault("OPENCODE_RUNTIME_IMAGE", "registry.example/opencode@sha25
 os.environ.setdefault("RUNTIME_DB_PATH", "/tmp/suly-runtime-test.sqlite3")
 
 from fastapi.testclient import TestClient
-from app.main import app
+import app.main as runtime_api
+runtime_api.SULY_TOKEN = "t" * 48
+app = runtime_api.app
 
 client = TestClient(app)
 
