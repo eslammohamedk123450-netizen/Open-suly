@@ -600,14 +600,16 @@ def test_hermes_approval_details_normalizes_control_characters(monkeypatch):
                 "status": "waiting_for_approval",
                 "approval": {
                     "request_id": "approval-req_123",
-                    "command": "line1" + chr(10) + "line2" + chr(0) + "tail",
+                    "command": "line1" + chr(10) + "line2" + chr(0) + chr(0x202E) + "tail",
                 },
             })
 
     monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
     monkeypatch.setattr(hermes_agent.httpx, "AsyncClient", lambda **_kw: Client())
     result = hermes_agent.get_agent_approval_details("run_approval_123", "approval-req_123")
-    assert result["command"] == "line1 line2 tail"
+    assert result["command"] == "line1 line2  tail"
+    assert chr(0) not in result["command"]
+    assert chr(0x202E) not in result["command"]
 
 
 def test_hermes_approval_details_removes_bidi_and_c1_format_controls(monkeypatch):
