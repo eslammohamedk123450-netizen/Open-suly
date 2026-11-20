@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+import ipaddress
 import logging
 import re
 from threading import RLock
@@ -17,7 +18,41 @@ from uuid import UUID
 
 logger = logging.getLogger("suly.runtime_broker")
 _ENGINE_ID = re.compile(r"^[a-z][a-z0-9-]{1,62}$")
-_ORIGIN = re.compile(r"^https?://[a-z0-9.-]+(?::[1-9][0-9]{0,4})?$")
+_DNS_HOST = re.compile(r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$")
+
+
+def _valid_https_origin(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        parsed = urlsplit(value)
+        host = parsed.hostname.lower().rstrip(".") if parsed.hostname else ""
+        port = parsed.port
+        ipaddress.ip_address(host)
+    except ValueError:
+        # A valid DNS hostname is expected; IP literals are deliberately rejected.
+        try:
+            parsed = urlsplit(value)
+            host = parsed.hostname.lower().rstrip(".") if parsed.hostname else ""
+            port = parsed.port
+        except (TypeError, ValueError, AttributeError):
+            return False
+    else:
+        return False
+    if (
+        parsed.scheme != "https"
+        or not _DNS_HOST.fullmatch(host)
+        or host == "localhost"
+        or host.endswith(".localhost")
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in {"", "/"}
+        or (port is not None and not 1 <= port <= 65535)
+    ):
+        return False
+    return value == _normalized_origin(parsed)
 
 
 def _normalized_origin(parsed) -> str:
@@ -87,7 +122,7 @@ class RuntimeLease:
             raise ValueError("runtime_lease_base_url_invalid") from exc
 
         if (
-            parsed.scheme not in {"http", "https"}
+            parsed.scheme != "https"
             or not parsed.hostname
             or parsed.username is not None
             or parsed.password is not None
@@ -96,6 +131,7 @@ class RuntimeLease:
             or parsed.path not in {"", "/"}
             or not isinstance(allowed_origins, frozenset)
             or not allowed_origins
+            or not _valid_https_origin(normalized_origin)
             or normalized_origin not in allowed_origins
         ):
             raise ValueError("runtime_lease_base_url_invalid")
@@ -140,10 +176,7 @@ class TaskScopedRuntimeBroker:
         if (
             not isinstance(allowed_origins, frozenset)
             or not allowed_origins
-            or any(
-                not isinstance(origin, str) or not _ORIGIN.fullmatch(origin)
-                for origin in allowed_origins
-            )
+            or any(not _valid_https_origin(origin) for origin in allowed_origins)
         ):
             raise ValueError("runtime_broker_allowed_origins_required")
 
