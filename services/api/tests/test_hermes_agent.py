@@ -600,7 +600,7 @@ def test_hermes_approval_details_normalizes_control_characters(monkeypatch):
                 "status": "waiting_for_approval",
                 "approval": {
                     "request_id": "approval-req_123",
-                    "command": "line1\\nline2\\x00tail",
+                    "command": "line1" + chr(10) + "line2" + chr(0) + "tail",
                 },
             })
 
