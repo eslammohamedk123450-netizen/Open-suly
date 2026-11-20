@@ -346,3 +346,58 @@ def stop_agent_run(upstream_run_id: str, *, timeout_seconds: float = 30.0) -> bo
                 raise HermesAgentError("Hermes stop reconciliation failed.") from exc
 
     return asyncio.run(stop_and_confirm())
+
+
+
+def steer_agent_run(
+    upstream_run_id: str,
+    steer_text: str,
+    *,
+    timeout_seconds: float = 15.0,
+) -> bool:
+    """Send bounded user guidance to one existing Hermes run; never starts a new run."""
+    settings = get_settings()
+    if not settings.hermes_agent_enabled or not settings.hermes_agent_isolation_confirmed:
+        raise HermesAgentUnavailable("Hermes steering is disabled or isolation is not confirmed.")
+    if not settings.hermes_agent_base_url or not settings.hermes_agent_api_key:
+        raise HermesAgentUnavailable("Hermes agent runtime is not configured.")
+    if not isinstance(upstream_run_id, str) or not _RUN_ID_PATTERN.fullmatch(upstream_run_id):
+        raise ValueError("Hermes upstream run identifier is invalid.")
+    if not isinstance(steer_text, str) or not steer_text.strip() or len(steer_text) > _MAX_PROMPT_CHARS:
+        raise ValueError("Hermes steer input must contain 1–20000 characters.")
+    if (
+        isinstance(timeout_seconds, bool)
+        or not isinstance(timeout_seconds, (int, float))
+        or not 1 <= timeout_seconds <= 30
+    ):
+        raise ValueError("Hermes steer timeout is outside the allowed range.")
+
+    base_url = _validate_base_url(settings.hermes_agent_base_url)
+    token = settings.hermes_agent_api_key.get_secret_value()
+
+    async def send_steer() -> bool:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout_seconds, connect=5.0)
+        ) as client:
+            try:
+                response = await client.post(
+                    f"{base_url}/v1/runs/{upstream_run_id}/steer",
+                    headers={"Authorization": f"Bearer {token}"},
+                    json={"input": steer_text.strip()},
+                )
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict):
+                    raise HermesAgentError("Hermes returned an invalid steer response.")
+                response_run_id = payload.get("run_id")
+                if response_run_id is not None and response_run_id != upstream_run_id:
+                    raise HermesAgentError("Hermes steer response run identifier did not match.")
+                if payload.get("accepted") is not True:
+                    raise HermesAgentError("Hermes did not accept the steer input.")
+                return True
+            except HermesAgentError:
+                raise
+            except (httpx.HTTPError, ValueError, TypeError) as exc:
+                raise HermesAgentError("Hermes steer request failed.") from exc
+
+    return asyncio.run(send_steer())
