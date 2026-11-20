@@ -340,3 +340,42 @@ def test_run_once_reports_failure_write_exception_without_claiming_persistence()
     assert worker.run_once(lambda _step: (_ for _ in ()).throw(RuntimeError("failed"))) == (
         "failure_not_recorded"
     )
+
+def test_worker_bounds_shutdown_when_heartbeat_rpc_stalls():
+    heartbeat_started = Event()
+    release_heartbeat = Event()
+
+    class BlockingHeartbeatRpc(FakeRpc):
+        def __init__(self):
+            super().__init__([STEP, True, True])
+            self.renew_count = 0
+
+        def rpc(self, name, args):
+            if name == "renew_task_step_lease":
+                self.renew_count += 1
+                if self.renew_count == 2:
+                    self.calls.append((name, args))
+                    heartbeat_started.set()
+
+                    def execute():
+                        release_heartbeat.wait(2)
+                        return SimpleNamespace(data=True)
+
+                    return SimpleNamespace(execute=execute)
+            return super().rpc(name, args)
+
+    client = BlockingHeartbeatRpc()
+    worker = TaskWorker(
+        client, "worker-stalled-heartbeat", heartbeat_interval_seconds=0.01
+    )
+
+    def handler(_step):
+        assert heartbeat_started.wait(1)
+        return {"ok": True}
+
+    try:
+        assert worker.run_once(handler) == "lease_lost"
+        assert all(call[0] != "complete_task_step" for call in client.calls)
+    finally:
+        release_heartbeat.set()
+
