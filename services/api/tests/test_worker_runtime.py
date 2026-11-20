@@ -310,6 +310,7 @@ def test_hermes_engine_stays_disabled_without_feature_flag(monkeypatch):
     from types import SimpleNamespace
 
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=False,
         hermes_agent_enabled=False, hermes_agent_timeout_seconds=90.0,
     ))
     monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: object())
@@ -447,6 +448,7 @@ def test_agent_catalog_contains_roles_but_keeps_unavailable_agents_disabled(monk
     from app.services.engine_registry import EngineDefinition, EngineRegistry
 
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=False,
         hermes_agent_enabled=False,
     ))
     engines = EngineRegistry([
