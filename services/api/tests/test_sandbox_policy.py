@@ -105,3 +105,21 @@ def test_sandbox_rejects_unsafe_resource_limits(tmp_path, limits):
     root.chmod(0o700)
     with pytest.raises(ValueError):
         builder(root, limits=limits)
+
+
+def test_sandbox_rejects_workspace_permissions_visible_to_other_users(tmp_path):
+    root = tmp_path / "workspaces"
+    workspace = root / str(uuid4())
+    workspace.mkdir(parents=True)
+    root.chmod(0o700)
+    workspace.chmod(0o755)
+    with pytest.raises(ValueError, match="permissions_too_open"):
+        builder(root).build(str(uuid4()), workspace, ["aider"])
+
+
+def test_sandbox_rejects_root_container_identity(tmp_path):
+    root = tmp_path / "workspaces"
+    root.mkdir()
+    root.chmod(0o700)
+    with pytest.raises(ValueError, match="sandbox_workspace_user"):
+        builder(root, limits=SandboxLimits(container_uid=0, container_gid=0))
