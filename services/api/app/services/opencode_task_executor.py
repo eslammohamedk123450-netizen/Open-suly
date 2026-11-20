@@ -65,6 +65,12 @@ class OpenCodeTaskExecutor:
                 raise RuntimeError("opencode_execution_result_invalid")
             if not isinstance(results, dict) or not isinstance(results.get("changed_files"), list):
                 raise RuntimeError("opencode_workspace_result_invalid")
+            if lifecycle_run is not None and isinstance(execution.get("runtime_id"), str):
+                self._lifecycle.set_runtime(
+                    user_id=user_id, run_id=lifecycle_run["id"],
+                    runtime_id=execution["runtime_id"], session_id=execution["session_id"],
+                    status="running",
+                )
         except Exception:
             if lifecycle_run is not None:
                 self._lifecycle.update_status(
