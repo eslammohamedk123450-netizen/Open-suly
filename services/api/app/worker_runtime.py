@@ -15,6 +15,8 @@ from typing import Any, Callable
 from app.core.config import get_settings
 from app.core.supabase import get_supabase_admin_client
 from app.services.ai_gateway import generate_reply
+from app.services.engine_contract import EngineRequest, EngineResult
+from app.services.engine_registry import EngineDefinition, EngineRegistry
 from app.services.hermes_agent import run_agent_turn
 from app.services.task_worker import ClaimedStep, TaskWorker
 from app.services.tool_registry import ToolDefinition, ToolExecutionContext, ToolRegistry
@@ -45,15 +47,56 @@ def ai_respond(step: ClaimedStep) -> dict[str, Any]:
     return {"operation": "ai.respond", "content": reply}
 
 
+class HermesAgentAdapter:
+    """Narrow adapter to the separately hosted Hermes bridge."""
+
+    def execute(self, request: EngineRequest) -> EngineResult:
+        prompt = request.input_payload.get("prompt")
+        if not isinstance(prompt, str):
+            raise ValueError("hermes_adapter_prompt_required")
+        result = run_agent_turn(prompt)
+        if not isinstance(result, dict) or not isinstance(result.get("content"), str):
+            raise ValueError("hermes_adapter_invalid_response")
+        return EngineResult(
+            engine_id="hermes-agent",
+            output={"engine": result.get("engine", "hermes-agent"), "content": result["content"]},
+        )
+
+
+def build_engine_registry() -> EngineRegistry:
+    """Build the server-configured allow-list; external engines default off."""
+    settings = get_settings()
+    return EngineRegistry([
+        EngineDefinition(
+            engine_id="hermes-agent",
+            display_name="Hermes Agent",
+            capabilities=frozenset({"agent.general"}),
+            enabled=settings.hermes_agent_enabled,
+            requires_approval=True,
+            max_input_bytes=20_100,
+            max_output_bytes=52_000,
+            max_timeout_seconds=300,
+            adapter=HermesAgentAdapter(),
+        )
+    ])
+
+
 def hermes_agent_turn(step: ClaimedStep) -> dict[str, Any]:
     prompt = step.input.get("prompt")
     if not isinstance(prompt, str):
         raise ValueError("hermes.agent.turn requires a string input.prompt")
-    result = run_agent_turn(prompt)
+    settings = get_settings()
+    request = EngineRequest(
+        task_id=str(step.task_id),
+        capability="agent.general",
+        input_payload={"prompt": prompt},
+        timeout_seconds=max(1, min(300, int(settings.hermes_agent_timeout_seconds))),
+    )
+    result = build_engine_registry().execute("hermes-agent", request)
     return {
         "operation": "hermes.agent.turn",
-        "engine": result["engine"],
-        "content": result["content"],
+        "engine": result.output["engine"],
+        "content": result.output["content"],
     }
 
 
