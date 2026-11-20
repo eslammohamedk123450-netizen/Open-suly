@@ -14,7 +14,7 @@ SULY pins the complete upstream Hermes Agent runtime as a remote Docker build co
 - No host port is published.
 - Persistent state is isolated in the `hermes-data` named volume.
 - The service has no Supabase credentials or SULY admin secrets.
-- The API server exposes Hermes' full agent toolset, including terminal execution. Do not set `HERMES_API_SERVER_ENABLED=true` until a dedicated sandbox/tool policy review is complete.
+- The API server exposes Hermes' full agent toolset, including terminal execution. It is hard-disabled in this Compose file; do not change that setting until a dedicated sandbox/tool policy review is complete.
 - If the API is enabled after that review, set a unique `HERMES_API_SERVER_KEY` through the deployment secret manager. Never commit it.
 - The SULY HTTP bridge is disabled by default and is not registered as an executable task tool yet.
 - Hermes still requires a deliberately configured model provider. SULY has not selected or configured one.
@@ -28,7 +28,7 @@ docker compose -f engines/hermes/compose.yaml --profile agent-engines build
 docker compose -f engines/hermes/compose.yaml --profile agent-engines up -d
 ```
 
-The current default starts the isolated gateway process with the Hermes API disabled. This validates packaging/build only; it does not enable SULY-to-Hermes task execution or real model inference.
+The current configuration starts the isolated gateway process with the Hermes API hard-disabled. This validates packaging/build only; it does not enable SULY-to-Hermes task execution or real model inference.
 
 ## SULY bridge settings
 
