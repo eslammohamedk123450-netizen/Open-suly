@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.config import get_settings
+from app.core.ratelimit import RateLimitExceeded, apply_rate_limit
 from app.routers.agents import router as agents_router
 from app.routers.chat import router as chat_router
 from app.routers.projects import router as projects_router
@@ -67,6 +68,46 @@ def close_opencode_runtime_provider() -> None:
     if provider is not None:
         provider.close()
 
+
+
+def rate_limit_dependency(
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthenticatedUser:
+    """Apply the per-user API rate limit after authentication.
+
+    Unauthenticated probes are not rate-limited here on purpose: they are
+    already rejected with 401 by the authentication dependency, and
+    anonymous floods must be handled at the reverse proxy layer.
+    """
+    apply_rate_limit(user.id)
+    return user
+
+
+# Scope a stricter limit to the AI gateway endpoints.
+def ai_rate_limit_dependency(
+    user: AuthenticatedUser = Depends(rate_limit_dependency),
+) -> AuthenticatedUser:
+    """Apply a stricter per-user limit on provider-backed endpoints.
+
+    The AI gateway has a smaller budget because each accepted request can
+    consume provider tokens and long-running worker capacity.
+    """
+    apply_rate_limit(f"ai:{user.id}", capacity=6, refill_seconds=10.0)
+    return user
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_exception_handler(
+    _request, exc: RateLimitExceeded
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Too many requests. Please slow down and try again shortly."},
+        headers={
+            "Retry-After": str(max(1, int(exc.retry_after) + 1)),
+            "X-RateLimit-Remaining": "0",
+        },
+    )
 
 
 @app.get("/health", tags=["health"])
