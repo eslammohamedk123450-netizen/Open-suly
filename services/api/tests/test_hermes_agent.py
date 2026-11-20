@@ -131,6 +131,41 @@ def test_safe_run_event_drops_untrusted_or_content_bearing_events(payload):
     assert hermes_agent._safe_run_event(payload, "run_safe_123") is None
 
 
+@pytest.mark.parametrize("payload", [
+    {"event": "approval.request", "run_id": "run_safe_123"},
+    {"event": "approval.request", "run_id": "run_safe_123", "request_id": "bad\nrequest"},
+    {"event": "approval.responded", "run_id": "run_safe_123", "request_id": "approval-1"},
+    {"event": "approval.responded", "run_id": "run_safe_123", "request_id": "approval-1", "choice": "always"},
+    {"event": "approval.responded", "run_id": "run_safe_123", "request_id": "approval-1", "choice": "session"},
+])
+def test_safe_run_event_drops_malformed_or_unsupported_approval_events(payload):
+    assert hermes_agent._safe_run_event(payload, "run_safe_123") is None
+
+
+def test_safe_run_event_keeps_only_exact_approval_request_metadata():
+    assert hermes_agent._safe_run_event({
+        "event": "approval.request",
+        "run_id": "run_safe_123",
+        "request_id": "approval-req_123",
+        "command": "must not persist",
+        "description": "must not persist",
+    }, "run_safe_123") == {
+        "event": "approval.request",
+        "approval_request_id": "approval-req_123",
+    }
+    assert hermes_agent._safe_run_event({
+        "event": "approval.responded",
+        "run_id": "run_safe_123",
+        "request_id": "approval-req_123",
+        "choice": "once",
+        "command": "must not persist",
+    }, "run_safe_123") == {
+        "event": "approval.responded",
+        "approval_request_id": "approval-req_123",
+        "approval_choice": "once",
+    }
+
+
 def test_hermes_sse_consumer_parses_events_and_never_forwards_free_text():
     import asyncio
     import json
