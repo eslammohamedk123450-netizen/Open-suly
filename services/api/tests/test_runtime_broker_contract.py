@@ -317,3 +317,23 @@ def test_runtime_broker_serializes_concurrent_release_calls():
     assert result == [True]
     assert provider.released == [lease.runtime_id]
     assert broker.active_count == 0
+
+
+
+def test_runtime_lease_accepts_only_its_exact_opaque_gateway_path():
+    lease = make_lease(gateway_path="/v1/runtime-gateway/")
+    with pytest.raises(ValueError, match="base_url"):
+        lease.validate(
+            task_id=TASK_ID, engine_run_id=RUN_ID, engine_id=ENGINE_ID,
+            allowed_origins=ORIGINS, now=time(),
+        )
+
+    valid = make_lease()
+    valid = RuntimeLease(**{
+        **valid.__dict__,
+        "gateway_path": f"/v1/runtime-gateway/{valid.runtime_id}",
+    })
+    valid.validate(
+        task_id=TASK_ID, engine_run_id=RUN_ID, engine_id=ENGINE_ID,
+        allowed_origins=ORIGINS, now=time(),
+    )
