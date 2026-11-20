@@ -65,3 +65,8 @@ def test_finish_engine_run_uses_lease_guarded_rpc(status):
 def test_finish_engine_run_rejects_non_terminal_status():
     with pytest.raises(ValueError, match="invalid_engine_run_terminal_status"):
         EngineRunStore(FakeRpc(True)).finish(RUN_ID, step(), "running")
+
+
+def test_finish_engine_run_reports_stale_lease_rejection():
+    client = FakeRpc(False)
+    assert EngineRunStore(client).finish(RUN_ID, step(), "succeeded") is False
