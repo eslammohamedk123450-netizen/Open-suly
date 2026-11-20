@@ -103,6 +103,80 @@ def test_hermes_bridge_rejects_unsafe_base_url(monkeypatch, base_url):
         )
 
 
+def test_safe_run_event_only_exposes_bounded_metadata():
+    payload = {
+        "event": "tool.started",
+        "run_id": "run_safe_123",
+        "seq": 7,
+        "timestamp": 123.5,
+        "tool": "terminal",
+        "preview": "echo secret-token",
+        "text": "private reasoning",
+        "output": "private output",
+    }
+    assert hermes_agent._safe_run_event(payload, "run_safe_123") == {
+        "event": "tool.started",
+        "seq": 7,
+        "timestamp": 123.5,
+    }
+
+
+@pytest.mark.parametrize("payload", [
+    {"event": "message.interim", "run_id": "run_safe_123", "text": "private"},
+    {"event": "tool.started", "run_id": "another-run"},
+    {"event": "unknown.event", "run_id": "run_safe_123"},
+    ["not", "an", "object"],
+])
+def test_safe_run_event_drops_untrusted_or_content_bearing_events(payload):
+    assert hermes_agent._safe_run_event(payload, "run_safe_123") is None
+
+
+def test_hermes_sse_consumer_parses_events_and_never_forwards_free_text():
+    import asyncio
+    import json
+
+    class StreamResponse:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+        def raise_for_status(self):
+            return None
+        async def aiter_lines(self):
+            events = [
+                {"event": "tool.started", "run_id": "run_sse_123", "seq": 1,
+                 "timestamp": 10.0, "preview": "private command"},
+                {"event": "message.interim", "run_id": "run_sse_123", "seq": 2,
+                 "timestamp": 11.0, "text": "private assistant text"},
+                {"event": "run.completed", "run_id": "run_sse_123", "seq": 3,
+                 "timestamp": 12.0, "output": "private final output"},
+            ]
+            for event in events:
+                yield "data: " + json.dumps(event)
+                yield ""
+
+    class Client:
+        def stream(self, method, url, **kwargs):
+            assert method == "GET"
+            assert url.endswith("/v1/runs/run_sse_123/events")
+            assert kwargs["headers"]["Authorization"] == "Bearer test-only-token"
+            return StreamResponse()
+
+    received = []
+    asyncio.run(hermes_agent._consume_run_events(
+        Client(),
+        "http://hermes:8642",
+        "run_sse_123",
+        {"Authorization": "Bearer test-only-token"},
+        received.append,
+    ))
+    assert received == [
+        {"event": "tool.started", "seq": 1, "timestamp": 10.0},
+        {"event": "run.completed", "seq": 3, "timestamp": 12.0},
+    ]
+    assert all("output" not in event and "text" not in event for event in received)
+
+
 def test_hermes_native_runs_api_admits_polls_and_persists_run_id(monkeypatch):
     calls = []
     class Client:
