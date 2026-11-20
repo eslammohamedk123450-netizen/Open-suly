@@ -68,3 +68,16 @@ Browser Use remains disabled until all of the following are implemented and test
 - Browser URL preflight now rejects Unicode control, format, surrogate, and bidi-control code points before parsing, in addition to the existing scheme/userinfo/host/port/IP/DNS checks.
 - Tests cover literal newline, tab, right-to-left override, and right-to-left mark characters in navigation URLs.
 - This remains preflight validation only. It does not pin DNS answers at the socket layer, constrain redirects/subresources, or replace the required default-deny egress proxy. Browser Use remains disabled.
+
+
+## Browser URL preflight policy added — 2026-11-20
+
+A pure validation module now exists at `services/api/app/services/browser_network_policy.py`:
+
+- Requires a task-specific exact host allowlist by default; subdomains are opt-in and suffix-bound.
+- Restricts URL schemes to HTTP/HTTPS and ports to an explicit allowlist (80/443 by default); rejects userinfo, malformed authorities, control characters, and explicit unapproved ports including port zero.
+- Rejects IP-literal hosts, localhost, `.local`, and `.internal` names, including legacy numeric IPv4 encodings recognized by `socket.inet_aton`.
+- Resolves the hostname before use and rejects empty, malformed, or any non-global address in the DNS answer set, including mixed public/private answers.
+- Unit tests cover URL parsing, host/subdomain policy, ports, private DNS answers, IPv4/IPv6 literals, shorthand/integer/hex IPv4, and resolver failures.
+
+This is only a preflight policy helper. It does not make network requests, pin DNS answers to the actual browser connection, inspect redirects/subresources, or replace a default-deny egress proxy. The Browser Use runtime must re-run policy on every redirect and the network layer must enforce the resolved destination at connection time. The module is not yet wired into a live browser runner; Browser Use remains disabled.
