@@ -6,6 +6,9 @@ on:
     paths:
       - ".gitmodules"
       - "engines/opencode/**"
+      - "services/api/app/services/opencode_*.py"
+      - "services/api/app/services/runtime_broker_contract.py"
+      - "services/api/tests/test_opencode_*.py"
       - ".github/workflows/opencode-engine.yml"
   pull_request:
     paths:
@@ -60,3 +63,6 @@ jobs:
       - name: Typecheck original OpenCode server package
         working-directory: engines/opencode/upstream
         run: bun run --cwd packages/server typecheck
+
+      - name: Build isolated OpenCode runtime image
+        run: docker build --pull=false -f engines/opencode/Dockerfile -t suly-opencode:ci .
