@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import unicodedata
 from contextlib import suppress
 from threading import Event
 from typing import Callable
@@ -532,7 +533,8 @@ def get_agent_approval_details(
                     if isinstance(value, str) and value.strip():
                         # Hermes redacts approval display text before placing it in the Runs API status.
                         safe[field] = "".join(
-                            char if ord(char) >= 32 else " "
+                            char if unicodedata.category(char) not in {"Cc", "Cf", "Cs"}
+                            else " "
                             for char in value
                         )[:limit]
                 if len(safe) == 1:
