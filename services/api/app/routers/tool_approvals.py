@@ -102,6 +102,12 @@ def list_available_tools(
     try:
         approved_scopes = _store().active_scopes(user.id)
         settings = get_settings()
+        ai_provider_available = bool(
+            settings.ai_provider == "openai-compatible"
+            and settings.ai_base_url
+            and settings.ai_api_key
+            and settings.ai_model
+        )
         hermes_available = bool(
             settings.hermes_agent_enabled
             and settings.hermes_agent_base_url
@@ -109,7 +115,12 @@ def list_available_tools(
         )
         items = []
         for tool in TOOL_REGISTRY.describe():
-            available = tool["name"] != "hermes.agent.turn" or hermes_available
+            if tool["name"] == "hermes.agent.turn":
+                available = hermes_available  # Hermes has its own isolated runtime configuration.
+            elif tool["name"] == "ai.respond":
+                available = ai_provider_available
+            else:
+                available = True
             items.append({
                 **tool,
                 "approved": (
