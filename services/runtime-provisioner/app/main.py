@@ -186,7 +186,7 @@ async def runtime_gateway(runtime_id: str, path: str, request: Request, authoriz
         return await execute(runtime_id, payload, authorization)
     route = "/" + path
     method = request.method
-    if not (method == "GET" and route == "/api/event") and (method, route) not in _ALLOWED_PROXY:
+    if (method, route) not in _ALLOWED_PROXY:
         raise HTTPException(404, "route_not_allowed")
     body = await request.body()
     if len(body) > 65536:
