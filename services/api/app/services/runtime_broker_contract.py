@@ -150,7 +150,7 @@ class TaskScopedRuntimeBroker:
         self._provider = provider
         self._allowed_origins = allowed_origins
         self._lock = RLock()
-        self._active_by_runtime: dict[str, tuple[str, str, str]] = {}
+        self._active_by_runtime: dict[str, tuple[tuple[str, str, str], RuntimeLease]] = {}
         self._active_by_attempt: dict[tuple[str, str, str], str] = {}
         self._seen_runtime_ids: set[str] = set()
         self._seen_attempts: set[tuple[str, str, str]] = set()
@@ -182,21 +182,26 @@ class TaskScopedRuntimeBroker:
             raise
 
         with self._lock:
-            reused = (
-                lease.runtime_id in self._seen_runtime_ids
-                or attempt in self._seen_attempts
-            )
+            runtime_reused = lease.runtime_id in self._seen_runtime_ids
+            attempt_reused = attempt in self._seen_attempts
+            reused = runtime_reused or attempt_reused
             if not reused:
-                self._active_by_runtime[lease.runtime_id] = attempt
+                self._active_by_runtime[lease.runtime_id] = (attempt, lease)
                 self._active_by_attempt[attempt] = lease.runtime_id
                 self._seen_runtime_ids.add(lease.runtime_id)
                 self._seen_attempts.add(attempt)
 
         if reused:
-            try:
-                self._provider.release(lease)
-            except Exception:
-                logger.warning("Failed to release reused runtime lease %s", lease.runtime_id)
+            # Never tear down a runtime ID that has already been issued: it may
+            # still belong to another active task or another broker process.
+            if not runtime_reused:
+                try:
+                    if not self._provider.release(lease):
+                        logger.warning("Could not release duplicate-attempt runtime %s", lease.runtime_id)
+                except Exception:
+                    logger.warning("Failed to release duplicate-attempt runtime %s", lease.runtime_id)
+            else:
+                logger.error("Runtime provider reused runtime identity %s; refusing unsafe teardown", lease.runtime_id)
             raise RuntimeError("runtime_instance_reuse_rejected")
         return lease
 
@@ -205,7 +210,8 @@ class TaskScopedRuntimeBroker:
             raise ValueError("runtime_lease_required")
         attempt = (lease.task_id, lease.engine_run_id, lease.engine_id)
         with self._lock:
-            if self._active_by_runtime.get(lease.runtime_id) != attempt:
+            active = self._active_by_runtime.get(lease.runtime_id)
+            if active is None or active[0] != attempt or active[1] is not lease:
                 return False
 
         released = self._provider.release(lease)
@@ -213,7 +219,8 @@ class TaskScopedRuntimeBroker:
             raise RuntimeError("runtime_provider_release_invalid_response")
         if released:
             with self._lock:
-                if self._active_by_runtime.get(lease.runtime_id) == attempt:
+                active = self._active_by_runtime.get(lease.runtime_id)
+                if active is not None and active[0] == attempt and active[1] is lease:
                     self._active_by_runtime.pop(lease.runtime_id, None)
                     self._active_by_attempt.pop(attempt, None)
         return released
