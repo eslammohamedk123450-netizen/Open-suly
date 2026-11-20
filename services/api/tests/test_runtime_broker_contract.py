@@ -72,6 +72,31 @@ def test_runtime_lease_rejects_untrusted_or_ambiguous_endpoint(base_url):
         )
 
 
+def test_runtime_lease_rejects_http_even_if_exact_origin_is_allowlisted():
+    lease = make_lease(base_url="http://opencode-runtime.internal:8443")
+    with pytest.raises(ValueError, match="base_url"):
+        lease.validate(
+            task_id=TASK_ID,
+            engine_run_id=RUN_ID,
+            engine_id=ENGINE_ID,
+            allowed_origins=frozenset({"http://opencode-runtime.internal:8443"}),
+            now=time(),
+        )
+
+
+@pytest.mark.parametrize("host", ["169.254.169.254", "127.0.0.1", "localhost"])
+def test_runtime_lease_rejects_ip_literal_or_localhost_even_if_allowlisted(host):
+    lease = make_lease(base_url=f"https://{host}:8443")
+    with pytest.raises(ValueError, match="base_url"):
+        lease.validate(
+            task_id=TASK_ID,
+            engine_run_id=RUN_ID,
+            engine_id=ENGINE_ID,
+            allowed_origins=frozenset({f"https://{host}:8443"}),
+            now=time(),
+        )
+
+
 def test_runtime_lease_rejects_task_attempt_or_engine_mismatch():
     lease = make_lease()
     with pytest.raises(ValueError, match="mismatch"):
