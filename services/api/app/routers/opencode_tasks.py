@@ -169,6 +169,26 @@ def list_run_approvals(
         raise HTTPException(status_code=503, detail="Could not load OpenCode approvals.") from exc
 
 
+@router.get("/opencode/change-sets/{change_set_id}")
+def get_change_set(
+    change_set_id: UUID,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Return only this owner's reviewable change set and its file diff payload."""
+    try:
+        rows = (_client().table("opencode_change_sets")
+            .select("id,run_id,project_id,base_revision,status,changes,created_at,decided_at")
+            .eq("id", str(change_set_id)).eq("user_id", user.id)
+            .limit(1).execute().data or [])
+        if not rows:
+            raise HTTPException(status_code=404, detail="Change set not found.")
+        return rows[0]
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Could not load OpenCode change set.") from exc
+
+
 @router.post("/opencode/change-sets/{change_set_id}/decision")
 def decide_change_set(
     change_set_id: UUID,
