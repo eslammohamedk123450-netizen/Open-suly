@@ -139,3 +139,13 @@ The authenticated tool catalog now publishes each registered tool's allowed and 
 - Tests cover safe event reduction, exact request identity, rejection of permanent grants, cross-run isolation, answered requests, missing requests, and response validation.
 - Migration 20261121010000_engine_run_approval_metadata.sql is additive and NOT applied. Apply in a disposable/staging database and verify the new RPC signature before deploying the matching API code.
 - This bridge does not yet expose Hermes clarify/unknown resolution, sessions, skills, memory, or subagents. The runtime remains disabled and no live approvals have been exercised.
+
+
+## Approval transparency refinement — 2026-11-20
+
+- Approval decisions are no longer presented as blind buttons. Before the user can approve or deny, the client requests a display-only view of the exact pending approval.
+- The API rechecks task ownership, engine-run ownership, the persisted approval.request identity, absence of a prior response, and the current upstream run status.
+- Display text is fetched from Hermes' GET /v1/runs/{run_id} status object, which the pinned upstream API builds using its approval-display redaction helper. SULY returns only the matching request_id plus bounded command/description fields.
+- The command/description text is not written to the SULY event ledger or database; it exists only in the API response and client memory for display. Persistent storage remains limited to opaque request identity and once/deny decision.
+- If Hermes no longer reports the exact request as waiting_for_approval, or no safe display text is available, the details endpoint fails closed and the UI does not expose decision buttons.
+- Tests cover run/request binding, waiting status, response validation, and display-field allowlisting. All runtime tests remain HTTP mocks; no live approval was exercised.
