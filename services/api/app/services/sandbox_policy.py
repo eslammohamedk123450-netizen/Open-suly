@@ -58,6 +58,8 @@ class DockerSandboxCommandBuilder:
     ) -> None:
         if not isinstance(image_ref, str) or not _IMAGE_DIGEST.fullmatch(image_ref):
             raise ValueError("sandbox_image_must_be_pinned_by_sha256")
+        self.limits = limits or SandboxLimits()
+        self.limits.validate()
         self.workspace_root = Path(workspace_root).resolve(strict=True)
         if not self.workspace_root.is_dir():
             raise ValueError("sandbox_workspace_root_must_be_directory")
@@ -65,8 +67,6 @@ class DockerSandboxCommandBuilder:
         if not _SAFE_PATH.fullmatch(str(self.workspace_root)):
             raise ValueError("sandbox_workspace_path_contains_unsupported_characters")
         self.image_ref = image_ref
-        self.limits = limits or SandboxLimits()
-        self.limits.validate()
 
     def _validate_private_directory(self, path: Path) -> None:
         """تأكد أن مساحة العمل خاصة ومملوكة لهوية المستخدم غير الجذر داخل الحاوية."""
