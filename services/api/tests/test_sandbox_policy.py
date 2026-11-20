@@ -121,5 +121,5 @@ def test_sandbox_rejects_root_container_identity(tmp_path):
     root = tmp_path / "workspaces"
     root.mkdir()
     root.chmod(0o700)
-    with pytest.raises(ValueError, match="sandbox_workspace_user"):
+    with pytest.raises(ValueError, match="invalid_sandbox_user"):
         builder(root, limits=SandboxLimits(container_uid=0, container_gid=0))
