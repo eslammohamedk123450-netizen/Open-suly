@@ -336,3 +336,13 @@ The task database foundation is live, but it must not be described as autonomous
 - Migration `20261120220000_project_file_history.sql` is committed but not applied to the live database.
 - This adds recovery and traceability; it is not yet an AI-generated patch/diff review system or a code execution sandbox.
 
+
+
+### Project editor concurrency protection — 2026-11-20
+
+- File edits now use optimistic concurrency: updates must include the exact `updated_at` version observed when the file was loaded.
+- The API performs the version check inside the database UPDATE predicate, so two editors cannot silently overwrite each other's newer save.
+- New files use INSERT rather than UPSERT; a concurrent create of the same path returns a conflict instead of replacing the other writer's file.
+- Restore operations are guarded by the same expected-version check. A stale editor must reload before saving or restoring.
+- Client editor tracks the loaded version and submits it on save/restore. Conflict responses are surfaced to the user without retrying over newer content.
+- This is conflict detection, not a collaborative merge engine; automatic merge and line-level diff review remain pending.
