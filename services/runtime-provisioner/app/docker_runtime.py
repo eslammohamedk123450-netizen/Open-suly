@@ -124,6 +124,7 @@ class DockerTaskRuntimeManager:
             f"{_LABEL_PREFIX}.run": run_id,
             f"{_LABEL_PREFIX}.engine": engine_id,
             f"{_LABEL_PREFIX}.managed": "true",
+            f"{_LABEL_PREFIX}.workspace": str(workspace),
         }
         try:
             _safe_workspace(files, workspace, self.limits.workspace_bytes)
@@ -140,7 +141,7 @@ class DockerTaskRuntimeManager:
                 environment={"OPENCODE_SERVER_PASSWORD": token, "OPENCODE_SERVER_USERNAME": "suly"},
                 volumes={str(workspace): {"bind": "/workspace", "mode": "rw"}},
                 working_dir="/workspace",
-                ports={"4096/tcp": None},
+                ports={"4096/tcp": ("127.0.0.1", None)},
                 mem_limit=self.limits.memory_bytes,
                 memswap_limit=self.limits.memory_bytes,
                 nano_cpus=self.limits.nano_cpus,
