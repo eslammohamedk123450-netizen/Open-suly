@@ -215,7 +215,7 @@ def test_hermes_agent_task_calls_bridge_only_after_approval(monkeypatch):
     monkeypatch.setattr(
         runtime_module,
         "run_agent_turn",
-        lambda prompt: {"engine": "hermes-agent", "content": f"processed: {prompt}"},
+        lambda prompt, **_kwargs: {"engine": "hermes-agent", "content": f"processed: {prompt}"},
     )
     result = dispatch(
         make_step({"operation": "hermes.agent.turn", "prompt": "safe task"}),
@@ -262,7 +262,7 @@ def test_hermes_operation_routes_through_registry_after_approval(monkeypatch):
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
         hermes_agent_enabled=True, hermes_agent_timeout_seconds=90.0,
     ))
-    monkeypatch.setattr(runtime_module, "run_agent_turn", lambda prompt: {
+    monkeypatch.setattr(runtime_module, "run_agent_turn", lambda prompt, **_kwargs: {
         "engine": "hermes-agent", "content": f"processed: {prompt}",
     })
     result = dispatch(
@@ -287,3 +287,36 @@ def test_hermes_engine_stays_disabled_without_feature_flag(monkeypatch):
         runtime_module.hermes_agent_turn(
             make_step({"operation": "hermes.agent.turn", "prompt": "hello"})
         )
+
+
+def test_cancel_aware_dispatch_passes_event_to_hermes_adapter(monkeypatch):
+    import app.worker_runtime as runtime_module
+    from types import SimpleNamespace
+
+    cancel_event = Event()
+    received = {}
+
+    class ApprovedScopes:
+        def active_scopes(self, _user_id):
+            return frozenset({"agent.hermes.run"})
+
+    monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        hermes_agent_enabled=True, hermes_agent_timeout_seconds=90.0,
+    ))
+
+    def fake_run(prompt, **kwargs):
+        received["prompt"] = prompt
+        received.update(kwargs)
+        return {"engine": "hermes-agent", "content": "cancel-aware"}
+
+    monkeypatch.setattr(runtime_module, "run_agent_turn", fake_run)
+    result = runtime_module.dispatch_cancel_aware(
+        make_step({"operation": "hermes.agent.turn", "prompt": "safe task"}),
+        cancel_event,
+        ApprovedScopes(),
+    )
+
+    assert result["content"] == "cancel-aware"
+    assert received["prompt"] == "safe task"
+    assert received["cancel_event"] is cancel_event
+    assert received["timeout_seconds"] == 90
