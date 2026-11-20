@@ -34,6 +34,22 @@ def test_hermes_bridge_requires_url_and_key(monkeypatch):
         hermes_agent.run_agent_turn("hello")
 
 
+@pytest.mark.parametrize("base_url", [
+    "ftp://hermes:8642",
+    "http://user:pass@hermes:8642",
+    "http://hermes:8642?token=secret",
+    "http://hermes:8642#fragment",
+    "http:///missing-host",
+])
+def test_hermes_bridge_rejects_unsafe_base_url(monkeypatch, base_url):
+    monkeypatch.setattr(
+        hermes_agent, "get_settings",
+        lambda: settings(hermes_agent_base_url=base_url),
+    )
+    with pytest.raises(hermes_agent.HermesAgentUnavailable, match="base URL"):
+        hermes_agent.run_agent_turn("hello")
+
+
 def test_hermes_bridge_sends_only_bounded_user_prompt(monkeypatch):
     monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
     captured = {}
