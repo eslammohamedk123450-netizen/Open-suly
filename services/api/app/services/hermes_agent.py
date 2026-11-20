@@ -10,6 +10,7 @@ import asyncio
 import json
 import re
 import unicodedata
+import unicodedata
 from contextlib import suppress
 from threading import Event
 from typing import Callable
