@@ -4,18 +4,23 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.supabase import get_supabase_admin_client
 from app.services.opencode_lifecycle_store import OpenCodeLifecycleStore
+from app.services.opencode_approval_manager import OpenCodeApprovalManager
 
 router = APIRouter(prefix="/v1", tags=["opencode-tasks"])
 
 
 class ChangeSetDecision(BaseModel):
     decision: str = Field(pattern=r"^(apply|reject)$")
+
+
+class PermissionDecision(BaseModel):
+    decision: str = Field(pattern=r"^(once|reject)$")
 
 
 def _client():
@@ -65,6 +70,56 @@ def list_run_events(
         raise
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Could not load OpenCode task events.") from exc
+
+
+def _active_runtime_lease(request: Request, run_row: dict[str, Any]):
+    broker = getattr(request.app.state, "runtime_broker", None)
+    if broker is None:
+        raise HTTPException(status_code=503, detail="OpenCode runtime broker is not configured.")
+    lease = broker.lease_for_attempt(
+        run_row["task_id"], run_row["engine_run_id"], "opencode"
+    )
+    if lease is None:
+        raise HTTPException(status_code=409, detail="OpenCode runtime is no longer active.")
+    return lease
+
+
+@router.post("/opencode/approvals/{approval_id}/decision")
+def decide_permission(
+    approval_id: UUID,
+    body: PermissionDecision,
+    request: Request,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Dispatch only once/reject to the active lease bound to the owning task attempt."""
+    try:
+        client = _client()
+        rows = client.table("opencode_approvals").select(
+            "id,run_id,session_id"
+        ).eq("id", str(approval_id)).eq("user_id", user.id).eq(
+            "status", "pending"
+        ).limit(1).execute().data
+        if not rows:
+            raise HTTPException(status_code=404, detail="Pending permission request not found.")
+        run_rows = client.table("opencode_task_runs").select(
+            "task_id,engine_run_id"
+        ).eq("id", rows[0]["run_id"]).eq("user_id", user.id).limit(1).execute().data
+        if not run_rows:
+            raise HTTPException(status_code=404, detail="OpenCode task run not found.")
+        lease = _active_runtime_lease(request, run_rows[0])
+        store = OpenCodeLifecycleStore(client)
+        accepted = OpenCodeApprovalManager(store=store).decide(
+            user_id=user.id, approval_id=str(approval_id), decision=body.decision,
+            base_url=lease.base_url, gateway_path=lease.gateway_path,
+            runtime_token=lease.access_token,
+        )
+        if not accepted:
+            raise HTTPException(status_code=409, detail="Permission request was already decided.")
+        return {"accepted": True, "approval_id": str(approval_id), "decision": body.decision}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Could not dispatch OpenCode permission decision.") from exc
 
 
 @router.get("/opencode/runs/{run_id}/approvals")
