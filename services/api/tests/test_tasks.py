@@ -215,3 +215,50 @@ def test_retry_failed_task_rejects_manual_retry_limit(monkeypatch):
 
     assert response.status_code == 409
     assert "retry limit" in response.json()["detail"]
+
+class _DetailQuery:
+    def __init__(self, rows):
+        self.rows = rows
+    def select(self, *_args): return self
+    def eq(self, *_args): return self
+    def order(self, *_args, **_kwargs): return self
+    def limit(self, *_args): return self
+    def execute(self): return SimpleNamespace(data=self.rows)
+
+
+class _TaskDetailAdmin:
+    def __init__(self):
+        self.tables = {
+            "tasks": [{
+                "id": "00000000-0000-0000-0000-000000000001",
+                "user_id": "test-user",
+                "status": "running",
+            }],
+            "task_steps": [{"id": "step-1", "status": "running"}],
+            "engine_runs": [{
+                "id": "run-1",
+                "step_id": "step-1",
+                "engine_id": "hermes-agent",
+                "status": "running",
+                "attempt_count": 1,
+            }],
+        }
+    def __enter__(self): return self
+    def __exit__(self, *_args): return False
+    def table(self, name): return _DetailQuery(self.tables[name])
+
+
+def test_task_detail_includes_owner_scoped_engine_run_history(monkeypatch):
+    admin = _TaskDetailAdmin()
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    try:
+        response = client.get("/v1/tasks/00000000-0000-0000-0000-000000000001")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["steps"][0]["status"] == "running"
+    assert body["engine_runs"][0]["engine_id"] == "hermes-agent"
+    assert body["engine_runs"][0]["status"] == "running"
