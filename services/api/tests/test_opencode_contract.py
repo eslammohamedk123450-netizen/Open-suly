@@ -43,11 +43,11 @@ def test_opencode_permission_request_rejects_cross_session_and_invalid_fields():
     with pytest.raises(ValueError, match="resource_invalid"):
         opencode_contract.normalize_permission_request({**payload, "resources": ["bad\nresource"]}, SESSION_ID)
     with pytest.raises(ValueError, match="action_invalid"):
-        opencode_contract.normalize_permission_request({**payload, "action": "bash\\u202e"}, SESSION_ID)
+        opencode_contract.normalize_permission_request({**payload, "action": "bash" + chr(0x202E)}, SESSION_ID)
     with pytest.raises(ValueError, match="action_invalid"):
         opencode_contract.normalize_permission_request({**payload, "action": "bash action"}, SESSION_ID)
     with pytest.raises(ValueError, match="resource_invalid"):
-        opencode_contract.normalize_permission_request({**payload, "resources": ["src\\u202e/main.py"]}, SESSION_ID)
+        opencode_contract.normalize_permission_request({**payload, "resources": ["src" + chr(0x202E) + "/main.py"]}, SESSION_ID)
 
 
 
