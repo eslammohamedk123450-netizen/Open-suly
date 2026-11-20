@@ -3,14 +3,14 @@ import pytest
 from app.services.agent_planner import UnsupportedTaskRequest, plan_request
 
 
-@pytest.mark.parametrize("request", [
+@pytest.mark.parametrize("task_text", [
     "Analyze: SULY builds useful tools",
     "analyse: one two three",
     "حلل: سولي مساعد ذكي",
     "حلّل: محتوى تجريبي",
 ])
-def test_planner_creates_only_registered_text_analysis_step(request):
-    planned = plan_request(request)
+def test_planner_creates_only_registered_text_analysis_step(task_text):
+    planned = plan_request(task_text)
     assert planned.planner == "deterministic-v1"
     assert len(planned.steps) == 1
     assert planned.steps[0]["input"]["operation"] == "text.analyze"
@@ -23,7 +23,7 @@ def test_planner_creates_only_registered_text_analysis_step(request):
     "Search the web for current prices",
     "Analyze:",
 ])
-def test_planner_fails_closed_for_unsupported_or_empty_requests(request):
+def test_planner_fails_closed_for_unsupported_or_empty_requests(task_text):
     with pytest.raises(UnsupportedTaskRequest):
         plan_request(request)
 
