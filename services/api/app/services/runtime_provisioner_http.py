@@ -126,7 +126,8 @@ class HTTPSRuntimeLeaseProvider:
         if runtime_id != lease.runtime_id:
             raise ValueError("runtime_id_invalid")
         try:
-            response = self._client.delete(
+            response = self._client.request(
+                "DELETE",
                 f"/v1/runtimes/{runtime_id}",
                 json={"task_id": lease.task_id, "engine_run_id": lease.engine_run_id},
             )
