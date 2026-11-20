@@ -64,3 +64,14 @@ The API bridge now supports:
 - Rejecting malformed IDs, cross-session payloads, redirects, unexpected statuses, and oversized response bodies.
 
 This is still only a transport capability. A production caller must first load the durable SULY session-to-task/run/lease mapping, verify current ownership and active lease immediately before every request, and persist the approval decision/audit event. No API route currently exposes this transport to end users, and no prompt execution or runtime provisioning is enabled.
+
+
+## Session-filtered event transport checkpoint
+
+- `OpenCodeHTTPClient.iter_safe_events()` consumes the upstream `GET /api/event` SSE stream only through the task-attempt runtime lease.
+- The upstream stream is server-wide and volatile. This adapter is therefore valid only when the provisioner guarantees one OpenCode server/data directory per task attempt; it is not safe against a shared multi-tenant OpenCode process.
+- Each event is reduced by `opencode_contract.safe_event_metadata()` and must match the expected session ID. Only allowlisted lifecycle event names and bounded permission request/reply identifiers are returned.
+- Prompt text, reasoning, tool arguments, terminal output, filesystem paths, plugin/MCP payloads, and raw event envelopes are discarded.
+- Event count and per-event byte limits are enforced. Redirects, wrong content types, oversized events, and transport errors fail closed.
+- SSE is not a durable ledger. SULY must persist accepted lifecycle checkpoints itself and reconcile task state from the durable worker/task store after reconnects.
+- Contract tests cover cross-session event dropping, sensitive-field reduction, unknown event dropping, invalid permission event IDs, redirects, content-type mismatch, and size/parameter bounds.
