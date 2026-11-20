@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from time import time
+from time import time
 from uuid import uuid4
 
 import pytest
@@ -68,7 +69,7 @@ def test_runtime_lease_rejects_untrusted_or_ambiguous_endpoint(base_url):
             engine_run_id=RUN_ID,
             engine_id=ENGINE_ID,
             allowed_origins=ORIGINS,
-            now=1_900_000_000.0,
+            now=time(),
         )
 
 
