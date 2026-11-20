@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 import re
 from typing import Any, Callable
 from uuid import UUID
+from pathlib import PurePosixPath
 
 from supabase import Client
 
@@ -232,11 +233,19 @@ class OpenCodeLifecycleStore:
         if len(encoded) > _MAX_CHANGESET_BYTES:
             raise ValueError("opencode_changes_too_large")
         for change in changes:
-            if not isinstance(change, dict) or change.get("action") not in {"create", "update", "delete"}:
+            if not isinstance(change, dict) or set(change) - {"action", "path", "content", "sha256"} or change.get("action") not in {"create", "update", "delete"}:
                 raise ValueError("opencode_change_invalid")
-            if not isinstance(change.get("path"), str) or not change["path"] or len(change["path"]) > 512:
+            path = change.get("path")
+            if not isinstance(path, str) or not path or len(path) > 512 or "\\" in path or "\x00" in path:
                 raise ValueError("opencode_change_path_invalid")
+            pure = PurePosixPath(path)
+            if pure.is_absolute() or any(part in {"", ".", ".."} for part in path.split("/")) or any(part.lower() in {".git", "node_modules", ".suly", "__pycache__"} or part.lower().startswith(".env") for part in pure.parts):
+                raise ValueError("opencode_change_path_invalid")
+            if change["action"] == "delete" and set(change) != {"action", "path"}:
+                raise ValueError("opencode_delete_payload_invalid")
             if change["action"] in {"create", "update"}:
+                if set(change) != {"action", "path", "content", "sha256"}:
+                    raise ValueError("opencode_change_payload_invalid")
                 content = change.get("content")
                 if not isinstance(content, str) or len(content.encode("utf-8")) > 1024 * 1024:
                     raise ValueError("opencode_change_content_invalid")
