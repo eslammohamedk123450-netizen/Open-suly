@@ -125,3 +125,17 @@ The authenticated tool catalog now publishes each registered tool's allowed and 
 - The task detail UI exposes a steering input only while a Hermes run is marked running. It addresses the SULY engine-run UUID, never accepts an upstream run ID from the client.
 - The implementation does not yet integrate Hermes approval resolution, clarify, sessions, skill discovery/invocation, memory, or subagent management. Approval requires a separate request-identity and permission design; do not forward raw upstream approval payloads or grant `always` automatically.
 - Migration 20261120235000_engine_run_events.sql is committed but not applied. Apply and validate it in disposable/staging Supabase before deploying the API that reads/writes the new table.
+
+
+
+## Exact-request approval bridge — 2026-11-20
+
+- The pinned Hermes Runs API approval endpoint is now mapped to a SULY owner-scoped route: POST /v1/tasks/{task_id}/engine-runs/{run_id}/approvals.
+- Approval events are reduced to an opaque request identifier only; command text, description, previews, reasoning, and tool arguments remain excluded from SULY's durable event ledger.
+- The event ledger migration adds approval_request_id and approval_choice with checks. Constraints are NOT VALID initially so historical approval.request rows written before this change do not block the additive migration; all new writes are still checked. A later data cleanup/validation pass can validate constraints after reviewing historical rows.
+- The API requires that the exact request ID was previously recorded for the same engine run, that it has not already been answered, that the task/run are still active, and that the authenticated user owns the task. The worker lease is checked before calling Hermes and rechecked by the append RPC when recording the response.
+- SULY exposes only once and deny. It never exposes upstream session/always choices or resolve-all behavior. A one-time approval is bound to the exact request ID, not the oldest queue item.
+- The Expo task detail screen shows a pending approval card with explicit one-time approval and denial controls. The raw upstream approval payload is never displayed.
+- Tests cover safe event reduction, exact request identity, rejection of permanent grants, cross-run isolation, answered requests, missing requests, and response validation.
+- Migration 20261121010000_engine_run_approval_metadata.sql is additive and NOT applied. Apply in a disposable/staging database and verify the new RPC signature before deploying the matching API code.
+- This bridge does not yet expose Hermes clarify/unknown resolution, sessions, skills, memory, or subagents. The runtime remains disabled and no live approvals have been exercised.
