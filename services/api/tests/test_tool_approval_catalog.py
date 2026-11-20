@@ -75,7 +75,9 @@ def test_catalog_reports_hermes_available_only_when_runtime_is_configured(monkey
         ai_base_url = None
         ai_api_key = None
         ai_model = None
+        worker_enabled = True
         hermes_agent_enabled = True
+        hermes_agent_isolation_confirmed = True
         hermes_agent_base_url = "http://hermes.internal:8642"
         hermes_agent_api_key = object()
 
@@ -105,7 +107,9 @@ def test_catalog_reports_ai_provider_available_only_when_fully_configured(monkey
         ai_base_url = "https://provider.example/v1"
         ai_api_key = object()
         ai_model = "test-model"
+        worker_enabled = True
         hermes_agent_enabled = False
+        hermes_agent_isolation_confirmed = False
         hermes_agent_base_url = None
         hermes_agent_api_key = None
 
@@ -123,3 +127,36 @@ def test_catalog_reports_ai_provider_available_only_when_fully_configured(monkey
     ai_tool = next(item for item in response.json()["items"] if item["name"] == "ai.respond")
     assert ai_tool["available"] is True
     assert ai_tool["approved"] is False
+
+
+def test_catalog_does_not_advertise_hermes_when_worker_or_isolation_is_off(monkeypatch):
+    class FakeStore:
+        def active_scopes(self, _user_id):
+            return frozenset()
+
+    class FakeSettings:
+        worker_enabled = False
+        ai_provider = "disabled"
+        ai_base_url = None
+        ai_api_key = None
+        ai_model = None
+        hermes_agent_enabled = True
+        hermes_agent_isolation_confirmed = False
+        hermes_agent_base_url = "http://hermes.internal:8642"
+        hermes_agent_api_key = object()
+
+    monkeypatch.setattr(approvals_router, "_store", lambda: FakeStore())
+    monkeypatch.setattr(approvals_router, "get_settings", lambda: FakeSettings())
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+        id="worker-disabled-user", email=None
+    )
+    try:
+        response = client.get("/v1/tools/approvals/catalog")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    by_name = {item["name"]: item for item in response.json()["items"]}
+    assert by_name["text.analyze"]["available"] is True
+    assert by_name["ai.respond"]["available"] is False
+    assert by_name["hermes.agent.turn"]["available"] is False
