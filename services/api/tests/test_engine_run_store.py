@@ -222,3 +222,24 @@ def test_attach_upstream_run_id_rejects_non_boolean_rpc_result(value):
         EngineRunStore(FakeRpc(value)).attach_upstream_run_id(
             RUN_ID, step(), "run_hermes_123",
         )
+
+
+def test_count_missing_upstream_identity_uses_server_only_rpc():
+    client = FakeRpc(3)
+    assert EngineRunStore(client).count_missing_upstream_identity(45) == 3
+    assert client.calls == [(
+        "count_engine_runs_missing_upstream_identity",
+        {"p_min_age_seconds": 45},
+    )]
+
+
+@pytest.mark.parametrize("value", [True, "3", -1, None, {}])
+def test_count_missing_upstream_identity_rejects_invalid_rpc_values(value):
+    with pytest.raises(RuntimeError, match="missing_identity_count_invalid_response"):
+        EngineRunStore(FakeRpc(value)).count_missing_upstream_identity()
+
+
+@pytest.mark.parametrize("age", [0, 3601, True, "30"])
+def test_count_missing_upstream_identity_rejects_invalid_age(age):
+    with pytest.raises(ValueError, match="invalid_missing_identity_age"):
+        EngineRunStore(FakeRpc(0)).count_missing_upstream_identity(age)
