@@ -13,6 +13,11 @@ class FakeStore:
         self.claims = tuple(claims)
         self.finished = []
         self.claim_args = None
+        self.reconciled_batches = []
+
+    def reconcile_orphans(self, batch_size):
+        self.reconciled_batches.append(batch_size)
+        return 0
 
     def claim_pending_stops(self, batch_size, lease_seconds):
         self.claim_args = (batch_size, lease_seconds)
@@ -45,6 +50,7 @@ def test_reconciler_confirms_supported_engine_stop():
     )
     assert reconciler.run_once() == 1
     assert observed == ["run_orphan_123"]
+    assert store.reconciled_batches == [4]
     assert store.claim_args == (4, 90)
     assert store.finished == [(item, True)]
 
