@@ -43,6 +43,7 @@ def build_tool_registry() -> ToolRegistry:
         required_input_fields=frozenset({"text"}),
         max_input_bytes=24_000,
         handler=text_analyze,
+        requires_approval=False,
     ))
     return registry
 
