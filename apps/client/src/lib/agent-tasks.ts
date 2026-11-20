@@ -54,6 +54,16 @@ type ToolCatalogItem = {
   available: boolean;
 };
 
+export type AgentProfile = {
+  agent_id: string;
+  display_name: string;
+  capabilities: string[];
+  enabled: boolean;
+  available: boolean;
+  requires_approval: boolean;
+  engines: string[];
+};
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!apiBaseUrl) throw new Error("عنوان خدمة SULY API غير مضبوط بعد. أضف EXPO_PUBLIC_API_BASE_URL إلى إعدادات التطبيق.");
   if (!supabase) throw new Error("اتصال الحساب غير مهيأ.");
@@ -77,6 +87,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export async function getAgentToolCatalog(): Promise<ToolCatalogItem[]> {
   const payload = await request<{ items: ToolCatalogItem[] }>("/v1/tools/approvals/catalog");
+  return payload.items ?? [];
+}
+
+export async function getAgentCatalog(): Promise<AgentProfile[]> {
+  const payload = await request<{ items: AgentProfile[] }>("/v1/agents");
   return payload.items ?? [];
 }
 
