@@ -7,7 +7,7 @@ def test_default_agent_roles_are_mapped_to_their_specialist_engines():
     manager = build_agent_manager()
 
     assert {agent.agent_id for agent in manager.list()} == {
-        "general-agent", "coding-agent", "browser-agent",
+        "general-agent", "coding-agent", "research-agent", "browser-agent", "workflow-agent",
     }
     assert all(agent.enabled is False for agent in manager.list())
     assert all(agent.requires_approval is True for agent in manager.list())
@@ -31,4 +31,4 @@ def test_default_agent_roles_fail_closed_until_explicit_activation(agent_id, cap
 
 
 def test_agent_catalog_covers_all_registered_roles():
-    assert len(AGENT_DEFINITIONS) == 3
+    assert len(AGENT_DEFINITIONS) == 5
