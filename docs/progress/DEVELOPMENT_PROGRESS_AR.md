@@ -429,3 +429,14 @@ undefined
 - بعد ذلك أضيفت مراجعات SSRF preflight للمتصفح: رفض صيغ IPv4 الرقمية المختصرة/العشرية/hex، ثم رفض محارف Unicode control/format/bidi في URL.
 - BrowserNetworkPolicy لا ينفذ طلبات ولا يمثل egress proxy؛ هو preflight فقط، ويظل Browser Use disabled إلى أن يوجد proxy فعلي يفرض DNS/IP pinning على كل redirect وsubresource.
 - أحدث commits التي تحمل تغييرات URL الأخيرة لها Platform CI قيد التشغيل عند تحديث هذا السجل؛ لا ننسب نجاح 06c46b4d إلى هذه التغييرات اللاحقة.
+
+
+## دفعة Browser SSRF preflight — 2026-11-20
+
+- أضفنا `browser_network_policy.py` كسياسة تحقق مسبق مستقلة قبل أي اتصال متصفح مستقبلي.
+- تتحقق من allowlist دقيقة للمضيف والمنفذ، وتسمح بالـsubdomains فقط عند تفعيل صريح، وترفض userinfo وURL المشوهة وscheme غير HTTP/HTTPS والمنافذ غير المسموحة.
+- تحظر IP literals وlocalhost و.local و.internal، وتستخدم socket.inet_aton لرفض صيغ IPv4 القديمة مثل 127.1 والعنوان الصحيح كعدد صحيح أو hex.
+- تحل DNS مسبقًا وترفض الإجابة الفارغة أو غير الصالحة أو أي عنوان غير global؛ وترفض خليط العناوين العامة والخاصة بدل اختيار العام فقط.
+- أضفنا اختبارات للـDNS وIPv4/IPv6 وnumeric IPv4 aliases والمنافذ والـallowlist.
+- هذا preflight لا يثبت أمان الاتصال الفعلي: يلزم egress proxy يكرر الفحص لكل redirect/subresource ويثبت IP المحلول عند الاتصال لمنع DNS rebinding. لم يتم ربطه بمتصفح حي، وBrowser Use ما زال disabled.
+- API tests نجحت على commit a858ea69، وPlatform CI كان ما يزال ينفذ Client typecheck/Web export وقت التحديث. أحدث تحديث توثيقي ينتظر CI على HEAD الجديد.
