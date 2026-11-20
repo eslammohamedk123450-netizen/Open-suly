@@ -296,3 +296,23 @@ For every engine:
 - Worker وHermes وprovider ما زالوا disabled افتراضيًا.
 - لا توجد migrations مطبقة على Supabase production ولا أي deployment تم في هذه الدفعة.
 - اختبارات HTTP mock لا تعادل اختبار Hermes container حقيقيًا؛ لا يتم وصف أي engine على أنه live أو production-ready.
+
+## تحديث تكامل OpenCode — 2026-11-20
+
+- [x] مراجعة upstream عند pin `4cca18d80450a3dd6a9a4142028bde84ccb3116e`، وتوثيق MIT ونسخة server package.
+- [x] توثيق أن auth كلمة مرور خادم واحدة + cookie مشتقة منها، وليست SULY tenant auth.
+- [x] توثيق حدود Session/Location middleware ورفض استخدام directory من العميل كمسار مضيف.
+- [ ] runtime/container مؤقت لكل task attempt مع server secret منفصل.
+- [ ] broker per-task يربط كل route بالـowner والـlease والـruntime.
+- [ ] عزل filesystem/shell/PTY/MCP/plugins/credentials وقواعد البيانات بين المهام.
+- [ ] egress proxy default-deny واختبارات SSRF.
+- [ ] end-to-end isolation tests بين مهمتين قبل تفعيل المحرك.
+
+ملف التدقيق: `docs/architecture/OPENCODE_INTEGRATION_AUDIT.md`. يظل OpenCode disabled؛ لا يوجد adapter أو server مشترك أو runtime حي.
+
+## تصحيح migration ومراجعة CI — 2026-11-20
+
+- أُعيد بناء `20261121010000_engine_run_approval_metadata.sql` بعد اكتشاف نسخة مبتورة/مكررة؛ النسخة الحالية مكتملة، لكن لم تُطبق على Supabase.
+- تمت إزالة Unicode control/format/bidi characters من تفاصيل موافقات Hermes قبل العرض.
+- Platform CI وRepository baseline على commit `01e8e88b9e267b138bbfc0fbd24599be36294441` نجحا: 364 API tests، TypeScript، Expo compatibility، Web export.
+- أحدث HEAD وقت التحديث كان `21328dcb664e7ea02f87be6af7d4959c655faa33`؛ CI الخاص به يحتاج تحققًا منفصلًا بعد اكتماله.
