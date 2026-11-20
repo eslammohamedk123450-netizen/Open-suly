@@ -625,7 +625,7 @@ def test_hermes_approval_resolves_exact_request_with_once_choice(monkeypatch):
     )]
 
 
-@pytest.mark.parametrize("choice", ["always", "session", "approve", ""])
+@pytest.mark.parametrize("choice", ["always", "session", "approve", "", [], {}])
 def test_hermes_approval_rejects_persistent_or_unknown_choices(monkeypatch, choice):
     monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
     with pytest.raises(ValueError, match="once or deny"):
