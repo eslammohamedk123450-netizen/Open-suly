@@ -6,6 +6,7 @@ identity and lifetime of a lease issued by a separately isolated runtime broker.
 from __future__ import annotations
 
 from contextlib import contextmanager
+import ipaddress
 from dataclasses import dataclass, field
 import logging
 import re
@@ -63,7 +64,7 @@ class RuntimeLease:
             raise ValueError('runtime_lease_task_attempt_mismatch')
         if not isinstance(self.engine_id, str) or not _ENGINE_ID.fullmatch(self.engine_id) or self.engine_id != engine_id:
             raise ValueError('runtime_lease_engine_mismatch')
-        if not isinstance(self.access_token, str) or len(self.access_token) < 32 or not self.access_token.isascii():
+        if not isinstance(self.access_token, str) or not 32 <= len(self.access_token) <= 512 or not self.access_token.isascii():
             raise ValueError('runtime_lease_credential_invalid')
         parsed = urlsplit(self.base_url) if isinstance(self.base_url, str) else None
         if (
@@ -86,10 +87,20 @@ class RuntimeLease:
         except ValueError as exc:
             raise ValueError('runtime_lease_base_url_invalid') from exc
         host = parsed.hostname.lower().rstrip('.')
-        if not allowed_hosts or not any(
-            host == allowed or host.endswith('.' + allowed)
-            for allowed in allowed_hosts
+        try:
+            ipaddress.ip_address(host)
+        except ValueError:
+            pass
+        else:
+            raise ValueError('runtime_lease_ip_literal_not_allowed')
+        if (
+            not _DNS_HOST.fullmatch(host)
+            or host == 'localhost'
+            or host.endswith('.localhost')
+            or any(not isinstance(item, str) or not _DNS_HOST.fullmatch(item) for item in allowed_hosts)
         ):
+            raise ValueError('runtime_lease_host_invalid')
+        if host not in allowed_hosts:
             raise ValueError('runtime_lease_host_not_allowlisted')
         current = time() if now is None else now
         if isinstance(self.expires_at, bool) or not isinstance(self.expires_at, (int, float)) or not current < self.expires_at <= current + 3600:
@@ -240,7 +251,7 @@ class RuntimeLease:
         parsed = urlsplit(self.base_url) if isinstance(self.base_url, str) else None
         if (
             parsed is None
-            or parsed.scheme not in {'http', 'https'}
+            or parsed.scheme != 'https'
             or not parsed.hostname
             or parsed.username is not None
             or parsed.password is not None
@@ -249,7 +260,6 @@ class RuntimeLease:
             or parsed.path not in {'', '/'}
             or not isinstance(allowed_hosts, frozenset)
             or not allowed_hosts
-            or parsed.hostname.lower().rstrip('.') not in allowed_hosts
         ):
             raise ValueError('runtime_lease_base_url_invalid')
         try:
