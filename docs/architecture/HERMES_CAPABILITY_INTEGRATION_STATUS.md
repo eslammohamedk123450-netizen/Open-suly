@@ -25,7 +25,7 @@ SULY intends to reuse Hermes Agent as its primary general-purpose agent runtime.
 | Cron/scheduled agents | SULY scheduler/task ledger | Not enabled; upstream cron must not bypass SULY quotas, identity or approvals |
 | Messaging/channel integrations | SULY channels | Not enabled; upstream gateway/channel ownership must not replace SULY auth |
 | Remote execution backends | Sandbox provider adapter | Pending; only approved ephemeral providers, no credential leakage |
-| Run status/events/streaming | Durable task event bridge | Pending lifecycle integration, bounded event storage and redaction |
+| Run status/events/streaming | Durable task event bridge | SULY-owned per-attempt engine run ledger added; live event streaming and remote Hermes run IDs remain pending |
 | Stop/cancel | SULY task cancellation | Worker cancellation event reaches Hermes HTTP bridge; client request is aborted on cancellation/lease loss. Upstream execution termination is not guaranteed without a Hermes run-control API. |
 | Retry/recovery/checkpoint | SULY durable DAG | SULY-owned retry and checkpoints; Hermes run mapping/idempotency pending |
 | Health and metrics | SULY engine monitor | Pending; readiness must distinguish process health from model/tool capability |
@@ -45,7 +45,7 @@ SULY intends to reuse Hermes Agent as its primary general-purpose agent runtime.
 
 - Upstream Hermes is pinned to commit `9f47677483d1b4de4d1a88d37b3b7ca18b18b215`.
 - Compose profile is opt-in, no host port, and API server disabled.
-- SULY bridge settings and a bounded asynchronous HTTP chat bridge exist. Base URL parsing rejects non-HTTP(S), missing-host, embedded credentials, query strings, and fragments before requests; invalid settings are covered by new tests. The worker now registers `hermes.agent.turn` as an approval-gated task operation (`agent.hermes.run`) with strict input-field and input/output size limits. The operation reaches the bridge only after the worker loads persisted approval scopes.
+- SULY bridge settings and a bounded asynchronous HTTP chat bridge exist. A lease-guarded engine run ledger records Hermes attempt start and terminal status without storing prompts, outputs, or credentials. Base URL parsing rejects non-HTTP(S), missing-host, embedded credentials, query strings, and fragments before requests; invalid settings are covered by new tests. The worker now registers `hermes.agent.turn` as an approval-gated task operation (`agent.hermes.run`) with strict input-field and input/output size limits. The operation reaches the bridge only after the worker loads persisted approval scopes.
 - Worker `run_once` accepts optional cancel-aware handlers. Lease loss/failure sets cancellation event and prevents result checkpoint. The cancellation event now flows through the approved tool context and engine adapter to abort the in-flight HTTP request; engine timeout overrides are passed through to HTTPX.
 - WorkerRuntime forwards the optional cancellation-aware handler interface.
 - Unit tests cover HTTP request cancellation, timeout override, approval-preserving event propagation, worker lease heartbeat, and no-checkpoint-after-lease-loss. CI status is tracked per commit; do not treat authored tests as executed until the corresponding GitHub Actions run completes.
@@ -72,3 +72,13 @@ The authenticated tool catalog now publishes each registered tool's allowed and 
 - The HTTP bridge uses httpx.AsyncClient and cancels its local request task when SULY signals cancellation. This closes the client-side request and prevents SULY from accepting/checkpointing a late result.
 - IMPORTANT LIMITATION: aborting the HTTP request does not prove that a remote Hermes process stopped generating or executing. A future upstream run-ID/stop endpoint is required for authoritative remote cancellation and durable run reconciliation.
 - No Hermes API server, provider, worker, or paid service was enabled by this change. Sandbox review remains a prerequisite.
+
+
+## Durable engine attempt ledger (migration pending)
+
+- `engine_runs` records one row per task-step attempt, keyed by `(step_id, attempt_count)`, with engine ID, status, and timestamps only. It intentionally stores no prompts, model output, access tokens, or provider credentials.
+- `start_engine_run` requires the active step lease token, an unexpired lease, and a task that has not requested cancellation.
+- `finish_engine_run` accepts only succeeded/failed/cancelled terminal states and requires the same unexpired lease token. A cancellation-requested task forces the run status to cancelled.
+- Authenticated users have owner-scoped read access only; writes and RPC execution are service-role-only.
+- The migration `20261120153000_engine_run_ledger.sql` is committed but has NOT been applied to the live Supabase project. Hermes remains disabled, so no live execution depends on this schema yet.
+- This is a SULY-side attempt ledger, not an upstream Hermes run ID or event stream. Remote cancellation and recovery of an in-flight remote process remain unsupported until Hermes exposes a reviewed run-control API.
