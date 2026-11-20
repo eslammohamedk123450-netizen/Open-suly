@@ -65,7 +65,9 @@ class EngineRunStore:
             },
         ).execute()
         # false تعني أن العامل فقد ملكية الخطوة أو أن السجل لم يعد صالحًا.
-        return bool(response.data)
+        if not isinstance(response.data, bool):
+            raise RuntimeError("engine_run_attach_invalid_response")
+        return response.data
 
     def finish(
         self,
