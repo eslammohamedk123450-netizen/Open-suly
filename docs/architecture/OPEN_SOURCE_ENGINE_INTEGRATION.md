@@ -153,3 +153,10 @@ Every integration batch must list:
 - The Hermes container has not been built or started in this environment.
 - No provider/model has been configured; no real inference or agent tool execution has been tested.
 - API server activation is blocked until terminal/browser/filesystem tool policy, container resource limits, network egress policy, and cancellation propagation are verified.
+
+
+### Lease-loss cancellation foundation — 2026-11-20
+- `TaskWorker.run_once` now accepts an optional cancel-aware handler contract (`cancel_aware_handler(step, cancel_event)`) while preserving existing one-argument handlers.
+- A failed or rejected heartbeat sets both the lease-loss state and the cancellation event. Long-running external engine adapters can observe the event and request upstream stop; SULY still rejects checkpoint/completion after lease loss.
+- Added worker unit tests for event propagation on heartbeat lease loss and successful completion while the lease remains valid.
+- This is only the worker-side cancellation signal. No Hermes run lifecycle adapter is registered or enabled yet; the next bridge must map run IDs, poll terminal state, and call Hermes stop on cancellation before the engine can be exposed to task execution.
