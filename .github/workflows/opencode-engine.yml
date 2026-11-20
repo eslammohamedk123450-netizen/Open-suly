@@ -94,6 +94,11 @@ jobs:
           python-version: "3.12"
       - name: Install runtime dependencies
         run: pip install -r services/runtime-provisioner/requirements.txt pytest
-      - name: Test Docker runtime security and lifecycle
+      - name: Test provisioner API, gateway contracts, and Docker runtime security
         working-directory: services/runtime-provisioner
-        run: PYTHONPATH=. pytest -q tests/test_docker_runtime.py
+        env:
+          SULY_PROVISIONER_TOKEN: ${{ secrets.SULY_PROVISIONER_TOKEN || 'ci-test-token-ci-test-token-ci-test-token' }}
+          RUNTIME_GATEWAY_ORIGIN: https://runtime.example.test
+          OPENCODE_RUNTIME_IMAGE: registry.example/opencode@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          RUNTIME_DB_PATH: /tmp/suly-runtime-ci/runtimes.sqlite3
+        run: PYTHONPATH=. pytest -q tests
