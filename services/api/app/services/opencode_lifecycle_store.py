@@ -20,6 +20,16 @@ _EVENT_TYPES = frozenset({
     "task.cancelled", "permission.requested", "permission.decided",
     "changes.collected", "changes.approved", "changes.rejected",
 })
+_TRANSITIONS = {
+    "queued": {"provisioning", "running", "failed", "cancelled"},
+    "provisioning": {"running", "failed", "cancelled", "expired"},
+    "running": {"waiting_approval", "collecting", "review_ready", "failed", "cancelled", "expired"},
+    "waiting_approval": {"running", "failed", "cancelled", "expired"},
+    "collecting": {"review_ready", "failed", "cancelled", "expired"},
+    "review_ready": {"applying", "completed", "failed", "cancelled"},
+    "applying": {"completed", "failed", "review_ready"},
+    "completed": set(), "failed": set(), "cancelled": set(), "expired": set(),
+}
 _STATUSES = frozenset({
     "queued", "provisioning", "running", "waiting_approval", "collecting",
     "review_ready", "applying", "completed", "failed", "cancelled", "expired",
@@ -108,14 +118,25 @@ class OpenCodeLifecycleStore:
             raise ValueError("opencode_task_status_invalid")
         if error_code is not None and (not re.fullmatch(r"[a-z0-9_]{1,80}", error_code)):
             raise ValueError("opencode_error_code_invalid")
-        payload: dict[str, Any] = {"status": status, "error_code": error_code}
-        if status in {"running", "provisioning"}:
-            payload["started_at"] = datetime.now(timezone.utc).isoformat()
+        current = self._client.table("opencode_task_runs").select(
+            "status"
+        ).eq("id", run_id).eq("user_id", user_id).limit(1).execute().data
+        if not current:
+            return False
+        old_status = current[0].get("status")
+        if old_status == status:
+            return True
+        if status not in _TRANSITIONS.get(old_status, set()):
+            raise ValueError("opencode_task_transition_invalid")
+        now = datetime.now(timezone.utc).isoformat()
+        payload: dict[str, Any] = {"status": status, "error_code": error_code, "updated_at": now}
+        if status in {"running", "provisioning"} and old_status == "queued":
+            payload["started_at"] = now
         if status in {"completed", "failed", "cancelled", "expired"}:
-            payload["finished_at"] = datetime.now(timezone.utc).isoformat()
+            payload["finished_at"] = now
         rows = self._client.table("opencode_task_runs").update(payload).eq(
             "id", run_id
-        ).eq("user_id", user_id).execute().data
+        ).eq("user_id", user_id).eq("status", old_status).execute().data
         return bool(rows)
 
     def recover_interrupted_runs(self, *, user_id: str, orphaned_run_ids: list[str]) -> int:
