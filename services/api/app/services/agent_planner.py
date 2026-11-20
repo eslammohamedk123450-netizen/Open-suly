@@ -114,7 +114,8 @@ def plan_request(request: str) -> PlannedTask:
 
         settings = get_settings()
         if (
-            not settings.hermes_agent_enabled
+            not settings.worker_enabled
+            or not settings.hermes_agent_enabled
             or not settings.hermes_agent_isolation_confirmed
             or not settings.hermes_agent_base_url
             or settings.hermes_agent_api_key is None
