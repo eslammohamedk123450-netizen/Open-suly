@@ -287,7 +287,7 @@ async def test_prompt_async_is_session_scoped_bounded_and_sends_text_only():
 
 
 @pytest.mark.asyncio
-async def test_prompt_async_rejects_non_204_and_redirects():
+async def test_prompt_rejects_invalid_response_and_redirects():
     async def redirect(request):
         return httpx.Response(307, headers={"location": "https://attacker.example/"})
 
@@ -301,13 +301,13 @@ async def test_prompt_async_rejects_non_204_and_redirects():
             )
 
     async def unexpected(request):
-        return httpx.Response(200, json={"data": {"secret": "not surfaced"}})
+        return httpx.Response(200, json={})
 
     async with OpenCodeHTTPClient(
         lease(), task_id=TASK_ID, engine_run_id=RUN_ID,
         allowed_origins=ORIGINS, transport=httpx.MockTransport(unexpected),
     ) as client:
-        with pytest.raises(OpenCodeTransportError, match="status_200"):
+        with pytest.raises(OpenCodeTransportError, match="prompt_not_accepted"):
             await client.submit_prompt_async(
                 session_id="ses_taskrun_123456789", prompt="Do work"
             )
