@@ -125,8 +125,18 @@ class TaskWorker:
         ).execute()
         return response.data or {"accepted": False}
 
-    def run_once(self, handler: Callable[[ClaimedStep], dict[str, Any]]) -> str:
-        """Claim one step and keep its lease alive while a bounded handler runs."""
+    def run_once(
+        self,
+        handler: Callable[[ClaimedStep], dict[str, Any]],
+        *,
+        cancel_aware_handler: Callable[[ClaimedStep, Event], dict[str, Any]] | None = None,
+    ) -> str:
+        """Run one claimed step; cancel-aware engines receive an event set on lease loss.
+
+        Legacy handlers remain supported. Engine adapters that own long-running
+        external runs should use cancel_aware_handler and stop upstream work
+        promptly when cancellation is signaled.
+        """
         step = self.claim()
         if step is None:
             return "idle"
@@ -135,17 +145,19 @@ class TaskWorker:
 
         heartbeat_stop = Event()
         lease_lost = Event()
+        cancel_event = Event()
 
         def maintain_lease() -> None:
             while not heartbeat_stop.wait(self.heartbeat_interval_seconds):
                 try:
                     if not self.renew(step):
                         lease_lost.set()
+                        cancel_event.set()
                         return
                 except Exception:
-                    # A failed heartbeat is treated as lease loss: never commit
-                    # output when ownership can no longer be proven.
+                    # Failed heartbeat means ownership can no longer be proven.
                     lease_lost.set()
+                    cancel_event.set()
                     return
 
         heartbeat = Thread(
@@ -155,7 +167,10 @@ class TaskWorker:
         )
         heartbeat.start()
         try:
-            output = handler(step)
+            if cancel_aware_handler is not None:
+                output = cancel_aware_handler(step, cancel_event)
+            else:
+                output = handler(step)
             if not isinstance(output, dict):
                 raise TypeError("A task handler must return a JSON object.")
         except Exception:
@@ -163,13 +178,11 @@ class TaskWorker:
             heartbeat.join()
             if lease_lost.is_set():
                 return "lease_lost"
-            # Exception text can contain user content, provider payloads, or secrets.
-            # Persist a stable public-safe failure marker; keep raw diagnostics out
-            # of task records and client-visible error fields.
+            # Exception text may contain prompts, provider payloads, or secrets.
             self.fail(
                 step,
                 "tool_execution_failed",
-                "Step execution failed. Sensitive diagnostic details were not stored.",
+                "Step execution failed. Sensitive diagnostic details were not stored",
             )
             return "failed_or_retry_scheduled"
         finally:
