@@ -156,3 +156,25 @@ async def test_client_rejects_malformed_session_response():
     ) as client:
         with pytest.raises(OpenCodeTransportError, match="session_id"):
             await client.create_session(title="valid")
+
+
+@pytest.mark.asyncio
+async def test_catalog_endpoints_unwrap_upstream_envelopes_and_drop_sensitive_fields():
+    async def handler(request):
+        if request.url.path == "/api/skill":
+            return httpx.Response(200, json={"location": {"path": "/private"}, "data": [
+                {"name": "python", "description": "Python helper", "content": "secret skill source", "path": "/private/SKILL.md"},
+                {"name": "x" * 101, "content": "ignored"},
+            ]})
+        if request.url.path == "/api/provider":
+            return httpx.Response(200, json={"location": {"path": "/private"}, "data": [
+                {"id": "openai", "name": "OpenAI", "headers": {"Authorization": "secret"}},
+            ]})
+        return httpx.Response(404)
+
+    async with OpenCodeHTTPClient(
+        lease(), task_id=TASK_ID, engine_run_id=RUN_ID,
+        allowed_origins=ORIGINS, transport=httpx.MockTransport(handler),
+    ) as client:
+        assert await client.list_skills() == [{"name": "python", "description": "Python helper"}]
+        assert await client.list_providers() == [{"id": "openai", "name": "OpenAI"}]
