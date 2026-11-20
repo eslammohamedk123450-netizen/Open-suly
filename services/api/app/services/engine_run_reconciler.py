@@ -35,16 +35,18 @@ class EngineRunReconciler:
         self._stop_handlers = dict(stop_handlers)
         self._batch_size = batch_size
         self._lease_seconds = lease_seconds
+        self._last_missing_identity_count = 0
 
     def run_once(self) -> int:
         """Return the number of external stops confirmed in this bounded batch."""
         # راقب نافذة الانقطاع النادرة بين إنشاء التشغيل الخارجي وحفظ معرفه في SULY.
         missing_identity_count = self._store.count_missing_upstream_identity(30)
-        if missing_identity_count:
+        if missing_identity_count and missing_identity_count != self._last_missing_identity_count:
             logger.error(
                 "External engine runs are stop_pending without an upstream identity: %s",
                 missing_identity_count,
             )
+        self._last_missing_identity_count = missing_identity_count
         # أولاً نحول أي run انتهى lease مالكه إلى stop_pending، ثم نحجزه للإيقاف.
         self._store.reconcile_orphans(self._batch_size)
         claims = self._store.claim_pending_stops(
