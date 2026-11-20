@@ -765,3 +765,21 @@ def test_hermes_agent_turn_logs_only_metadata_when_event_persistence_fails(monke
     assert "persistence failed" in caplog.text
     assert "approval.request" in caplog.text
     assert "secret database password" not in caplog.text
+
+def test_runtime_does_not_log_exception_messages_or_tracebacks(caplog):
+    secret_text = "sensitive-provider-payload-and-database-password"
+
+    class FailingWorker:
+        def run_once(self, _handler, *, cancel_aware_handler=None):
+            stop.set()
+            raise RuntimeError(secret_text)
+
+    stop = Event()
+    runtime = WorkerRuntime(FailingWorker())
+    with caplog.at_level(logging.ERROR, logger="suly.worker"):
+        runtime.run(stop)
+
+    assert "Worker iteration failed" in caplog.text
+    assert "RuntimeError" in caplog.text
+    assert secret_text not in caplog.text
+
