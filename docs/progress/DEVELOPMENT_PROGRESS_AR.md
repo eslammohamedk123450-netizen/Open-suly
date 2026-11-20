@@ -445,3 +445,11 @@ undefined
 ## نتيجة تحقق لاحقة — 2026-11-20
 
 - بعد إضافة اختبارات صيغ IPv4 القديمة ومحارف Unicode/Bidi والمنفذ صفر، نجح API CI على commit `82671ffd`: **432 passed, 2 warnings**. فحص Client typecheck/export كان ما زال قيد التنفيذ عند آخر قراءة. تحديث التوثيق اللاحق لا يغير كود الاختبارات.
+
+
+## تحديث اختبار Browser Network Policy — 2026-11-20
+
+- أضيف تحقق صارم لقائمة المضيفين نفسها: أسماء DNS lowercase ASCII canonical فقط، ورفض wildcard/labels غير صالحة/trailing dot/localhost/.local/.internal وعناوين IP المباشرة أو الرقمية القديمة.
+- اختبارات URL تشمل صيغ IPv4 المختصرة والعددية وhex، وUnicode control/bidi، بالإضافة إلى DNS الخاص أو المختلط.
+- Platform CI على commit 84fc162c: API tests نجحت، 440 passed و2 warnings. فحص TypeScript/Expo/Web export كان ما زال جاريًا وقت التحقق.
+- تغييرات التوثيق بعد ذلك على HEAD 782e08a4 لم تُتحقق بعد في Platform CI؛ لا نخلط نجاح 84fc162c بنتيجة HEAD الأحدث.
