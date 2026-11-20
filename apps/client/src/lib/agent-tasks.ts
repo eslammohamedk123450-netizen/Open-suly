@@ -72,6 +72,13 @@ export async function grantAIApproval(): Promise<void> {
   });
 }
 
+export async function revokeToolApproval(permissionScope: "ai.provider.run" | "agent.hermes.run"): Promise<void> {
+  await request("/v1/tools/approvals", {
+    method: "DELETE",
+    body: JSON.stringify({ permission_scope: permissionScope }),
+  });
+}
+
 export async function grantHermesApproval(): Promise<void> {
   await request("/v1/tools/approvals", {
     method: "POST",
