@@ -199,15 +199,21 @@ class OpenCodeHTTPClient:
         if not re.fullmatch(r"/api/session/ses[A-Za-z0-9_-]{1,128}/permission/per[A-Za-z0-9_-]{1,128}/reply", path):
             raise ValueError("opencode_route_not_allowed")
         try:
-            response = await self._client.post(path, json=body)
+            async with self._client.stream("POST", path, json=body) as response:
+                if 300 <= response.status_code < 400:
+                    raise OpenCodeTransportError("opencode_redirect_rejected")
+                if response.status_code not in (200, 204):
+                    raise OpenCodeTransportError(f"opencode_upstream_status_{response.status_code}")
+                total = 0
+                async for chunk in response.aiter_bytes():
+                    total += len(chunk)
+                    if total > 4096:
+                        raise OpenCodeTransportError("opencode_response_too_large")
+        except OpenCodeTransportError:
+            raise
         except httpx.HTTPError as exc:
+            # Never include upstream URL, headers, response body, or credentials.
             raise OpenCodeTransportError("opencode_runtime_unreachable") from exc
-        if 300 <= response.status_code < 400:
-            raise OpenCodeTransportError("opencode_redirect_rejected")
-        if response.status_code not in (200, 204):
-            raise OpenCodeTransportError(f"opencode_upstream_status_{response.status_code}")
-        if len(response.content) > 4096:
-            raise OpenCodeTransportError("opencode_response_too_large")
 
     async def submit_prompt_async(self, *, session_id: str, prompt: str) -> None:
         """Durably admit one bounded text prompt to the exact task-owned session.
