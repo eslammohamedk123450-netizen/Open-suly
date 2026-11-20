@@ -159,3 +159,23 @@ async def test_event_stream_enforces_line_size_and_parameter_bounds():
                     session_id="ses_taskrun_123456789", max_events=0
                 )
             ]
+
+
+@pytest.mark.asyncio
+async def test_event_stream_rejects_oversized_unterminated_line():
+    body = b"data: " + (b"x" * 2048)  # deliberately no newline/blank terminator
+
+    async with OpenCodeHTTPClient(
+        make_lease(), task_id=TASK_ID, engine_run_id=RUN_ID,
+        allowed_origins=ORIGINS, transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200, content=body, headers={"content-type": "text/event-stream"}
+            )
+        ),
+    ) as client:
+        with pytest.raises(OpenCodeTransportError, match="event_too_large"):
+            _ = [
+                item async for item in client.iter_safe_events(
+                    session_id="ses_taskrun_123456789", max_event_bytes=256
+                )
+            ]
