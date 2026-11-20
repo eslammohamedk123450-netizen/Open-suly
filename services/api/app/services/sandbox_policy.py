@@ -28,15 +28,15 @@ class SandboxLimits:
     container_gid: int = 10001
 
     def validate(self) -> None:
-        if isinstance(self.cpu_count, bool) or not 0.1 <= self.cpu_count <= 8:
+        if isinstance(self.cpu_count, bool) or not isinstance(self.cpu_count, (int, float)) or not 0.1 <= self.cpu_count <= 8:
             raise ValueError("invalid_sandbox_cpu_limit")
-        if isinstance(self.memory_mb, bool) or not 128 <= self.memory_mb <= 32768:
+        if isinstance(self.memory_mb, bool) or not isinstance(self.memory_mb, int) or not 128 <= self.memory_mb <= 32768:
             raise ValueError("invalid_sandbox_memory_limit")
-        if isinstance(self.pids_limit, bool) or not 16 <= self.pids_limit <= 1024:
+        if isinstance(self.pids_limit, bool) or not isinstance(self.pids_limit, int) or not 16 <= self.pids_limit <= 1024:
             raise ValueError("invalid_sandbox_pids_limit")
-        if isinstance(self.timeout_seconds, bool) or not 1 <= self.timeout_seconds <= 3600:
+        if isinstance(self.timeout_seconds, bool) or not isinstance(self.timeout_seconds, int) or not 1 <= self.timeout_seconds <= 3600:
             raise ValueError("invalid_sandbox_timeout")
-        if isinstance(self.tmpfs_mb, bool) or not 16 <= self.tmpfs_mb <= 2048:
+        if isinstance(self.tmpfs_mb, bool) or not isinstance(self.tmpfs_mb, int) or not 16 <= self.tmpfs_mb <= 2048:
             raise ValueError("invalid_sandbox_tmpfs_limit")
         if any(
             isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 65535
@@ -114,6 +114,8 @@ class DockerSandboxCommandBuilder:
             "--cap-drop", "ALL",
             "--security-opt", "no-new-privileges:true",
             "--pids-limit", str(limits.pids_limit),
+            "--ulimit", "nofile=1024:1024",
+            "--ulimit", "core=0",
             "--memory", f"{limits.memory_mb}m",
             "--cpus", str(limits.cpu_count),
             "--stop-timeout", "5",
