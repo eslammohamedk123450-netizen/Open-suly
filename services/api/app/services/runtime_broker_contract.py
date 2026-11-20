@@ -160,6 +160,9 @@ class RuntimeLeaseProvider(Protocol):
     ) -> dict:
         ...
 
+    def recover(self, runtime_id: str, task_id: str, engine_run_id: str, engine_id: str = "opencode") -> RuntimeLease:
+        ...
+
     def release(self, lease: RuntimeLease) -> bool:
         ...
 
@@ -307,6 +310,48 @@ class TaskScopedRuntimeBroker:
             except Exception:
                 logger.warning("Runtime teardown failed after task error %s", lease.runtime_id)
             raise
+
+    def recover(
+        self,
+        runtime_id: str,
+        task_id: str,
+        engine_run_id: str,
+        engine_id: str = "opencode",
+    ) -> RuntimeLease:
+        """Rebuild an active lease after process restart using owner-bound rotation."""
+        attempt = (task_id, engine_run_id, engine_id)
+        with self._lock:
+            active_id = self._active_by_attempt.get(attempt)
+            active = self._active_by_runtime.get(active_id) if active_id else None
+            if active is not None and active[0] == attempt:
+                return active[1]
+            if attempt in self._seen_attempts or attempt in self._pending_attempts:
+                raise RuntimeError("runtime_attempt_recovery_rejected")
+            self._pending_attempts.add(attempt)
+        try:
+            recoverer = getattr(self._provider, "recover", None)
+            if not callable(recoverer):
+                raise RuntimeError("runtime_provider_recovery_not_supported")
+            lease = recoverer(runtime_id, task_id, engine_run_id, engine_id)
+            if not isinstance(lease, RuntimeLease):
+                raise RuntimeError("runtime_provider_returned_invalid_lease")
+            lease.validate(
+                task_id=task_id,
+                engine_run_id=engine_run_id,
+                engine_id=engine_id,
+                allowed_origins=self._allowed_origins,
+            )
+            with self._lock:
+                if lease.runtime_id in self._seen_runtime_ids or attempt in self._seen_attempts:
+                    raise RuntimeError("runtime_instance_reuse_rejected")
+                self._active_by_runtime[lease.runtime_id] = (attempt, lease)
+                self._active_by_attempt[attempt] = lease.runtime_id
+                self._seen_runtime_ids.add(lease.runtime_id)
+                self._seen_attempts.add(attempt)
+            return lease
+        finally:
+            with self._lock:
+                self._pending_attempts.discard(attempt)
 
     def lease_for_attempt(
         self, task_id: str, engine_run_id: str, engine_id: str
