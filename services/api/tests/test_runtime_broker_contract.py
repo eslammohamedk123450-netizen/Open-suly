@@ -119,7 +119,7 @@ def test_runtime_lease_rejects_expired_or_excessively_long_credential_lease():
                 engine_run_id=RUN_ID,
                 engine_id=ENGINE_ID,
                 allowed_origins=ORIGINS,
-                now=1_900_000_000.0,
+                now=current,
             )
 
 
