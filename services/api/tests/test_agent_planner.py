@@ -140,3 +140,12 @@ def test_agent_plan_validator_caps_step_count():
     } for index in range(33)]
     with pytest.raises(UnsupportedTaskRequest, match="32 steps"):
         validate_agent_plan(steps)
+
+
+def test_planner_rejects_text_analysis_when_worker_is_disabled(monkeypatch):
+    from types import SimpleNamespace
+    import app.core.config as config
+
+    monkeypatch.setattr(config, "get_settings", lambda: SimpleNamespace(worker_enabled=False))
+    with pytest.raises(UnsupportedTaskRequest, match="worker is disabled"):
+        plan_request("analyze: text")
