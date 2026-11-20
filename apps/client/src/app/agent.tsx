@@ -255,7 +255,7 @@ export default function AgentScreen() {
               </Pressable>
               <Pressable style={[styles.mode, operation === "ai.respond" && styles.modeActive]} onPress={() => setOperation("ai.respond")}>
                 <Text style={[styles.modeTitle, operation === "ai.respond" && styles.gold]}>SULY AI</Text>
-                <Text style={styles.modeHint}>رد ذكي عبر مزود النموذج</Text>
+                <Text style={styles.modeHint}>تنفيذ طلبك عبر نموذج الذكاء الاصطناعي</Text>
               </Pressable>
               <Pressable style={[styles.mode, operation === "hermes.agent.turn" && styles.modeActive]} onPress={() => setOperation("hermes.agent.turn")}>
                 <Text style={[styles.modeTitle, operation === "hermes.agent.turn" && styles.gold]}>Hermes Agent</Text>
@@ -297,7 +297,7 @@ export default function AgentScreen() {
             <TextInput
               value={prompt}
               onChangeText={setPrompt}
-              placeholder={operation === "text.analyze" ? "اكتب نصًا لاختبار التحليل..." : "اكتب ما تريد من Hermes إنجازه..."}
+              placeholder={operation === "text.analyze" ? "اكتب نصًا لاختبار التحليل..." : operation === "ai.respond" ? "اكتب ما تريد من SULY إنجازه..." : "اكتب ما تريد من Hermes إنجازه..."}
               placeholderTextColor={colors.faint}
               multiline
               textAlign="right"
