@@ -137,3 +137,8 @@ Additional source files reviewed at the same immutable upstream revision:
 - It reduces the global event stream to a short allowlist of coarse session lifecycle and permission events, requires exact session ownership, and drops raw prompt, reasoning, tool input/output, text delta, and unrelated location events.
 - Tests cover cross-session rejection, malformed request IDs/resources, permanent permission rejection, event allowlisting, unhashable decisions, and extreme timestamps.
 - This is a tested pure contract only. No OpenCode HTTP client, process provisioner, durable session mapping, or live runtime has been added; OpenCode remains disabled.
+
+## Test checkpoint — 2026-11-20
+
+- OpenCode protocol reducer tests are included in the API suite. Platform CI on commit 61c194f8 reports 456 API tests passed and TypeScript/Expo compatibility passed; Web export was still running at this checkpoint.
+- These tests validate pure request/event reduction only. They do not validate a live OpenCode server, a container boundary, or tenant isolation.
