@@ -7,7 +7,6 @@ from pydantic import BaseModel
 
 from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.config import get_settings
-from app.core.rate_limit import rate_limit
 from app.core.supabase import get_supabase_admin_client
 from app.services.tool_approvals import ToolApprovalStore
 from app.services.ai_gateway import (
@@ -75,7 +74,6 @@ class ChatRespondRequest(BaseModel):
 async def respond_to_message(
     request: ChatRespondRequest,
     user: AuthenticatedUser = Depends(get_current_user),
-    _limited: None = Depends(rate_limit("chat_respond")),
 ) -> dict[str, Any]:
     """Generate and persist one assistant reply for an owned user message."""
     admin = get_supabase_admin_client()
@@ -137,11 +135,12 @@ async def respond_to_message(
             except AIProviderTimeout as exc:
                 raise HTTPException(status_code=504, detail="AI provider timed out.") from exc
             except AIProviderError as exc:
-                # Log the details server-side only; never echo provider errors to clients.
-                logger.warning("ai_provider_error", exc_info=True)
+                # Log the provider detail server-side only; the client receives
+                # a generic message so upstream endpoints cannot leak to users.
+                logger.warning("AI provider failed to complete the request: %s", exc)
                 raise HTTPException(
                     status_code=502,
-                    detail="The AI provider could not return a response.",
+                    detail="The AI provider could not complete the request. Try again shortly.",
                 ) from exc
 
             try:
@@ -166,9 +165,10 @@ async def respond_to_message(
                 if inserted:
                     return inserted[0]
             except Exception:
-                # A concurrent retry may have won the unique idempotency index.
-                # Any other failure is logged so a lost reply is never silent.
-                logger.warning("assistant_reply_persist_failed", exc_info=True)
+                # A concurrent retry may have won the unique idempotency index;
+                # any other storage failure is also handled by the fallback read
+                # below, but is logged instead of being silently discarded.
+                logger.exception("assistant_reply_persist_failed")
 
             existing_after_race = (
                 admin.table("messages")
@@ -236,7 +236,6 @@ def list_conversations(
 def create_conversation(
     request: CreateConversationRequest,
     user: AuthenticatedUser = Depends(get_current_user),
-    _limited: None = Depends(rate_limit("chat_conversations")),
 ) -> dict[str, Any]:
     title = (request.title or "محادثة جديدة").strip()
     if not title or len(title) > 200:
@@ -303,7 +302,6 @@ def add_user_message(
     conversation_id: UUID,
     request: AddUserMessageRequest,
     user: AuthenticatedUser = Depends(get_current_user),
-    _limited: None = Depends(rate_limit("chat_messages")),
 ) -> dict[str, Any]:
     content = request.content.strip()
     if not content or len(content) > 100000:
