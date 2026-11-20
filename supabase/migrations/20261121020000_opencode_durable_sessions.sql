@@ -54,7 +54,7 @@ set search_path = ''
 as $$
 begin
   new.updated_at = now();
-  new.last_activity_at = greatest(new.last_activity_at, old.last_activity_at);
+  new.last_activity_at = now();
   return new;
 end;
 $$;
