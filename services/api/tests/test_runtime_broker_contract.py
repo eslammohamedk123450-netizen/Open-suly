@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from time import time
-from time import time
 from uuid import uuid4
 
 import pytest
