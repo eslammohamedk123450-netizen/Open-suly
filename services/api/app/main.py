@@ -47,6 +47,10 @@ async def readiness() -> JSONResponse:
         missing.append("supabase_url")
     if not current.supabase_publishable_key:
         missing.append("supabase_publishable_key")
+    # Auth validation uses the publishable key, while trusted conversation,
+    # task, approval, and worker operations require the server-only secret.
+    if not current.supabase_secret_key:
+        missing.append("supabase_secret_key")
 
     configured = not missing
     return JSONResponse(
