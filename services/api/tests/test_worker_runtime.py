@@ -154,3 +154,19 @@ def test_worker_does_not_complete_when_handler_output_is_not_object():
     assert result == "failed_or_retry_scheduled"
     assert rpc.calls[-1][0] == "fail_task_step"
     assert all(call[0] != "complete_task_step" for call in rpc.calls)
+
+
+
+@pytest.mark.parametrize("invalid_claim, expected_error", [
+    ("not-an-object", "worker_claim_invalid_payload"),
+    ({**STEP_DATA, "input": ["not", "an", "object"]}, "worker_claim_invalid_input"),
+    ({**STEP_DATA, "attempt_count": 0}, "worker_claim_invalid_attempt_bounds"),
+    ({**STEP_DATA, "max_attempts": 11}, "worker_claim_invalid_attempt_bounds"),
+    ({**STEP_DATA, "step_key": "x" * 101}, "worker_claim_invalid_step_metadata"),
+])
+def test_worker_rejects_malformed_claim_payloads(invalid_claim, expected_error):
+    rpc = _RpcSequence([invalid_claim])
+    worker = TaskWorker(rpc, "malformed-claim-worker")
+
+    with pytest.raises(ValueError, match=expected_error):
+        worker.claim()
