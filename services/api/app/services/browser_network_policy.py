@@ -8,12 +8,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import ipaddress
+import re
 import socket
 import unicodedata
 from typing import Callable, Iterable
 from urllib.parse import urlsplit
 
 AddressResolver = Callable[[str, int], Iterable[str]]
+_DNS_NAME = re.compile(r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$")
 
 
 def _resolve_addresses(host: str, port: int) -> tuple[str, ...]:
@@ -42,22 +44,31 @@ class BrowserNetworkPolicy:
     resolver: AddressResolver = _resolve_addresses
 
     def __post_init__(self) -> None:
-        if (
-            not isinstance(self.allowed_hosts, frozenset)
-            or not self.allowed_hosts
-            or any(
+        if not isinstance(self.allowed_hosts, frozenset) or not self.allowed_hosts:
+            raise ValueError('browser_allowed_hosts_required')
+        for host in self.allowed_hosts:
+            if (
                 not isinstance(host, str)
                 or not host
                 or host != host.lower()
-                or host.startswith('.')
-                or host.endswith('.')
-                or '/' in host
-                or ':' in host
-                or '@' in host
-                for host in self.allowed_hosts
-            )
-        ):
-            raise ValueError('browser_allowed_hosts_required')
+                or not host.isascii()
+                or not _DNS_NAME.fullmatch(host)
+                or host == 'localhost'
+                or host.endswith(('.localhost', '.local', '.internal'))
+            ):
+                raise ValueError('browser_allowed_hosts_invalid')
+            try:
+                ipaddress.ip_address(host)
+            except ValueError:
+                pass
+            else:
+                raise ValueError('browser_allowed_hosts_ip_literal_rejected')
+            try:
+                socket.inet_aton(host)
+            except OSError:
+                pass
+            else:
+                raise ValueError('browser_allowed_hosts_ip_literal_rejected')
         if (
             not isinstance(self.allowed_ports, frozenset)
             or not self.allowed_ports
