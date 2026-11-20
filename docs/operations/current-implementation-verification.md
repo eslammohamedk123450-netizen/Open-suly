@@ -49,3 +49,11 @@ Anonymous SELECT access is not granted to these tables. Profile owners can updat
 - The Agent Workspace supports deterministic text analysis, approval-gated `ai.respond`, and the separately gated Hermes bridge. The Activity screen reads the authenticated task history API; task cards open a live detail view with step outputs, errors, polling, and cancellation. Failed tasks can be retried from the detail view up to two manual retries; the database RPC resets only failed steps and preserves completed checkpoints.
 - The bounded manual retry migration (`20261120130500_bounded_manual_task_retry.sql`) has been committed but must still be applied to Supabase before the retry endpoint can work in the live project. It adds a two-retry limit per task and a service-role-only RPC.
 - Provider configuration, API deployment, streaming, durable worker execution, and native production builds remain pending.
+
+
+## Engine run ledger update (2026-11-20)
+
+- Added `supabase/migrations/20261120153000_engine_run_ledger.sql` to create an owner-readable, service-written per-attempt `engine_runs` ledger and lease-guarded start/finish RPCs.
+- Added the server-side `EngineRunStore` adapter and connected the approved Hermes operation to record running/succeeded/failed/cancelled states. No prompt, output, provider key, or approval scope is stored in the ledger.
+- The migration is committed to GitHub but has NOT been applied to Supabase. Hermes and the worker remain disabled by default; this update does not start or deploy either service.
+- A terminal engine-run transition requires the same unexpired step lease token. A stale worker cannot mark a newer attempt as complete.
