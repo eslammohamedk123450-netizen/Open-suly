@@ -17,8 +17,10 @@ from app.core.config import get_settings
 from app.core.supabase import get_supabase_admin_client
 from app.services.ai_gateway import generate_reply
 from app.services.engine_contract import EngineRequest, EngineResult
-from app.services.engine_registry import EngineDefinition, EngineRegistry
-from app.services.agent_manager import AgentDefinition, AgentManager
+from app.services.engine_registry import EngineRegistry
+from app.services.agent_manager import AgentManager
+from app.services.engine_catalog import build_engine_registry as build_pinned_engine_registry
+from app.services.agent_catalog import build_agent_manager as build_catalog_agent_manager
 from app.services.hermes_agent import HermesAgentCancelled, run_agent_turn, stop_agent_run
 from app.services.engine_run_store import EngineRunStore
 from app.services.engine_run_reconciler import EngineRunReconciler
@@ -91,71 +93,28 @@ def build_engine_registry(
     idempotency_key: str,
     on_run_started: Callable[[str], bool],
 ) -> EngineRegistry:
-    """Build the server-configured allow-list; external engines default off."""
+    """Build the full pinned engine catalogue with only configured Hermes enabled."""
     settings = get_settings()
-    return EngineRegistry([
-        EngineDefinition(
-            engine_id="hermes-agent",
-            display_name="Hermes Agent",
-            capabilities=frozenset({"agent.general"}),
-            enabled=bool(
-                settings.worker_enabled
-                and settings.hermes_agent_enabled
-                and settings.hermes_agent_isolation_confirmed
-                and settings.hermes_agent_base_url
-                and settings.hermes_agent_api_key is not None
-            ),
-            requires_approval=True,
-            max_input_bytes=20_100,
-            max_output_bytes=52_000,
-            max_timeout_seconds=300,
-            adapter=HermesAgentAdapter(
-                cancel_event,
-                idempotency_key=idempotency_key,
-                on_run_started=on_run_started,
-            ),
-        )
-    ])
+    hermes_enabled = bool(
+        settings.worker_enabled
+        and settings.hermes_agent_enabled
+        and settings.hermes_agent_isolation_confirmed
+        and settings.hermes_agent_base_url
+        and settings.hermes_agent_api_key is not None
+    )
+    hermes_adapter = HermesAgentAdapter(
+        cancel_event,
+        idempotency_key=idempotency_key,
+        on_run_started=on_run_started,
+    )
+    return build_pinned_engine_registry({
+        "hermes-agent": (hermes_enabled, hermes_adapter),
+    })
 
 
 def build_agent_manager(engines: EngineRegistry) -> AgentManager:
-    """Build SULY's role catalog; only the configured Hermes general role can be enabled."""
-    return AgentManager(
-        engines,
-        [
-            AgentDefinition(
-                agent_id="general-agent",
-                display_name="SULY General Agent",
-                capabilities=frozenset({"agent.general"}),
-                preferred_engines=("hermes-agent",),
-                enabled=bool(engines.candidates("agent.general")),
-            ),
-            AgentDefinition(
-                agent_id="coding-agent",
-                display_name="SULY Coding Agent",
-                capabilities=frozenset({"code.edit", "code.review"}),
-                preferred_engines=("opencode", "openhands", "aider"),
-            ),
-            AgentDefinition(
-                agent_id="research-agent",
-                display_name="SULY Research Agent",
-                capabilities=frozenset({"research", "research.summarize"}),
-                preferred_engines=("hermes-agent",),
-            ),
-            AgentDefinition(
-                agent_id="browser-agent",
-                display_name="SULY Browser Agent",
-                capabilities=frozenset({"browser.navigate", "browser.automate"}),
-                preferred_engines=("browser-use", "skyvern"),
-            ),
-            AgentDefinition(
-                agent_id="workflow-agent",
-                display_name="SULY Workflow Agent",
-                capabilities=frozenset({"workflow.execute"}),
-                preferred_engines=("n8n", "dify"),
-            ),
-        ],
-    )
+    """Use the canonical SULY role catalogue against the live engine allow-list."""
+    return build_catalog_agent_manager(engines)
 
 
 def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = None) -> dict[str, Any]:
