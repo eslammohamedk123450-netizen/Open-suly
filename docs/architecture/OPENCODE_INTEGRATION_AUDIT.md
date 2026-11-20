@@ -126,3 +126,14 @@ Additional source files reviewed at the same immutable upstream revision:
 - The source review and this policy are documentation only.
 - The SULY runtime lease contract exists, but there is still no concrete OpenCode provisioner, per-attempt process, OpenCode API client, durable session-ID column/RPC, output reducer, or permission UI.
 - OpenCode remains disabled. No OpenCode server or session was started.
+
+
+## SULY-side protocol reduction contract — 2026-11-20
+
+- Added services/api/app/services/opencode_contract.py as a pure, non-network protocol boundary.
+- It creates an explicit catch-all ask permission rule for future sessions.
+- It binds each permission request to the exact session ID and reduces the request to ID/action/resources; model message, metadata, save rules, and source payload are excluded.
+- It can build only once/reject permission replies; the upstream always choice is not representable.
+- It reduces the global event stream to a short allowlist of coarse session lifecycle and permission events, requires exact session ownership, and drops raw prompt, reasoning, tool input/output, text delta, and unrelated location events.
+- Tests cover cross-session rejection, malformed request IDs/resources, permanent permission rejection, event allowlisting, unhashable decisions, and extreme timestamps.
+- This is a tested pure contract only. No OpenCode HTTP client, process provisioner, durable session mapping, or live runtime has been added; OpenCode remains disabled.
