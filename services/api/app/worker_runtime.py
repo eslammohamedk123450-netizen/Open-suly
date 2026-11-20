@@ -17,6 +17,7 @@ from app.core.supabase import get_supabase_admin_client
 from app.services.ai_gateway import generate_reply
 from app.services.engine_contract import EngineRequest, EngineResult
 from app.services.engine_registry import EngineDefinition, EngineRegistry
+from app.services.agent_manager import AgentDefinition, AgentManager
 from app.services.hermes_agent import HermesAgentCancelled, run_agent_turn
 from app.services.engine_run_store import EngineRunStore
 from app.services.task_worker import ClaimedStep, TaskWorker
@@ -109,6 +110,47 @@ def build_engine_registry(
     ])
 
 
+def build_agent_manager(engines: EngineRegistry) -> AgentManager:
+    """Build SULY's role catalog; only the configured Hermes general role can be enabled."""
+    settings = get_settings()
+    return AgentManager(
+        engines,
+        [
+            AgentDefinition(
+                agent_id="general-agent",
+                display_name="SULY General Agent",
+                capabilities=frozenset({"agent.general"}),
+                preferred_engines=("hermes-agent",),
+                enabled=settings.hermes_agent_enabled,
+            ),
+            AgentDefinition(
+                agent_id="coding-agent",
+                display_name="SULY Coding Agent",
+                capabilities=frozenset({"code.edit", "code.review"}),
+                preferred_engines=("opencode", "openhands", "aider"),
+            ),
+            AgentDefinition(
+                agent_id="research-agent",
+                display_name="SULY Research Agent",
+                capabilities=frozenset({"research", "research.summarize"}),
+                preferred_engines=("hermes-agent",),
+            ),
+            AgentDefinition(
+                agent_id="browser-agent",
+                display_name="SULY Browser Agent",
+                capabilities=frozenset({"browser.navigate", "browser.automate"}),
+                preferred_engines=("browser-use", "skyvern"),
+            ),
+            AgentDefinition(
+                agent_id="workflow-agent",
+                display_name="SULY Workflow Agent",
+                capabilities=frozenset({"workflow.execute"}),
+                preferred_engines=("n8n", "dify"),
+            ),
+        ],
+    )
+
+
 def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = None) -> dict[str, Any]:
     # نتحقق من المدخلات قبل إنشاء أي سجل تشغيل خارجي.
     prompt = step.input.get("prompt")
@@ -141,14 +183,18 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
             run_id, step, upstream_id
         ),
     )
-    definition = registry.get("hermes-agent")
-    if definition is None or not definition.enabled:
-        run_store.finish(run_id, step, "failed", "engine_disabled")
-        raise RuntimeError("engine_disabled")
+    manager = build_agent_manager(registry)
+    try:
+        # يختار مدير الوكلاء المحرك المؤهل؛ لا يشغّل دورًا أو محركًا معطلاً.
+        route = manager.route("general-agent", "agent.general")
+        selected_engine = route.engines[0]
+    except (ValueError, RuntimeError):
+        run_store.finish(run_id, step, "failed", "agent_route_unavailable")
+        raise
 
     try:
         # لا نعتبر بدء Hermes ناجحًا حتى نحفظ معرفه الخارجي تحت lease الحالي.
-        result = registry.execute("hermes-agent", request)
+        result = registry.execute(selected_engine.engine_id, request)
     except HermesAgentCancelled:
         run_store.finish(run_id, step, "cancelled")
         raise
