@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-os.environ.setdefault("SULY_PROVISIONER_TOKEN", "t" * 48)
+os.environ["SULY_PROVISIONER_TOKEN"] = "t" * 48
 os.environ.setdefault("RUNTIME_GATEWAY_ORIGIN", "https://runtime.example.test")
 os.environ.setdefault("OPENCODE_RUNTIME_IMAGE", "registry.example/opencode@sha256:" + "a" * 64)
 os.environ.setdefault("RUNTIME_DB_PATH", "/tmp/suly-runtime-test.sqlite3")
