@@ -54,3 +54,7 @@ SULY intends to reuse Hermes Agent as its primary general-purpose agent runtime.
 ## Capability enablement policy
 
 A capability is considered integrated only after code exists, required permissions are enforced, tests are run, and its intended runtime is actually started and verified. Documentation or upstream capability descriptions alone do not qualify as integration.
+
+## Tool catalog API
+
+Authenticated clients can now query `GET /v1/tools/approvals/catalog` to discover the currently registered worker operations. The response includes each tool's name, description, permission scope, approval requirement, and `approved` flag for the requesting user's active grants. This endpoint is descriptive only; it does not execute tools or grant/revoke permissions. Hermes remains disabled unless separately configured and sandbox-reviewed.
