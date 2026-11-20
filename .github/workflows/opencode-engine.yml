@@ -16,6 +16,13 @@ on:
       - "services/api/tests/test_runtime_provisioner_http.py"
       - "services/api/tests/test_project_workspace_store.py"
       - "services/runtime-provisioner/**"
+      - "services/api/app/core/config.py"
+      - "services/api/app/main.py"
+      - "services/api/app/routers/opencode_tasks.py"
+      - "services/api/app/services/opencode_lifecycle_store.py"
+      - "services/api/tests/test_opencode_lifecycle_contract.py"
+      - "services/api/tests/test_runtime_broker_contract.py"
+      - "services/runtime-provisioner/tests/test_api_contract.py"
       - ".github/workflows/opencode-engine.yml"
   pull_request:
     paths:
