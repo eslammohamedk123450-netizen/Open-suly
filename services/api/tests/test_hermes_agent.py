@@ -323,7 +323,9 @@ def test_hermes_stop_reconciliation_does_not_assume_stop_was_successful(monkeypa
 
     monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
     monkeypatch.setattr(hermes_agent.httpx, "AsyncClient", lambda **_kw: Client())
-    monkeypatch.setattr(hermes_agent.asyncio, "sleep", lambda *_args: None)
+    async def no_sleep(*_args):
+        return None
+    monkeypatch.setattr(hermes_agent.asyncio, "sleep", no_sleep)
     assert hermes_agent.stop_agent_run("run_orphan_123", timeout_seconds=1) is False
 
 
