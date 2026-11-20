@@ -212,3 +212,13 @@ def test_hermes_agent_operation_is_registered_with_approval_and_bounded_fields()
     assert definition.required_input_fields == frozenset({"prompt"})
     assert definition.max_input_bytes <= 20_100
     assert definition.max_output_bytes <= 52_000
+
+
+def test_cancel_aware_dispatch_refuses_to_start_after_cancellation():
+    from app.worker_runtime import dispatch_cancel_aware
+
+    cancelled = Event()
+    cancelled.set()
+    step = make_step({"operation": "text.analyze", "text": "must not execute"})
+    with pytest.raises(RuntimeError, match="task_execution_cancelled"):
+        dispatch_cancel_aware(step, cancelled)
