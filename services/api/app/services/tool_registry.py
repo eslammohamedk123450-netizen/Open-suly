@@ -60,6 +60,10 @@ class ToolRegistry:
                 "description": tool.description,
                 "permission_scope": tool.permission_scope,
                 "requires_approval": tool.requires_approval,
+                "allowed_input_fields": sorted(tool.allowed_input_fields),
+                "required_input_fields": sorted(tool.required_input_fields),
+                "max_input_bytes": tool.max_input_bytes,
+                "max_output_bytes": tool.max_output_bytes,
             }
             for tool in sorted(self._tools.values(), key=lambda item: item.name)
         ]
