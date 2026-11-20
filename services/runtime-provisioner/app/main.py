@@ -271,6 +271,27 @@ def _runtime_token_from_request(value: str | None) -> str:
     return value[7:] if value and value.startswith("Bearer ") else ""
 
 
+async def _bounded_opencode_json(client: httpx.AsyncClient, path: str, payload: dict[str, Any], *, limit: int) -> dict[str, Any]:
+    async with client.stream("POST", path, json=payload) as response:
+        if response.status_code < 200 or response.status_code >= 300 or 300 <= response.status_code < 400:
+            raise HTTPException(502, "opencode_execution_failed")
+        if response.headers.get("content-type", "").split(";", 1)[0].lower() != "application/json":
+            raise HTTPException(502, "opencode_invalid_content_type")
+        chunks, total = [], 0
+        async for chunk in response.aiter_bytes():
+            total += len(chunk)
+            if total > limit:
+                raise HTTPException(502, "opencode_response_too_large")
+            chunks.append(chunk)
+    try:
+        value = json.loads(b"".join(chunks))
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise HTTPException(502, "opencode_invalid_json") from exc
+    if not isinstance(value, dict):
+        raise HTTPException(502, "opencode_invalid_response")
+    return value
+
+
 @app.post("/v1/runtime-gateway/{runtime_id}/execute")
 async def execute(runtime_id: str, body: ExecuteRequest, authorization: str | None = Header(default=None)):
     row = _runtime(runtime_id, _runtime_token_from_request(authorization))
@@ -280,20 +301,21 @@ async def execute(runtime_id: str, body: ExecuteRequest, authorization: str | No
         async with httpx.AsyncClient(base_url=base, auth=auth, timeout=httpx.Timeout(900, connect=5), trust_env=False) as client:
             session_id = body.session_id
             if session_id is None:
-                created = await client.post("/api/session", json={
+                payload = await _bounded_opencode_json(client, "/api/session", {
                     "title": body.title,
                     "permissions": [{"action": "*", "resource": "*", "effect": "ask"}],
-                })
-                created.raise_for_status()
-                payload = created.json()
-                session_id = payload.get("data", {}).get("id")
+                }, limit=16_384)
+                session_data = payload.get("data")
+                session_id = session_data.get("id") if isinstance(session_data, dict) else None
                 if not isinstance(session_id, str) or not re.fullmatch(r"ses[A-Za-z0-9_-]{1,128}", session_id):
                     raise HTTPException(502, "invalid_session_response")
             if not re.fullmatch(r"ses[A-Za-z0-9_-]{1,128}", session_id):
                 raise HTTPException(422, "invalid_session_id")
-            result = await client.post(f"/api/session/{session_id}/prompt", json={"text": body.prompt})
-            result.raise_for_status()
-            return {"runtime_id": runtime_id, "session_id": session_id, "result": result.json()}
+            result = await _bounded_opencode_json(
+                client, f"/api/session/{session_id}/prompt",
+                {"text": body.prompt}, limit=2 * 1024 * 1024,
+            )
+            return {"runtime_id": runtime_id, "session_id": session_id, "result": result}
     except httpx.HTTPStatusError as exc:
         raise HTTPException(502, "opencode_execution_failed") from exc
     except httpx.HTTPError as exc:
