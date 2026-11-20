@@ -51,8 +51,17 @@ def ai_respond(step: ClaimedStep) -> dict[str, Any]:
 class HermesAgentAdapter:
     """Narrow adapter to the separately hosted Hermes bridge."""
 
-    def __init__(self, cancel_event: Event | None = None) -> None:
+    def __init__(
+        self,
+        cancel_event: Event | None = None,
+        *,
+        idempotency_key: str,
+        on_run_started: Callable[[str], bool],
+    ) -> None:
+        # نمرر إشارة الإلغاء ومفتاح المحاولة ودالة حفظ معرف Hermes الخارجي.
         self.cancel_event = cancel_event
+        self.idempotency_key = idempotency_key
+        self.on_run_started = on_run_started
 
     def execute(self, request: EngineRequest) -> EngineResult:
         prompt = request.input_payload.get("prompt")
@@ -62,6 +71,8 @@ class HermesAgentAdapter:
             prompt,
             timeout_seconds=request.timeout_seconds,
             cancel_event=self.cancel_event,
+            idempotency_key=self.idempotency_key,
+            on_run_started=self.on_run_started,
         )
         if not isinstance(result, dict) or not isinstance(result.get("content"), str):
             raise ValueError("hermes_adapter_invalid_response")
@@ -71,7 +82,12 @@ class HermesAgentAdapter:
         )
 
 
-def build_engine_registry(cancel_event: Event | None = None) -> EngineRegistry:
+def build_engine_registry(
+    cancel_event: Event | None = None,
+    *,
+    idempotency_key: str,
+    on_run_started: Callable[[str], bool],
+) -> EngineRegistry:
     """Build the server-configured allow-list; external engines default off."""
     settings = get_settings()
     return EngineRegistry([
@@ -84,7 +100,7 @@ def build_engine_registry(cancel_event: Event | None = None) -> EngineRegistry:
             max_input_bytes=20_100,
             max_output_bytes=52_000,
             max_timeout_seconds=300,
-            adapter=HermesAgentAdapter(cancel_event),
+            adapter=HermesAgentAdapter(\n                cancel_event,\n                idempotency_key=idempotency_key,\n                on_run_started=on_run_started,\n            ),
         )
     ])
 
@@ -104,7 +120,7 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
     run_store = context.engine_run_store if context is not None else None
     if cancel_event is not None and cancel_event.is_set():
         raise RuntimeError("task_execution_cancelled")
-    registry = build_engine_registry(cancel_event)
+    registry = build_engine_registry(\n        cancel_event,\n        idempotency_key=f"suly-{run_id}",\n        on_run_started=lambda upstream_id: run_store.attach_upstream_run_id(\n            run_id, step, upstream_id\n        ),\n    )
     definition = registry.get("hermes-agent")
     if definition is None or not definition.enabled:
         raise RuntimeError("engine_disabled")
