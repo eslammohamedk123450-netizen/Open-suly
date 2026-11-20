@@ -243,3 +243,13 @@ undefined
 ### الخطوة التالية
 - مراجعة نتائج CI، ثم إضافة contract tests للـevent persistence/ownership، والتحقق من واجهة العميل لعرض أحداث التشغيل دون تسريب بيانات حساسة.
 - بعد ذلك استكمال Hermes control endpoints التي يدعمها upstream (steer/approval/session/skills) واحدًا تلو الآخر بعد مراجعة API schema والربط مع موافقات SULY، ثم الانتقال إلى OpenCode runtime مع sandbox per-task.
+
+
+## متابعة واجهة سجل أحداث المحركات — 2026-11-20
+
+- أضيف النوع AgentEngineEvent إلى عميل Expo، وأصبحت استجابة task snapshot تتضمن engine_events.
+- شاشة تفاصيل المهمة تعرض تحديثات التنفيذ بأسماء عربية ووقت الاستلام ورقم التسلسل فقط؛ لا تعرض أي payload خام من Hermes.
+- أضيف شرح تعليمي عربي لمسار الحدث والـlease وRLS ومنع التكرار ومتطلبات النشر في docs/learning/ENGINE_RUN_EVENTS_AR.md.
+- تحقق Platform CI وRepository baseline checks على commit 9b23db3b3d2d بنجاح؛ سجل API tests عدد 321 اختبارًا ناجحًا، كما نجح typecheck وExpo compatibility وweb export. كان هناك فشل سابق على commit أقدم بسبب fixture لم يتضمن جدول الأحداث، وتم إصلاحه قبل هذا النجاح.
+- التغييرات اللاحقة الخاصة بالتوثيق وواجهة عرض الأحداث تنتظر نتائج CI على أحدث HEAD؛ لا تُنسب نتيجة 321 اختبارًا إلى commits أحدث قبل اكتمال فحوصاتها.
+- لا تزال migration غير مطبقة، ولا يوجد WebSocket أو Hermes runtime حي أو worker منشور. واجهة التقدم تعتمد حاليًا على polling شاشة المهمة.
