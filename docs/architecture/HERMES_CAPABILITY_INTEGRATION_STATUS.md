@@ -93,3 +93,13 @@ The authenticated tool catalog now publishes each registered tool's allowed and 
 - The exact pinned `pyproject.toml` declares Python `>=3.11,<3.15`, while its current core runtime dependency markers target Python 3.14. Keep using the upstream Dockerfile/runtime rather than importing the full Hermes package into SULY's Python 3.12 API image.
 - The current Compose profile is only an isolated development scaffold, not a production sandbox: it has a dedicated named data volume and private Docker bridge with no published port, but network egress and CPU/memory/process limits are not yet constrained. Keep it disabled.
 - The source audit confirms the Runs API and MIT license at the exact current pinned revision, but does not yet certify the complete transitive dependency/license set, the exact container runtime behavior under SULY policy, or a multi-tenant deployment. No Hermes run endpoint has been enabled or called from SULY.
+
+
+## Native Hermes Runs API adapter update (2026-11-20)
+
+- Replaced the one-shot Chat Completions bridge with the upstream native Runs API: SULY admits a run using `POST /v1/runs`, polls `GET /v1/runs/{run_id}`, and requests cooperative cancellation using `POST /v1/runs/{run_id}/stop`.
+- Each attempt uses its SULY engine-run UUID as an upstream `Idempotency-Key`. This prevents an HTTP retry for the same SULY attempt from admitting duplicate Hermes work.
+- The opaque upstream `run_id` is persisted to `engine_runs.upstream_run_id` only after a lease-guarded RPC confirms the same active step lease. The new migration `20261120173000_engine_upstream_run_identity.sql` adds the column, uniqueness constraint, and service-role-only RPC.
+- The bridge refuses to start unless `HERMES_AGENT_ISOLATION_CONFIRMED=true`. This is an operator attestation guard only; it does not create a sandbox or prove that the configured endpoint is isolated. Keep it false until a per-task runtime manager, task-scoped storage, resource limits, and default-deny egress are implemented and verified.
+- The adapter currently polls status; SSE event forwarding and remote-run reconciliation after an SULY process restart remain pending. Upstream stop is cooperative and a stop acknowledgement is not proof that execution has already terminated.
+- Both new migrations are committed but have NOT been applied to the live Supabase project. Hermes remains disabled by default and no provider or runtime has been activated.
