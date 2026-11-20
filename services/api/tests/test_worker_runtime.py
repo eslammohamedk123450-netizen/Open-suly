@@ -409,3 +409,80 @@ def test_hermes_run_records_cooperative_cancellation(monkeypatch):
             ToolExecutionContext(engine_run_store=store),
         )
     assert store.events[1][3] == "cancelled"
+
+
+def test_agent_catalog_contains_roles_but_keeps_unavailable_agents_disabled(monkeypatch):
+    import app.worker_runtime as runtime_module
+    from types import SimpleNamespace
+    from app.services.engine_registry import EngineDefinition, EngineRegistry
+
+    monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        hermes_agent_enabled=False,
+    ))
+    engines = EngineRegistry([
+        EngineDefinition(
+            engine_id="hermes-agent",
+            display_name="Hermes Agent",
+            capabilities=frozenset({"agent.general"}),
+            enabled=False,
+        )
+    ])
+    manager = runtime_module.build_agent_manager(engines)
+    roles = {agent.agent_id: agent for agent in manager.list()}
+    assert set(roles) == {
+        "general-agent", "coding-agent", "research-agent",
+        "browser-agent", "workflow-agent",
+    }
+    assert all(not agent.enabled for agent in roles.values())
+
+
+def test_agent_catalog_enables_only_configured_general_agent(monkeypatch):
+    import app.worker_runtime as runtime_module
+    from types import SimpleNamespace
+    from app.services.engine_registry import EngineDefinition, EngineRegistry
+
+    monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        hermes_agent_enabled=True,
+    ))
+    engines = EngineRegistry([
+        EngineDefinition(
+            engine_id="hermes-agent",
+            display_name="Hermes Agent",
+            capabilities=frozenset({"agent.general"}),
+            enabled=True,
+        )
+    ])
+    manager = runtime_module.build_agent_manager(engines)
+    route = manager.route("general-agent", "agent.general")
+    assert [engine.engine_id for engine in route.engines] == ["hermes-agent"]
+    with pytest.raises(RuntimeError, match="agent_disabled"):
+        manager.route("coding-agent", "code.edit")
+
+
+def test_hermes_execution_is_routed_through_agent_manager(monkeypatch):
+    import app.worker_runtime as runtime_module
+    from types import SimpleNamespace
+    from app.services.tool_registry import ToolExecutionContext
+
+    store = FakeEngineRunStore()
+    selected = []
+    class Route:
+        engines = [SimpleNamespace(engine_id="hermes-agent")]
+    class Manager:
+        def route(self, agent_id, capability):
+            selected.append((agent_id, capability))
+            return Route()
+
+    monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        hermes_agent_enabled=True, hermes_agent_timeout_seconds=90.0,
+    ))
+    monkeypatch.setattr(runtime_module, "build_agent_manager", lambda _registry: Manager())
+    monkeypatch.setattr(runtime_module, "run_agent_turn", lambda *_args, **_kwargs: {
+        "engine": "hermes-agent", "content": "agent routed",
+    })
+    result = runtime_module.hermes_agent_turn(
+        make_step({"operation": "hermes.agent.turn", "prompt": "safe"}),
+        ToolExecutionContext(engine_run_store=store),
+    )
+    assert result["content"] == "agent routed"
+    assert selected == [("general-agent", "agent.general")]
