@@ -318,6 +318,20 @@ class OpenCodeLifecycleStore:
             ).execute()
             raise
 
+    def apply_change_set(self, *, user_id: str, change_set_id: str) -> dict[str, Any]:
+        """Atomically apply only if the project still matches the captured revision."""
+        _uuid(user_id, "opencode_task_identity_invalid")
+        _uuid(change_set_id, "opencode_changeset_identity_invalid")
+        result = self._client.rpc("apply_opencode_change_set", {
+            "p_user_id": user_id,
+            "p_change_set_id": change_set_id,
+        }).execute().data
+        if isinstance(result, list) and result:
+            result = result[0]
+        if not isinstance(result, dict) or not isinstance(result.get("applied"), bool):
+            raise RuntimeError("opencode_changeset_apply_response_invalid")
+        return result
+
     @staticmethod
     def _run_projection(row: dict[str, Any]) -> dict[str, Any]:
         keys = ("id", "project_id", "task_id", "engine_run_id", "runtime_id",
