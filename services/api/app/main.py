@@ -10,6 +10,7 @@ from app.routers.project_files import router as project_files_router
 from app.routers.tasks import router as tasks_router
 from app.routers.tool_approvals import router as tool_approvals_router
 from app.routers.opencode_sessions import router as opencode_sessions_router
+from app.routers.opencode_tasks import router as opencode_tasks_router
 
 settings = get_settings()
 
@@ -28,6 +29,7 @@ app.include_router(projects_router)
 app.include_router(project_files_router)
 app.include_router(tool_approvals_router)
 app.include_router(opencode_sessions_router)
+app.include_router(opencode_tasks_router)
 
 
 @app.get("/health", tags=["health"])
