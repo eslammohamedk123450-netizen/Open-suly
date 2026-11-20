@@ -259,6 +259,8 @@ def test_append_engine_run_event_persists_only_allowlisted_metadata():
             "p_event_name": "tool.started",
             "p_event_seq": 4,
             "p_event_timestamp": 1_800_000_000.5,
+            "p_approval_request_id": None,
+            "p_approval_choice": None,
         },
     )]
 
@@ -274,6 +276,42 @@ def test_append_engine_run_event_persists_only_allowlisted_metadata():
 def test_append_engine_run_event_rejects_untrusted_or_invalid_metadata(event):
     client = FakeRpc(True)
     with pytest.raises(ValueError, match="invalid_engine_run_event"):
+        EngineRunStore(client).append_event(RUN_ID, step(), event)
+    assert client.calls == []
+
+
+def test_append_engine_run_event_persists_only_exact_approval_identity_and_choice():
+    client = FakeRpc(True)
+    request_event = {
+        "event": "approval.request",
+        "seq": 8,
+        "approval_request_id": "approval-req_123",
+    }
+    assert EngineRunStore(client).append_event(RUN_ID, step(), request_event) is True
+    response_event = {
+        "event": "approval.responded",
+        "seq": 9,
+        "approval_request_id": "approval-req_123",
+        "approval_choice": "once",
+    }
+    assert EngineRunStore(client).append_event(RUN_ID, step(), response_event) is True
+    assert client.calls[0][1]["p_approval_request_id"] == "approval-req_123"
+    assert client.calls[0][1]["p_approval_choice"] is None
+    assert client.calls[1][1]["p_approval_request_id"] == "approval-req_123"
+    assert client.calls[1][1]["p_approval_choice"] == "once"
+
+
+@pytest.mark.parametrize("event", [
+    {"event": "approval.request"},
+    {"event": "approval.request", "approval_request_id": "bad id"},
+    {"event": "approval.request", "approval_request_id": "req", "approval_choice": "once"},
+    {"event": "approval.responded", "approval_request_id": "req"},
+    {"event": "approval.responded", "approval_request_id": "req", "approval_choice": "always"},
+    {"event": "tool.started", "approval_request_id": "req"},
+])
+def test_append_engine_run_event_rejects_invalid_approval_metadata(event):
+    client = FakeRpc(True)
+    with pytest.raises(ValueError, match="invalid_engine_run"):
         EngineRunStore(client).append_event(RUN_ID, step(), event)
     assert client.calls == []
 
