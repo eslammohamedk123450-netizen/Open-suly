@@ -35,6 +35,8 @@ class EngineRunReconciler:
 
     def run_once(self) -> int:
         """Return the number of external stops confirmed in this bounded batch."""
+        # أولاً نحول أي run انتهى lease مالكه إلى stop_pending، ثم نحجزه للإيقاف.
+        self._store.reconcile_orphans(self._batch_size)
         claims = self._store.claim_pending_stops(
             self._batch_size,
             self._lease_seconds,
