@@ -44,3 +44,13 @@ OpenCode وBrowser Use يظلان disabled. لا تنشئ الخدمة حاوي�
 - بيانات access token يجب أن تكون طويلة وASCII وآمنة للاستخدام في Authorization header؛ لا تسجلها ولا تعرضها في الأخطاء.
 - release يتطلب نفس كائن lease الذي أعاده acquire، وليس مجرد كائن جديد بنفس القيم؛ هذا يمنع release مزيفًا.
 - إذا أعاد provider runtime_id سبق إصداره، لا يحاول broker إيقاف ذلك runtime مرة أخرى لأنه قد يكون مملوكًا لتشغيل آخر. يجب على provider فرض uniqueness عالميًا عبر جميع worker processes.
+
+
+## حماية التزامن داخل broker — 2026-11-20
+
+- أضيف حجز داخلي للمحاولة قبل استدعاء provider؛ استدعاءان متزامنان لنفس task/run/engine لا يمكنهما إنشاء runtime مزدوج داخل العملية نفسها.
+- أضيف قفل teardown لكل runtime حتى لا يرسل طلبا release متزامنان إلى provider.
+- إذا فشل release أو لم يؤكد المزود الإزالة، يبقى runtime نشطًا ومحجوزًا ولا يعاد استخدامه، ويمكن إعادة محاولة teardown لاحقًا.
+- أضيف اختباران متزامنان باستخدام threads لإثبات حجز المحاولة ومنع تكرار teardown.
+- هذه الحماية محلية للعملية الواحدة فقط؛ يجب على provider الفعلي فرض uniqueness durable عبر كل العمال وإعادة التشغيل.
+- تنبيه CI: ظهرت regression مؤقتة في commit f1b5d2e2 بسبب تعديل آلي حذف تعريف broker أثناء استهداف method في Protocol؛ تم استعادة RuntimeLeaseProvider وTaskScopedRuntimeBroker كاملين في commit 772207dc. يجب انتظار Platform CI على هذا HEAD قبل اعتبار إصلاح regression ناجحًا.
