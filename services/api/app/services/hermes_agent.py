@@ -532,7 +532,7 @@ def get_agent_approval_details(
                     if isinstance(value, str) and value.strip():
                         # Hermes redacts approval display text before placing it in the Runs API status.
                         safe[field] = "".join(
-                            char if char in "\\n\\t" or ord(char) >= 32 else " "
+                            char if ord(char) >= 32 else " "
                             for char in value
                         )[:limit]
                 if len(safe) == 1:
