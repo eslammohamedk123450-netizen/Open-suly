@@ -7,6 +7,12 @@
 
 SULY is a standalone AI application built from a clean foundation. Reuse the SULY name, logo/monogram, official domain, and approved visual direction for the home screen, settings, navigation, cards, and buttons.
 
+## 1A. Explicit exclusions
+
+- HIMS is part of a discontinued legacy application and is not part of SULY.
+- Do not add HIMS modules, tables, routes, permissions, UI, workflows, integrations, migration dependencies, or roadmap milestones to this repository.
+- SULY is an independent product; only the approved SULY brand identity and visual direction may be reused from prior work.
+
 ## 2. Product experience
 
 - Arabic-first, RTL by default, with English/LTR support.
