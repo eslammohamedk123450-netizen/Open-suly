@@ -51,8 +51,10 @@ The runtime lease registry remains process-local, but the provisioner derives a 
 
 This recovers access to a still-live runtime, but it does not by itself resume a lost worker's Python call stack or guarantee exactly-once prompt execution. Durable worker heartbeats, task reconciliation, and safe retry semantics remain required before claiming seamless recovery across worker crashes.
 
-The runtime gateway forwards `GET /api/event` as a true streaming response instead of buffering an unbounded SSE connection. The event consumer remains a bounded component and must be started concurrently with prompt execution by the task worker to capture all events. The current API routes expose persisted events and recover permission access, but they do not themselves start a background event-consumer task or prove that the worker invokes it for every run.
+The runtime gateway forwards `GET /api/event` as a true streaming response instead of buffering an unbounded SSE connection. When `OpenCodeTaskExecutor` is invoked with a lifecycle store, it persists the runtime ID immediately, creates and persists the upstream session before submitting the prompt, and starts a bounded cancellable SSE consumer concurrently with execution. The event consumer stops after the prompt returns or the execution path fails.
 
 Task containers use an internal Docker network with outbound egress disabled by default. If an operator enables `RUNTIME_ALLOW_EGRESS=true`, the dedicated runtime host must also enforce the documented outbound firewall allowlist; this environment flag alone is not a firewall.
+
+The generic `TaskWorker` remains a callback-based RPC adapter. A dedicated deployed worker entrypoint that claims OpenCode steps and invokes `OpenCodeTaskExecutor` has not yet been wired or exercised end-to-end; the lifecycle executor and callbacks are implemented, but queue-to-engine dispatch, worker deployment, and multi-worker recovery still need a dedicated integration test.
 
 The CI Docker smoke test starts the pinned OpenCode image and checks `/api/info`. It is not a multi-tenant concurrency test and does not prove host firewall policy, production TLS termination, or a complete LLM-backed task execution. Those require a dedicated runtime host and an explicitly configured model provider.
