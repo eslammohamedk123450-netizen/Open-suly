@@ -14,7 +14,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, Callable
 from uuid import UUID, uuid4
 
 import docker
@@ -118,13 +118,19 @@ class DockerTaskRuntimeManager:
             egress_allowed = os.environ.get("RUNTIME_ALLOW_EGRESS", "false").strip().lower() in {"1", "true", "yes"}
         self.egress_allowed = bool(egress_allowed)
 
-    def create(self, *, task_id: str, engine_run_id: str, engine_id: str, files: list[dict[str, Any]]) -> dict[str, Any]:
+    def create(self, *, task_id: str, engine_run_id: str, engine_id: str, files: list[dict[str, Any]], access_token_factory: Callable[[str, str, str], str] | None = None) -> dict[str, Any]:
         task_id = _canonical_uuid(task_id)
         run_id = _canonical_uuid(engine_run_id)
         if not isinstance(engine_id, str) or not _ENGINE.fullmatch(engine_id) or engine_id != "opencode":
             raise ValueError("runtime_engine_not_allowed")
         runtime_id = str(uuid4())
-        token = secrets.token_urlsafe(48)
+        token = (
+            access_token_factory(runtime_id, task_id, run_id)
+            if access_token_factory is not None
+            else secrets.token_urlsafe(48)
+        )
+        if not isinstance(token, str) or not re.fullmatch(r"[A-Za-z0-9._~+/-]{32,256}", token):
+            raise ValueError("runtime_access_token_invalid")
         workspace = Path(tempfile.mkdtemp(prefix=f"{runtime_id}-", dir=self.root))
         os.chmod(workspace, 0o700)
         network = container = None
