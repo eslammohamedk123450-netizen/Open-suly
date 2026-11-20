@@ -193,6 +193,9 @@ def dispatch(
     # Fetch persisted consent immediately before execution so revocation takes
     # effect on the next attempt; never derive grants from task payloads.
     scopes = approval_store.active_scopes(str(step.user_id)) if approval_store else frozenset()
+    tool = TOOL_REGISTRY.get(step.input.get("operation")) if isinstance(step.input, dict) else None
+    if tool is not None and tool.requires_approval and tool.permission_scope not in scopes:
+        raise PermissionError(f"tool_approval_required:{tool.permission_scope}")
     run_store = None
     if step.input.get("operation") == "hermes.agent.turn":
         client = get_supabase_admin_client()
