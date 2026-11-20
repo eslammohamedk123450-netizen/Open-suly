@@ -28,9 +28,22 @@ export type AgentTaskStep = {
   max_attempts: number;
 };
 
+export type AgentEngineRun = {
+  id: string;
+  step_id: string;
+  attempt_count: number;
+  engine_id: string;
+  status: string;
+  error_code?: string | null;
+  started_at?: string;
+  completed_at?: string | null;
+  created_at?: string;
+};
+
 export type AgentTaskSnapshot = {
   task: AgentTask;
   steps: AgentTaskStep[];
+  engine_runs: AgentEngineRun[];
 };
 
 type ToolCatalogItem = {
