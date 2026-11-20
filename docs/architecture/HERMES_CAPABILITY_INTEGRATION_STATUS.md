@@ -103,3 +103,14 @@ The authenticated tool catalog now publishes each registered tool's allowed and 
 - The bridge refuses to start unless `HERMES_AGENT_ISOLATION_CONFIRMED=true`. This is an operator attestation guard only; it does not create a sandbox or prove that the configured endpoint is isolated. Keep it false until a per-task runtime manager, task-scoped storage, resource limits, and default-deny egress are implemented and verified.
 - The adapter currently polls status; SSE event forwarding and remote-run reconciliation after an SULY process restart remain pending. Upstream stop is cooperative and a stop acknowledgement is not proof that execution has already terminated.
 - Both new migrations are committed but have NOT been applied to the live Supabase project. Hermes remains disabled by default and no provider or runtime has been activated.
+
+
+## Hermes SSE progress channel — 2026-11-20
+
+- Added an optional consumer for the pinned upstream `GET /v1/runs/{run_id}/events` SSE endpoint.
+- Event payloads are reduced to an allow-listed event name, sequence number, and timestamp. Tool previews, reasoning text, message content, outputs, arguments, and free-text subagent fields are never forwarded by this bridge.
+- SSE is best-effort only; status polling remains authoritative for task completion and cancellation. Stream failures do not convert a successful run into a failed task.
+- The callback is optional and is not yet wired to a durable user-visible task-event store. No UI streaming claim is made.
+- Tests cover SSE parsing, run-ID binding, event allow-listing, and content suppression.
+- Commits: `0ac9476135a1`, `18555cf1f90a`, `1280ca0bd3be`.
+- CI is still required before treating the tests as passing.
