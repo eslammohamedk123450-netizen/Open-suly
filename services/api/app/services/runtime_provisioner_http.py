@@ -5,6 +5,7 @@ Docker socket access and never launches host containers directly.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from time import time
@@ -100,19 +101,41 @@ class HTTPSRuntimeLeaseProvider:
             raise RuntimeProvisionerError("runtime_provisioner_invalid_response")
         return value
 
-    def acquire(self, task_id: str, engine_run_id: str, engine_id: str) -> RuntimeLease:
+    def acquire(self, task_id: str, engine_run_id: str, engine_id: str, *, files: list[dict[str, Any]] | None = None) -> RuntimeLease:
         try:
             task, run = UUID(task_id), UUID(engine_run_id)
         except (TypeError, ValueError, AttributeError) as exc:
             raise ValueError("runtime_attempt_identity_invalid") from exc
         if str(task) != task_id or str(run) != engine_run_id or not isinstance(engine_id, str) or not _ENGINE.fullmatch(engine_id):
             raise ValueError("runtime_attempt_identity_invalid")
+        payload: dict[str, Any] = {"task_id": task_id, "engine_run_id": engine_run_id, "engine_id": engine_id}
+        if files is not None:
+            if not isinstance(files, list) or len(files) > 200:
+                raise ValueError("runtime_workspace_snapshot_invalid")
+            total = 0
+            safe_files = []
+            for item in files:
+                if not isinstance(item, dict) or set(item) - {"path", "content", "sha256"}:
+                    raise ValueError("runtime_workspace_file_invalid")
+                path_value, content = item.get("path"), item.get("content")
+                if not isinstance(path_value, str) or not path_value or len(path_value) > 240 or path_value.startswith("/") or "\\\\" in path_value:
+                    raise ValueError("runtime_workspace_path_invalid")
+                parts = path_value.split("/")
+                if any(part in {"", ".", ".."} or part.lower() in {".git", "node_modules", "secrets"} or part.lower().startswith(".env") for part in parts):
+                    raise ValueError("runtime_workspace_path_reserved")
+                if not isinstance(content, str):
+                    raise ValueError("runtime_workspace_content_invalid")
+                encoded = content.encode("utf-8")
+                total += len(encoded)
+                if len(encoded) > 262144 or total > 5 * 1024 * 1024:
+                    raise ValueError("runtime_workspace_size_limit")
+                digest = hashlib.sha256(encoded).hexdigest()
+                if item.get("sha256") not in (None, digest):
+                    raise ValueError("runtime_workspace_digest_mismatch")
+                safe_files.append({"path": path_value, "content": content, "sha256": digest})
+            payload["files"] = safe_files
         try:
-            with self._client.stream(
-                "POST",
-                "/v1/runtimes",
-                json={"task_id": task_id, "engine_run_id": engine_run_id, "engine_id": engine_id},
-            ) as response:
+            with self._client.stream("POST", "/v1/runtimes", json=payload) as response:
                 data = self._json(response, frozenset({201}))
         except httpx.HTTPError as exc:
             raise RuntimeProvisionerError("runtime_provisioner_unreachable") from exc
@@ -133,6 +156,32 @@ class HTTPSRuntimeLeaseProvider:
             raise RuntimeProvisionerError("runtime_provisioner_expired_lease")
         return lease
 
+    def fetch_results(self, lease: RuntimeLease) -> dict[str, Any]:
+        """Fetch bounded changed files using the one-time runtime token."""
+        if not isinstance(lease, RuntimeLease):
+            raise ValueError("runtime_lease_required")
+        try:
+            lease.validate(task_id=lease.task_id, engine_run_id=lease.engine_run_id, engine_id=lease.engine_id, allowed_origins=frozenset({lease.base_url}))
+        except ValueError as exc:
+            raise ValueError("runtime_lease_invalid") from exc
+        try:
+            with self._client.stream("GET", f"/v1/runtimes/{lease.runtime_id}/results", headers={"Authorization": f"Bearer {lease.access_token}"}) as response:
+                if response.status_code != 200 or response.headers.get("content-type", "").split(";", 1)[0].lower() != "application/json":
+                    raise RuntimeProvisionerError("runtime_results_unavailable")
+                chunks, total = [], 0
+                for chunk in response.iter_bytes():
+                    total += len(chunk)
+                    if total > 8 * 1024 * 1024:
+                        raise RuntimeProvisionerError("runtime_results_too_large")
+                    chunks.append(chunk)
+                value = json.loads(b"".join(chunks))
+        except RuntimeProvisionerError:
+            raise
+        except (httpx.HTTPError, ValueError, UnicodeDecodeError) as exc:
+            raise RuntimeProvisionerError("runtime_results_unavailable") from exc
+        if not isinstance(value, dict) or not isinstance(value.get("changed_files"), list) or not isinstance(value.get("deleted_paths"), list):
+            raise RuntimeProvisionerError("runtime_results_invalid_response")
+        return value
     def release(self, lease: RuntimeLease) -> bool:
         if not isinstance(lease, RuntimeLease):
             raise ValueError("runtime_lease_required")
