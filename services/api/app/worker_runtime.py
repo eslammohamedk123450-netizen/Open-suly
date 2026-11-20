@@ -100,7 +100,11 @@ def build_engine_registry(
             max_input_bytes=20_100,
             max_output_bytes=52_000,
             max_timeout_seconds=300,
-            adapter=HermesAgentAdapter(\n                cancel_event,\n                idempotency_key=idempotency_key,\n                on_run_started=on_run_started,\n            ),
+            adapter=HermesAgentAdapter(
+                cancel_event,
+                idempotency_key=idempotency_key,
+                on_run_started=on_run_started,
+            ),
         )
     ])
 
