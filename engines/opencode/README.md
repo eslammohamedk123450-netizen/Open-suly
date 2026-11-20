@@ -54,3 +54,13 @@ Any upstream update requires:
 - It uses HTTPS only, Basic auth in the Authorization header, TLS verification, no environment proxy inheritance, no redirects, bounded timeouts/connections/response size, and a small explicit route allowlist.
 - Initial operations are health, create-session (with catch-all ask permissions), and bounded skill/provider catalog metadata. It deliberately does not expose prompt execution, shell, PTY, MCP, plugins, filesystem APIs, arbitrary paths, or session deletion.
 - This is not a runtime provisioner and does not make OpenCode available to users. The engine remains disabled until durable session ownership, worker/lease checks, permission UI, safe prompt/output reduction, and a concrete isolated runtime provider are implemented.
+
+## Session-scoped permission transport checkpoint
+
+The API bridge now supports:
+- Listing pending permission requests for one validated upstream session.
+- Reducing each request through the SULY protocol contract, which checks the exact session ID and drops upstream message/metadata/source fields.
+- Replying to one exact session/request pair using only `once` or `reject`; permanent `always` grants are not representable.
+- Rejecting malformed IDs, cross-session payloads, redirects, unexpected statuses, and oversized response bodies.
+
+This is still only a transport capability. A production caller must first load the durable SULY session-to-task/run/lease mapping, verify current ownership and active lease immediately before every request, and persist the approval decision/audit event. No API route currently exposes this transport to end users, and no prompt execution or runtime provisioning is enabled.
