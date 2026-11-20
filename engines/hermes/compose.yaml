@@ -1,0 +1,36 @@
+# Isolated upstream Hermes Agent runtime.
+# Build context is pinned to an exact upstream commit; no floating main branch.
+services:
+  hermes-agent:
+    image: suly-hermes-agent:2026-11-20
+    build:
+      context: https://github.com/NousResearch/hermes-agent.git#9f47677483d1b4de4d1a88d37b3b7ca18b18b215
+      dockerfile: Dockerfile
+    profiles: ["agent-engines"]
+    restart: unless-stopped
+    command: ["gateway", "run"]
+    environment:
+      API_SERVER_ENABLED: "false"
+      API_SERVER_HOST: "0.0.0.0"
+      API_SERVER_PORT: "8642"
+      API_SERVER_KEY: ${HERMES_API_SERVER_KEY:?Set a unique secret outside Git before enabling the Hermes API}
+    volumes:
+      - hermes-data:/opt/data
+    networks:
+      - suly-agent-internal
+    # No host port is published. SULY API reaches the service only over the
+    # private container network. Do not enable the API until sandbox policy
+    # and the full Hermes toolset have passed a separate security review.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8642/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+
+volumes:
+  hermes-data:
+
+networks:
+  suly-agent-internal:
+    internal: true
