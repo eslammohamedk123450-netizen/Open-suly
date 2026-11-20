@@ -275,3 +275,19 @@ def test_completion_requires_literal_boolean_true(rpc_value):
         lease_expires_at=STEP["lease_expires_at"],
     )
     assert worker.complete(claimed, {"result": "ok"}) is (rpc_value is True)
+
+
+@pytest.mark.parametrize("bad_output", [
+    {"nan": float("nan")},
+    {"not_json": object()},
+    {"payload": "x" * (64 * 1024)},
+])
+def test_run_once_rejects_bad_output_and_records_safe_failure(bad_output):
+    client = FakeRpc([STEP, True, {"accepted": True}])
+    worker = TaskWorker(client, "worker-invalid-handler-output")
+    assert worker.run_once(lambda _step: bad_output) == "failed_or_retry_scheduled"
+    assert client.calls[-1][0] == "fail_task_step"
+    assert client.calls[-1][1]["p_error_message"] == (
+        "Step execution failed. Sensitive diagnostic details were not stored"
+    )
+    assert all(call[0] != "complete_task_step" for call in client.calls)
