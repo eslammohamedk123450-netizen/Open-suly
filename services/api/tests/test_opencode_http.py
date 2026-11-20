@@ -379,3 +379,24 @@ async def test_interrupt_stream_rejects_oversized_response():
     ) as client:
         with pytest.raises(OpenCodeTransportError, match="too_large"):
             await client.abort_session(session_id="ses_taskrun_123456789")
+
+@pytest.mark.asyncio
+async def test_permission_reply_stream_rejects_oversized_response():
+    async def huge_handler(request):
+        return httpx.Response(
+            204,
+            content=b" " * 4097,
+            headers={"content-type": "application/json"},
+        )
+
+    async with OpenCodeHTTPClient(
+        lease(), task_id=TASK_ID, engine_run_id=RUN_ID,
+        allowed_origins=ORIGINS, transport=httpx.MockTransport(huge_handler),
+    ) as client:
+        with pytest.raises(OpenCodeTransportError, match="too_large"):
+            await client.reply_permission(
+                session_id="ses_taskrun_123456789",
+                request_id="per_request_123456",
+                decision="once",
+            )
+
