@@ -107,7 +107,7 @@ class BrowserNetworkPolicy:
             self.allow_subdomains and any(hostname.endswith('.' + allowed) for allowed in self.allowed_hosts)
         ):
             raise ValueError('browser_url_host_not_allowlisted')
-        target_port = port or (443 if parsed.scheme.lower() == 'https' else 80)
+        target_port = port if port is not None else (443 if parsed.scheme.lower() == 'https' else 80)
         if target_port not in self.allowed_ports:
             raise ValueError('browser_url_port_not_allowlisted')
         addresses = tuple(dict.fromkeys(self.resolver(hostname, target_port)))
