@@ -219,6 +219,7 @@ def test_hermes_agent_task_calls_bridge_only_after_approval(monkeypatch):
     from types import SimpleNamespace
 
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
         hermes_agent_enabled=True,
         hermes_agent_isolation_confirmed=True,
         hermes_agent_base_url="http://hermes:8642",
@@ -281,6 +282,7 @@ def test_hermes_operation_routes_through_registry_after_approval(monkeypatch):
             return frozenset({"agent.hermes.run"})
 
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
         hermes_agent_enabled=True,
         hermes_agent_isolation_confirmed=True,
         hermes_agent_base_url="http://hermes:8642",
@@ -330,6 +332,7 @@ def test_cancel_aware_dispatch_passes_event_to_hermes_adapter(monkeypatch):
             return frozenset({"agent.hermes.run"})
 
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
         hermes_agent_enabled=True,
         hermes_agent_isolation_confirmed=True,
         hermes_agent_base_url="http://hermes:8642",
@@ -364,6 +367,7 @@ def test_hermes_run_is_recorded_as_succeeded(monkeypatch):
 
     store = FakeEngineRunStore()
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
         hermes_agent_enabled=True,
         hermes_agent_isolation_confirmed=True,
         hermes_agent_base_url="http://hermes:8642",
@@ -392,6 +396,7 @@ def test_hermes_run_records_failure_without_raw_error(monkeypatch):
 
     store = FakeEngineRunStore()
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
         hermes_agent_enabled=True,
         hermes_agent_isolation_confirmed=True,
         hermes_agent_base_url="http://hermes:8642",
@@ -418,6 +423,7 @@ def test_hermes_run_records_cooperative_cancellation(monkeypatch):
 
     store = FakeEngineRunStore()
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
         hermes_agent_enabled=True,
         hermes_agent_isolation_confirmed=True,
         hermes_agent_base_url="http://hermes:8642",
@@ -466,6 +472,7 @@ def test_agent_catalog_enables_only_configured_general_agent(monkeypatch):
     from app.services.engine_registry import EngineDefinition, EngineRegistry
 
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
         hermes_agent_enabled=True,
     ))
     engines = EngineRegistry([
@@ -498,6 +505,7 @@ def test_hermes_execution_is_routed_through_agent_manager(monkeypatch):
             return Route()
 
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
         hermes_agent_enabled=True,
         hermes_agent_isolation_confirmed=True,
         hermes_agent_base_url="http://hermes:8642",
@@ -551,6 +559,7 @@ def test_hermes_engine_requires_isolation_even_when_feature_flag_is_enabled(monk
     from app.services.tool_registry import ToolExecutionContext
 
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
         hermes_agent_enabled=True,
         hermes_agent_isolation_confirmed=False,
         hermes_agent_base_url="http://hermes:8642",
