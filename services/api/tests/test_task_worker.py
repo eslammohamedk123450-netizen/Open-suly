@@ -379,3 +379,40 @@ def test_worker_bounds_shutdown_when_heartbeat_rpc_stalls():
     finally:
         release_heartbeat.set()
 
+def test_run_once_treats_initial_lease_renewal_exception_as_lease_loss():
+    class RaisingRenewRpc(FakeRpc):
+        def rpc(self, name, args):
+            if name == "renew_task_step_lease":
+                raise RuntimeError("database unavailable")
+            return super().rpc(name, args)
+
+    client = RaisingRenewRpc([STEP])
+    worker = TaskWorker(client, "worker-initial-renew-error")
+    handler_called = Event()
+
+    def handler(_step):
+        handler_called.set()
+        return {"must_not_run": True}
+
+    assert worker.run_once(handler) == "lease_lost"
+    assert not handler_called.is_set()
+    assert all(call[0] != "complete_task_step" for call in client.calls)
+
+
+def test_run_once_reports_unconfirmed_completion_rpc_exception():
+    class RaisingCompleteRpc(FakeRpc):
+        def rpc(self, name, args):
+            if name == "complete_task_step":
+                raise RuntimeError("connection lost after request")
+            return super().rpc(name, args)
+
+    client = RaisingCompleteRpc([STEP, True])
+    worker = TaskWorker(client, "worker-completion-uncertain")
+    assert worker.run_once(lambda _step: {"answer": "ready"}) == (
+        "completion_unconfirmed"
+    )
+    assert [call[0] for call in client.calls] == [
+        "claim_task_step",
+        "renew_task_step_lease",
+    ]
+
