@@ -200,8 +200,7 @@ def stop_agent_run(upstream_run_id: str, *, timeout_seconds: float = 30.0) -> bo
     نهائية مؤكدة، وإلا نعيد خطأ آمنًا كي يعيد reconciler المحاولة لاحقًا.
     """
     settings = get_settings()
-    if not settings.hermes_agent_enabled or not settings.hermes_agent_isolation_confirmed:
-        raise HermesAgentUnavailable("Hermes isolated runtime is not enabled.")
+    # إيقاف تشغيل معروف لا يبدأ runtime جديدًا؛ يجب أن يظل متاحًا حتى بعد تعطيل المحرك.
     if not settings.hermes_agent_base_url or not settings.hermes_agent_api_key:
         raise HermesAgentUnavailable("Hermes agent runtime is not configured.")
     if not isinstance(upstream_run_id, str) or not _RUN_ID_PATTERN.fullmatch(upstream_run_id):
