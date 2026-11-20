@@ -360,3 +360,16 @@ For every engine:
 - [ ] إثبات uniqueness عبر workers/restarts بواسطة provider خارجي durable.
 - [ ] تنفيذ teardown آمن عبر broker فعلي مع reconciliation للـorphan runtimes.
 - [ ] تشغيل CI على آخر HEAD بعد اكتمال الاختبارات الحالية.
+
+
+## Browser Use security gate update — 2026-11-20
+
+- [x] Pin and review upstream Browser Use MCP implementation.
+- [x] Document why a shared MCP/Python REPL is unsafe across tasks.
+- [x] Add SULY URL preflight policy for canonical DNS allowlists, HTTP(S)-only URLs, no credentials, exact host matching, bounded ports, legacy/numeric IPv4 rejection, Unicode control rejection, and public DNS answer checks.
+- [x] Platform CI on 782e08a4: 440 API tests, TypeScript typecheck, Expo compatibility, and Web export passed.
+- [ ] Re-run complete CI on current HEAD after the subsequent oversized numeric/hex hostname tests.
+- [ ] Implement a per-attempt isolated Browser Use runtime and MCP broker.
+- [ ] Enforce DNS pinning and redirect-by-redirect URL checks at connection time through a default-deny egress proxy.
+- [ ] Add browser side-effect approval and credential isolation tests.
+- Browser Use remains disabled. No browser runtime has been started.
