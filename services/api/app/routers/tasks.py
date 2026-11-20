@@ -241,7 +241,17 @@ def get_task(
                 .execute()
                 .data
             )
-        return {"task": task, "steps": steps or []}
+            engine_runs = (
+                client.table("engine_runs")
+                .select("id,task_id,step_id,attempt_count,engine_id,status,error_code,started_at,completed_at,created_at,updated_at")
+                .eq("task_id", str(task_id))
+                .eq("user_id", user.id)
+                .order("created_at", desc=True)
+                .limit(100)
+                .execute()
+                .data
+            )
+        return {"task": task, "steps": steps or [], "engine_runs": engine_runs or []}
     except HTTPException:
         raise
     except Exception as exc:
