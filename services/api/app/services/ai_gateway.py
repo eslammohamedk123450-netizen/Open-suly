@@ -45,27 +45,41 @@ async def generate_reply(
     client: httpx.AsyncClient | None = None,
 ) -> str:
     settings = get_settings()
+    provider = settings.ai_provider
     if (
-        settings.ai_provider != "openai-compatible"
+        provider not in {"openai-compatible", "ollama"}
         or not settings.ai_base_url
-        or not settings.ai_api_key
         or not settings.ai_model
+        or (provider == "openai-compatible" and not settings.ai_api_key)
     ):
         raise AIProviderNotConfigured("No AI provider is configured.")
 
     _validate_messages(messages)
-    url = f"{settings.ai_base_url.rstrip('/')}/chat/completions"
-    payload: dict[str, Any] = {
-        "model": settings.ai_model,
-        "messages": messages,
-        "temperature": 0.3,
-        "max_tokens": settings.ai_max_output_tokens,
-        "stream": False,
-    }
-    headers = {
-        "Authorization": f"Bearer {settings.ai_api_key.get_secret_value()}",
-        "Content-Type": "application/json",
-    }
+    is_ollama = provider == "ollama"
+    url = (
+        f"{settings.ai_base_url.rstrip('/')}/api/chat"
+        if is_ollama
+        else f"{settings.ai_base_url.rstrip('/')}/chat/completions"
+    )
+    payload: dict[str, Any] = (
+        {
+            "model": settings.ai_model,
+            "messages": messages,
+            "stream": False,
+            "options": {"temperature": 0.3, "num_predict": settings.ai_max_output_tokens},
+        }
+        if is_ollama
+        else {
+            "model": settings.ai_model,
+            "messages": messages,
+            "temperature": 0.3,
+            "max_tokens": settings.ai_max_output_tokens,
+            "stream": False,
+        }
+    )
+    headers = {"Content-Type": "application/json"}
+    if not is_ollama and settings.ai_api_key:
+        headers["Authorization"] = f"Bearer {settings.ai_api_key.get_secret_value()}"
 
     async def send(session: httpx.AsyncClient) -> str:
         response = await session.post(
@@ -77,7 +91,11 @@ async def generate_reply(
         response.raise_for_status()
         try:
             body = response.json()
-            content = body["choices"][0]["message"]["content"]
+            content = (
+                body["message"]["content"]
+                if is_ollama
+                else body["choices"][0]["message"]["content"]
+            )
         except (ValueError, KeyError, IndexError, TypeError) as exc:
             raise AIProviderError("The AI provider returned an invalid response.") from exc
 
