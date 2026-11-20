@@ -364,3 +364,14 @@ undefined
 - عند اكتشاف runtime ID سبق إصداره، لا يحاول broker إيقافه مرة أخرى؛ لأن ذلك قد ينهي runtime ما زال مملوكًا لمهمة أخرى أو broker آخر. أما runtime جديد أُنشئ بالخطأ لمحاولة مكررة فيتم طلب release له.
 - أضيفت اختبارات لرفض HTTP/IP origins، والـlease المزيف، وإعادة استخدام runtime identity.
 - API tests على commit `7a805ed9a8d1` نجحت؛ Client jobs كانت قيد التنفيذ. أحدث commits الاختبارات `c3a0ad69` و`11c2bf29` تنتظر Platform CI، فلا نعلن نجاحها بعد.
+
+
+## متابعة تدقيق runtime broker وHermes — 2026-11-20
+
+- RuntimeLease أصبح يقبل exact HTTPS origin من allowlist الخادم فقط، ويرفض HTTP وIP literals وlocalhost والـpath/query/fragment وembedded credentials.
+- تم التحقق من access token ليكون bounded وheader-safe ASCII، ومنع release لكائن lease مستنسخ حتى لو كانت قيمه متطابقة، ومنع teardown مرتين لمعرف runtime سبق إصداره.
+- تمت إضافة اختبارات لتطابق origin الكامل (scheme/host/port)، رفض metadata IP وlocalhost، رفض HTTP، token validation، ownership mismatch، lease expiry، forged release، runtime ID reuse، وteardown.
+- تم تدقيق Hermes sessions/skills/toolsets عند upstream pin الحالي؛ لا نستخدم Hermes session database المشتركة، ولا نعرض toolsets أو skills كصلاحيات SULY. جلسات SULY هي مصدر سياق المحادثة والملكية.
+- Platform CI وRepository baseline على commit 7a805ed9 نجحا بالكامل: 381 API tests، TypeScript typecheck، Expo dependency compatibility، وWeb export.
+- API tests على commit 11997350 نجحت: 388 passed, 2 warnings؛ client typecheck/export كانا قيد التنفيذ عند آخر فحص لهذا commit. أحدث تغييرات الاختبارات والوثائق بعده تنتظر Platform CI على أحدث HEAD.
+- لا يوجد provider فعلي للـruntime broker ولا حاويات تعمل؛ OpenCode وBrowser Use وHermes ما زالت disabled. لا توجد migrations أو deployments تم تطبيقها في هذه الدفعة.
