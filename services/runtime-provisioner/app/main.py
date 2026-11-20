@@ -36,6 +36,17 @@ _ALLOWED_PROXY = {
     ("GET", "/api/info"), ("POST", "/api/session"),
     ("GET", "/api/skill"), ("GET", "/api/provider"),
 }
+
+def _allowed_opencode_route(method: str, route: str) -> bool:
+    if (method, route) in _ALLOWED_PROXY:
+        return True
+    patterns = (
+        ("GET", r"/api/session/ses[A-Za-z0-9_-]{1,128}/permission"),
+        ("POST", r"/api/session/ses[A-Za-z0-9_-]{1,128}/permission/per[A-Za-z0-9_-]{1,128}/reply"),
+        ("POST", r"/api/session/ses[A-Za-z0-9_-]{1,128}/prompt"),
+        ("POST", r"/api/session/ses[A-Za-z0-9_-]{1,128}/interrupt"),
+    )
+    return any(method == expected and re.fullmatch(pattern, route) for expected, pattern in patterns)
 app = FastAPI(title="SULY Runtime Provisioner", docs_url=None, redoc_url=None, openapi_url=None)
 _manager: DockerTaskRuntimeManager | None = None
 
@@ -192,7 +203,7 @@ async def runtime_gateway(runtime_id: str, path: str, request: Request, authoriz
         return await execute(runtime_id, payload, authorization)
     route = "/" + path
     method = request.method
-    if (method, route) not in _ALLOWED_PROXY:
+    if not _allowed_opencode_route(method, route):
         raise HTTPException(404, "route_not_allowed")
     body = await request.body()
     if len(body) > 65536:
