@@ -84,3 +84,45 @@ This is only an in-process validation contract around a provider protocol. There
 - The contract binds a lease to one task, one engine run, and one engine; requires an explicit runtime host allowlist; hides access credentials from repr; limits lease lifetime to one hour; rejects runtime ID reuse and repeated acquisition of the same attempt; and attempts teardown through a context manager.
 - Tests cover host allowlisting (including metadata/localhost targets), task/run mismatch, expiry, credential redaction, teardown, and cross-attempt runtime reuse.
 - This is not a concrete provider and does not start or stop Docker/OCI containers. OpenCode remains disabled. No server process, session, shell, PTY, MCP, plugin, or filesystem operation is reachable from SULY yet.
+
+
+## Pinned API and permission protocol review — 2026-11-20
+
+Additional source files reviewed at the same immutable upstream revision:
+
+- `packages/server/src/auth.ts`
+- `packages/server/src/middleware/authorization.ts`
+- `packages/server/src/handlers/session.ts`
+- `packages/server/src/handlers/permission.ts`
+- `packages/server/src/handlers/event.ts`
+- `packages/protocol/openapi.json`
+- `packages/core/test/permission.test.ts`
+
+### Authentication and session scope
+- OpenCode's HTTP auth is Basic auth with the configured username `opencode` and server password. It also accepts a server-signed session cookie and, for some routes, an `auth_token` query parameter. SULY must use the Authorization header only; never place a runtime secret in a URL or expose a pairing link/cookie to the client.
+- If no password is configured, the authorization middleware allows requests. A provisioned runtime must fail startup unless a unique high-entropy password has been configured.
+- Password-derived session cookies are long-lived (30 days) and are not a SULY tenant credential. Do not create or retain these cookies in SULY.
+- `POST /api/session` can create a session and accept an explicit permission ruleset. The upstream permission tests confirm an unmatched permission defaults to `ask`; an explicit catch-all `{action: "*", resource: "*", effect: "ask"}` makes the fail-closed intent visible and testable.
+- Session permissions can be answered with `once`, `always`, or `reject`. SULY's adapter must expose only `once` and `reject`; never forward `always` or saved permission mutations.
+- The permission handler verifies that a request belongs to the session ID in the route. SULY must additionally bind that session ID to exactly one engine_run_id and worker lease in its own database before forwarding.
+
+### Event and message data handling
+- `GET /api/event` is a server-wide event stream, not a per-session stream. It can include permission requests, tool lifecycle, tool input, text/reasoning deltas, PTY and filesystem events, and plugin/MCP events.
+- The upstream stream is explicitly volatile: disconnected consumers can miss events. It is not a durable task ledger.
+- SULY must parse events and allowlist only coarse lifecycle metadata and exact permission-request identity. Never forward raw event envelopes, tool input, arguments, reasoning, text deltas, terminal output, filesystem paths, or plugin/MCP payloads into the general task feed.
+- Permission requests should be fetched from the session-scoped permission endpoint and checked for matching sessionID; the event stream is only a notification that a state change occurred.
+- Prompt/session APIs accept files, skills, agents, metadata, shell, and other advanced payloads. Until their authorization and content scanning contracts exist, SULY should send text-only prompts and not forward client-selected local paths, file URIs, skills, agent IDs, or metadata.
+
+### Adapter policy before implementation
+1. Require a unique per-attempt server password and a verified HTTPS runtime lease origin from SULY's exact allowlist.
+2. Create one OpenCode process and private data directory per engine run, with no shared database/session directory.
+3. Create exactly one root session for the run with explicit catch-all ask permissions; do not expose session list/fork/import/move APIs to the client.
+4. Persist the opaque session ID under the same task/run/lease guard before sending a prompt. A failure to persist the ID must interrupt/tear down the newly created session.
+5. Reply only to a permission request that belongs to that session and is still pending. Permit only once/reject and recheck the lease immediately before the upstream call.
+6. Use the SSE stream as a notification channel only; poll the session-scoped permission list and message endpoint for state, then reduce outputs through a separate bounded sanitizer.
+7. No shell/PTY/MCP/plugin/network capability is enabled merely by adding the HTTP adapter. Runtime policy must independently enforce deny-by-default egress and workspace boundaries.
+
+### Current implementation status
+- The source review and this policy are documentation only.
+- The SULY runtime lease contract exists, but there is still no concrete OpenCode provisioner, per-attempt process, OpenCode API client, durable session-ID column/RPC, output reducer, or permission UI.
+- OpenCode remains disabled. No OpenCode server or session was started.
