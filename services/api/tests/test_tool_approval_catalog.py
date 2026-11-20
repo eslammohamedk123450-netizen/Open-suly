@@ -35,6 +35,10 @@ def test_catalog_lists_registered_tools_and_user_approval(monkeypatch):
     assert by_name["text.analyze"]["requires_approval"] is False
     assert by_name["hermes.agent.turn"]["approved"] is True
     assert by_name["hermes.agent.turn"]["permission_scope"] == "agent.hermes.run"
+    assert by_name["hermes.agent.turn"]["allowed_input_fields"] == ["prompt"]
+    assert by_name["hermes.agent.turn"]["required_input_fields"] == ["prompt"]
+    assert by_name["hermes.agent.turn"]["max_input_bytes"] == 20_100
+    assert by_name["hermes.agent.turn"]["max_output_bytes"] == 52_000
 
 
 def test_catalog_marks_hermes_unapproved_for_user(monkeypatch):
