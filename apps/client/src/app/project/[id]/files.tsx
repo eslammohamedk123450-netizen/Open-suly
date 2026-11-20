@@ -6,8 +6,8 @@ import { colors } from "@/theme/tokens";
 import { useAuth } from "@/providers/AuthProvider";
 import {
   listProjectFileHistory, listProjectFiles, readProjectFile,
-  restoreProjectFileRevision, saveProjectFile,
-  type ProjectFile, type ProjectFileRevision,
+  restoreProjectFileRevision, saveProjectFile, previewProjectFile,
+  type ProjectFile, type ProjectFileRevision, type ProjectFileDiffPreview,
 } from "@/lib/project-files";
 
 export default function ProjectFilesScreen() {
@@ -22,6 +22,8 @@ export default function ProjectFilesScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [preview, setPreview] = useState<ProjectFileDiffPreview | null>(null);
   const [notice, setNotice] = useState("");
 
   const loadHistory = async (path: string) => setHistory(await listProjectFileHistory(id, path));
@@ -62,6 +64,21 @@ export default function ProjectFilesScreen() {
     } catch (error) { setNotice(error instanceof Error ? error.message : "تعذر فتح الملف."); }
   };
 
+  const reviewChanges = async () => {
+    const path = selected || newPath.trim();
+    if (!path) { setNotice("اكتب مسار الملف أولًا، مثل src/main.py"); return; }
+    setPreviewing(true);
+    setNotice("");
+    try {
+      const result = await previewProjectFile(id, path, content, selected ? selectedUpdatedAt : null);
+      setPreview(result);
+      setNotice(result.has_changes ? "راجع الفروقات قبل حفظ الملف." : "لا توجد تغييرات عن النسخة الحالية.");
+    } catch (error) {
+      setPreview(null);
+      setNotice(error instanceof Error ? error.message : "تعذرت مراجعة التغييرات.");
+    } finally { setPreviewing(false); }
+  };
+
   const save = async () => {
     const path = selected || newPath.trim();
     if (!path) { setNotice("اكتب مسار الملف أولًا، مثل src/main.py"); return; }
@@ -71,6 +88,7 @@ export default function ProjectFilesScreen() {
       const saved = await saveProjectFile(id, path, content, selected ? selectedUpdatedAt : null);
       setSelected(path);
       setSelectedUpdatedAt(saved.updated_at);
+      setPreview(null);
       setNewPath("");
       setFiles(await listProjectFiles(id));
       await loadHistory(path);
@@ -145,17 +163,28 @@ export default function ProjectFilesScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{selected || "إنشاء ملف جديد"}</Text>
             {!selected && <TextInput value={newPath} onChangeText={setNewPath} placeholder="src/main.py" placeholderTextColor={colors.faint} autoCapitalize="none" style={styles.pathInput} />}
-            <TextInput value={content} onChangeText={setContent} multiline textAlignVertical="top"
+            <TextInput value={content} onChangeText={(value) => { setContent(value); setPreview(null); }} multiline textAlignVertical="top"
               autoCapitalize="none" autoCorrect={false} spellCheck={false}
               placeholder="اكتب محتوى الملف هنا..." placeholderTextColor={colors.faint} style={styles.editor} />
             <View style={styles.actions}>
-              {selected ? <Pressable style={styles.secondary} onPress={() => { setSelected(""); setSelectedUpdatedAt(null); setContent(""); setNewPath(""); setHistory([]); }}>
+              {selected ? <Pressable style={styles.secondary} onPress={() => { setSelected(""); setSelectedUpdatedAt(null); setContent(""); setNewPath(""); setHistory([]); setPreview(null); }}>
                 <Text style={styles.secondaryText}>ملف جديد</Text>
               </Pressable> : null}
-              <Pressable style={[styles.save, (saving || restoring) && styles.disabled]} onPress={() => void save()} disabled={saving || restoring}>
+              <Pressable style={[styles.secondary, (saving || restoring || previewing) && styles.disabled]} onPress={() => void reviewChanges()} disabled={saving || restoring || previewing}>
+                <Text style={styles.secondaryText}>{previewing ? "جارٍ الفحص..." : "مراجعة التغييرات"}</Text>
+              </Pressable>
+              <Pressable style={[styles.save, (saving || restoring || previewing) && styles.disabled]} onPress={() => void save()} disabled={saving || restoring || previewing}>
                 <Text style={styles.saveText}>{saving ? "جارٍ الحفظ..." : "حفظ الملف"}</Text>
               </Pressable>
             </View>
+            {preview ? (
+              <View style={styles.diffPanel}>
+                <Text style={styles.diffTitle}>{preview.has_changes ? "معاينة الفروقات" : "لا توجد فروقات"}</Text>
+                <ScrollView horizontal style={styles.diffScroll}>
+                  <Text selectable style={styles.diffText}>{preview.diff || "المحتوى مطابق للنسخة الحالية."}</Text>
+                </ScrollView>
+              </View>
+            ) : null}
             {!!notice && <Text style={styles.notice}>{notice}</Text>}
           </View>
         </ScrollView>
@@ -196,6 +225,10 @@ const styles = StyleSheet.create({
   secondaryText: { color: colors.gold, fontSize: 11, fontWeight: "700" },
   disabled: { opacity: 0.5 },
   notice: { color: colors.gold, fontSize: 10, textAlign: "right" },
+  diffPanel: { padding: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.goldDark, backgroundColor: colors.background, gap: 8 },
+  diffTitle: { color: colors.gold, fontSize: 11, fontWeight: "800", textAlign: "right" },
+  diffScroll: { maxHeight: 280 },
+  diffText: { color: colors.text, fontSize: 10, lineHeight: 17, fontFamily: "monospace", textAlign: "left" },
   muted: { color: colors.muted, fontSize: 10, textAlign: "center" },
   state: { padding: 12, alignItems: "center" },
 });
