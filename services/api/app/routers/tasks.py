@@ -20,6 +20,7 @@ class CreateTaskRequest(BaseModel):
     request: str = Field(min_length=1, max_length=20000)
     title: str | None = Field(default=None, max_length=200)
     idempotency_key: str = Field(min_length=8, max_length=128)
+    project_id: UUID | None = None
 
 
 class TaskPlanStep(BaseModel):
@@ -92,8 +93,16 @@ def create_task(
             if existing:
                 return existing[0]
 
+            if request.project_id is not None:
+                owned_project = (client.table("projects").select("id")
+                    .eq("id", str(request.project_id)).eq("user_id", user.id)
+                    .limit(1).execute().data)
+                if not owned_project:
+                    raise HTTPException(status_code=404, detail="Project not found.")
+
             payload = {
                 "user_id": user.id,
+                "project_id": str(request.project_id) if request.project_id else None,
                 "title": title,
                 "request": clean_request,
                 "idempotency_key": request.idempotency_key,
@@ -222,20 +231,16 @@ def auto_plan_task(
 @router.get("")
 def list_tasks(
     limit: int = Query(default=30, ge=1, le=100),
+    project_id: UUID | None = Query(default=None),
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     client = _admin_client()
     try:
         with client:
-            rows = (
-                client.table("tasks")
-                .select("*")
-                .eq("user_id", user.id)
-                .order("created_at", desc=True)
-                .limit(limit)
-                .execute()
-                .data
-            )
+            query = (client.table("tasks").select("*").eq("user_id", user.id))
+            if project_id is not None:
+                query = query.eq("project_id", str(project_id))
+            rows = query.order("created_at", desc=True).limit(limit).execute().data
         return {"items": rows or []}
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Could not load tasks.") from exc
