@@ -40,10 +40,21 @@ export type AgentEngineRun = {
   created_at?: string;
 };
 
+export type AgentEngineEvent = {
+  id: number;
+  engine_run_id: string;
+  task_id: string;
+  event_name: string;
+  event_seq?: number | null;
+  event_timestamp?: number | null;
+  received_at: string;
+};
+
 export type AgentTaskSnapshot = {
   task: AgentTask;
   steps: AgentTaskStep[];
   engine_runs: AgentEngineRun[];
+  engine_events: AgentEngineEvent[];
 };
 
 type ToolCatalogItem = {
