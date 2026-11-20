@@ -382,3 +382,13 @@ undefined
 - أضيفت حماية no-store لاستجابة تفاصيل الموافقة، مع Vary: Authorization، واختبار يثبت عدم تخزين بيانات الأمر في cache.
 - تم تصحيح مفاتيح حالة الموافقة في الواجهة لتكون مركبة من engine_run_id + request_id، منعًا لتصادم معرفات الطلب بين محاولات تشغيل مختلفة.
 - API tests نجحت على commit 11c2bf29 بعد إصلاح اختبار إعادة استخدام runtime identity. التعديلات التالية الخاصة بمفاتيح الواجهة وno-store headers قيد CI على أحدث HEAD؛ لا نعلن نجاحًا قبل اكتمال أحدث API + typecheck + Expo compatibility + Web export.
+
+
+## دفعة إضافية — تزامن runtime broker — 2026-11-20
+
+- أضفت حجزًا ذريًا للمحاولة قبل إنشاء runtime لمنع سباق الاستدعاءات المتزامنة لنفس task/run/engine داخل worker process.
+- أضفت منعًا لتكرار release المتزامن لنفس runtime، مع الاحتفاظ به محجوزًا إذا لم يؤكد provider عملية الإنهاء.
+- أضفت اختبارات threads لتغطية السباق في acquire والازدواج في teardown.
+- أثناء مراجعة CI اكتشفت أن تعديلًا سابقًا استهدف تعريف acquire داخل Protocol بدل class، ما أدى لفشل جمع الاختبارات. استعدت Protocol وTaskScopedRuntimeBroker كاملين في commit 772207dc، وسجلت السبب في وثيقة عقد broker.
+- Repository baseline checks على commit 772207dc بدأت، وPlatform CI كان queued عند آخر فحص. لا أعتبر الإصلاح مجتازًا حتى تظهر نتيجة ناجحة على HEAD النهائي.
+- لا يوجد provider حقيقي بعد، ولا يتم إنشاء حاويات أو تفعيل أي محرك. الحماية الحالية داخل process واحد فقط.
