@@ -17,11 +17,13 @@ import {
   createAgentTask,
   getAgentTask,
   getAgentToolCatalog,
+  getAgentCatalog,
   grantAIApproval,
   grantHermesApproval,
   revokeToolApproval,
   type AgentOperation,
   type AgentTaskSnapshot,
+  type AgentProfile,
 } from "@/lib/agent-tasks";
 
 const terminalStatuses = new Set(["completed", "failed", "cancelled"]);
@@ -53,6 +55,7 @@ export default function AgentScreen() {
   const [aiAvailable, setAiAvailable] = useState(false);
   const [hermesAvailable, setHermesAvailable] = useState(false);
   const [taskEngineAvailable, setTaskEngineAvailable] = useState(false);
+  const [agentProfiles, setAgentProfiles] = useState<AgentProfile[]>([]);
   const [busy, setBusy] = useState(false);
   const [approving, setApproving] = useState(false);
   const [notice, setNotice] = useState("");
@@ -69,6 +72,11 @@ export default function AgentScreen() {
       setHermesAvailable(Boolean(hermes?.available));
       setAiApproved(Boolean(ai?.approved));
       setAiAvailable(Boolean(ai?.available));
+      try {
+        setAgentProfiles(await getAgentCatalog());
+      } catch {
+        setAgentProfiles([]);
+      }
       setNotice("");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "تعذر تحميل أدوات الوكيل.");
@@ -218,6 +226,24 @@ export default function AgentScreen() {
             <Text style={styles.muted}>اختبر محرك المهام، أو استخدم SULY AI بعد إعداد المزود والموافقة، أو جهّز Hermes Agent في بيئته المعزولة.</Text>
           </View>
 
+          {agentProfiles.length > 0 && (
+            <View style={styles.card}>
+              <Text style={styles.label}>أدوار الوكلاء في SULY</Text>
+              {agentProfiles.map((agent) => (
+                <View key={agent.agent_id} style={styles.agentProfile}>
+                  <View style={styles.taskHeader}>
+                    <Text style={styles.stepTitle}>{agent.display_name}</Text>
+                    <Text style={[styles.approvalState, agent.available ? styles.good : styles.warn]}>
+                      {agent.available ? "متاح" : "قيد التجهيز"}
+                    </Text>
+                  </View>
+                  <Text style={styles.modeHint}>{agent.capabilities.join(" · ")}</Text>
+                  {!!agent.engines.length && <Text style={styles.modeHint}>المحرك: {agent.engines.join("، ")}</Text>}
+                </View>
+              ))}
+            </View>
+          )}
+
           <View style={styles.card}>
             <Text style={styles.label}>محرك التنفيذ</Text>
             <View style={styles.modeRow}>
@@ -358,6 +384,7 @@ const styles = StyleSheet.create({
   status: { fontSize: 11, fontWeight: "700" },
   taskTitle: { color: colors.text, fontSize: 14, fontWeight: "700", textAlign: "right" },
   taskId: { color: colors.faint, fontSize: 9, textAlign: "left" },
+  agentProfile: { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border, gap: 5 },
   step: { padding: 12, borderRadius: 12, backgroundColor: colors.background, gap: 7 },
   stepTitle: { color: colors.text, fontSize: 12, fontWeight: "700" },
   stepStatus: { color: colors.gold, fontSize: 10 },
