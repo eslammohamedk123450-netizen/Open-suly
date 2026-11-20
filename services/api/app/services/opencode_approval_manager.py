@@ -7,6 +7,7 @@ from urllib.parse import urljoin, urlsplit
 import httpx
 
 from app.services.opencode_lifecycle_store import OpenCodeLifecycleStore
+from app.services.opencode_contract import normalize_permission_request, permission_reply_body
 
 _SESSION = re.compile(r"^ses[A-Za-z0-9_-]{1,128}$")
 _PERMISSION = re.compile(r"^[A-Za-z0-9_-]{1,160}$")
@@ -58,16 +59,13 @@ class OpenCodeApprovalManager:
         for item in items:
             if not isinstance(item, dict):
                 continue
-            permission_id = item.get("id")
-            item_session = item.get("sessionID") or item.get("sessionId") or session_id
-            permission_type = item.get("permission") or item.get("type") or "unknown"
-            if not _PERMISSION.fullmatch(str(permission_id or "")) or item_session != session_id:
+            try:
+                normalized = normalize_permission_request(item, session_id)
+            except ValueError:
                 continue
-            resource = item.get("metadata") or item.get("patterns") or {}
-            if isinstance(resource, list):
-                resource = {"patterns": resource[:50]}
-            if not isinstance(resource, dict):
-                resource = {"description": str(resource)[:500]}
+            permission_id = normalized["request_id"]
+            permission_type = normalized["action"]
+            resource = {"resources": normalized["resources"]}
             stored.append(self._store.record_approval(
                 user_id=user_id, run_id=run_id, session_id=session_id,
                 permission_id=permission_id, permission_type=str(permission_type)[:80],
@@ -90,7 +88,7 @@ class OpenCodeApprovalManager:
                 timeout=self._timeout, follow_redirects=False, trust_env=False,
                 headers={"Authorization": f"Bearer {runtime_token}"},
             ) as client:
-                response = client.post(url, json={"reply": selected})
+                response = client.post(url, json=permission_reply_body(permission_id, selected))
                 if 300 <= response.status_code < 400 or response.status_code not in {200, 204}:
                     raise RuntimeError("opencode_permission_reply_failed")
 
