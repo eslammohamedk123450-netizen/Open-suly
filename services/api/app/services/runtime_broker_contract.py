@@ -67,6 +67,9 @@ class RuntimeLease:
             or parsed.query
             or parsed.fragment
             or parsed.path not in {'', '/'}
+            or not isinstance(allowed_hosts, frozenset)
+            or not allowed_hosts
+            or parsed.hostname.lower().rstrip('.') not in allowed_hosts
         ):
             raise ValueError('runtime_lease_base_url_invalid')
         try:
