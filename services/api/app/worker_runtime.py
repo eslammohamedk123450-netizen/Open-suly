@@ -50,11 +50,18 @@ def ai_respond(step: ClaimedStep) -> dict[str, Any]:
 class HermesAgentAdapter:
     """Narrow adapter to the separately hosted Hermes bridge."""
 
+    def __init__(self, cancel_event: Event | None = None) -> None:
+        self.cancel_event = cancel_event
+
     def execute(self, request: EngineRequest) -> EngineResult:
         prompt = request.input_payload.get("prompt")
         if not isinstance(prompt, str):
             raise ValueError("hermes_adapter_prompt_required")
-        result = run_agent_turn(prompt)
+        result = run_agent_turn(
+            prompt,
+            timeout_seconds=request.timeout_seconds,
+            cancel_event=self.cancel_event,
+        )
         if not isinstance(result, dict) or not isinstance(result.get("content"), str):
             raise ValueError("hermes_adapter_invalid_response")
         return EngineResult(
@@ -63,7 +70,7 @@ class HermesAgentAdapter:
         )
 
 
-def build_engine_registry() -> EngineRegistry:
+def build_engine_registry(cancel_event: Event | None = None) -> EngineRegistry:
     """Build the server-configured allow-list; external engines default off."""
     settings = get_settings()
     return EngineRegistry([
@@ -76,12 +83,12 @@ def build_engine_registry() -> EngineRegistry:
             max_input_bytes=20_100,
             max_output_bytes=52_000,
             max_timeout_seconds=300,
-            adapter=HermesAgentAdapter(),
+            adapter=HermesAgentAdapter(cancel_event),
         )
     ])
 
 
-def hermes_agent_turn(step: ClaimedStep) -> dict[str, Any]:
+def hermes_agent_turn(step: ClaimedStep, cancel_event: Event | None = None) -> dict[str, Any]:
     prompt = step.input.get("prompt")
     if not isinstance(prompt, str):
         raise ValueError("hermes.agent.turn requires a string input.prompt")
@@ -92,7 +99,9 @@ def hermes_agent_turn(step: ClaimedStep) -> dict[str, Any]:
         input_payload={"prompt": prompt},
         timeout_seconds=max(1, min(300, int(settings.hermes_agent_timeout_seconds))),
     )
-    result = build_engine_registry().execute("hermes-agent", request)
+    if cancel_event is not None and cancel_event.is_set():
+        raise RuntimeError("task_execution_cancelled")
+    result = build_engine_registry(cancel_event).execute("hermes-agent", request)
     return {
         "operation": "hermes.agent.turn",
         "engine": result.output["engine"],
@@ -112,7 +121,7 @@ def dispatch_cancel_aware(
     """
     if cancel_event.is_set():
         raise RuntimeError("task_execution_cancelled")
-    return dispatch(step, approval_store)
+    return dispatch(step, approval_store, cancel_event=cancel_event)
 
 
 def build_tool_registry() -> ToolRegistry:
@@ -148,6 +157,7 @@ def build_tool_registry() -> ToolRegistry:
         handler=hermes_agent_turn,
         requires_approval=True,
         max_output_bytes=52_000,
+        supports_cancellation=True,
     ))
     return registry
 
@@ -158,11 +168,16 @@ TOOL_REGISTRY = build_tool_registry()
 def dispatch(
     step: ClaimedStep,
     approval_store: ToolApprovalStore | None = None,
+    *,
+    cancel_event: Event | None = None,
 ) -> dict[str, Any]:
     # Fetch persisted consent immediately before execution so revocation takes
     # effect on the next attempt; never derive grants from task payloads.
     scopes = approval_store.active_scopes(str(step.user_id)) if approval_store else frozenset()
-    return TOOL_REGISTRY.execute(step, ToolExecutionContext(approved_scopes=scopes))
+    return TOOL_REGISTRY.execute(
+        step,
+        ToolExecutionContext(approved_scopes=scopes, cancel_event=cancel_event),
+    )
 
 
 class WorkerRuntime:
