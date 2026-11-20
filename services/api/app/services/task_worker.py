@@ -217,6 +217,21 @@ class TaskWorker:
             daemon=True,
         )
         heartbeat.start()
+        # A stuck network/RPC call in the heartbeat must not hold the worker
+        # forever. If it cannot stop promptly, ownership is treated as lost.
+        heartbeat_join_timeout = max(
+            0.1, min(5.0, self.heartbeat_interval_seconds * 2)
+        )
+
+        def stop_heartbeat() -> bool:
+            heartbeat_stop.set()
+            heartbeat.join(timeout=heartbeat_join_timeout)
+            if heartbeat.is_alive():
+                lease_lost.set()
+                cancel_event.set()
+                return False
+            return True
+
         try:
             if cancel_aware_handler is not None:
                 output = cancel_aware_handler(step, cancel_event)
@@ -233,9 +248,7 @@ class TaskWorker:
             if len(output_bytes) > _MAX_OUTPUT_BYTES:
                 raise ValueError("worker_output_too_large")
         except Exception:
-            heartbeat_stop.set()
-            heartbeat.join()
-            if lease_lost.is_set():
+            if not stop_heartbeat() or lease_lost.is_set():
                 return "lease_lost"
             # Exception text may contain prompts, provider payloads, or secrets.
             try:
@@ -253,8 +266,8 @@ class TaskWorker:
                 else "failure_not_recorded"
             )
         finally:
-            heartbeat_stop.set()
-            heartbeat.join()
+            # The join is bounded: a stalled heartbeat must never block this worker.
+            stop_heartbeat()
 
         if lease_lost.is_set():
             return "lease_lost"
