@@ -797,3 +797,40 @@ def test_task_steering_cannot_access_another_users_task_or_run(monkeypatch):
         app.dependency_overrides.clear()
 
     assert response.status_code == 404
+
+
+
+class _ProjectCheckQuery:
+    def __init__(self, rows):
+        self.rows = rows
+    def select(self, *_args): return self
+    def eq(self, *_args): return self
+    def limit(self, *_args): return self
+    def execute(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(data=self.rows)
+    def insert(self, _payload):
+        raise AssertionError("Task must not be inserted for a project owned by another user")
+
+
+class _ProjectCheckAdmin:
+    def __enter__(self): return self
+    def __exit__(self, *_args): return False
+    def table(self, name):
+        return _ProjectCheckQuery([])
+
+
+def test_task_creation_rejects_project_not_owned_by_user(monkeypatch):
+    admin = _ProjectCheckAdmin()
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="user-a", email=None)
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    try:
+        response = client.post("/v1/tasks", json={
+            "request": "Build my app",
+            "idempotency_key": "project-task-0001",
+            "project_id": "00000000-0000-0000-0000-000000000099",
+        })
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Project not found."
