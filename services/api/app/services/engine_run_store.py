@@ -86,7 +86,7 @@ class EngineRunStore:
             },
         ).execute()
         if not isinstance(response.data, bool):
-            raise RuntimeError("engine_stop_reconciliation_invalid_response")
+            raise RuntimeError("engine_run_finish_invalid_response")
         return response.data
 
     def reconcile_orphans(self, batch_size: int = 100) -> int:
@@ -181,4 +181,6 @@ class EngineRunStore:
                 "p_stop_confirmed": stop_confirmed,
             },
         ).execute()
-        return bool(response.data)
+        if not isinstance(response.data, bool):
+            raise RuntimeError("engine_stop_reconciliation_invalid_response")
+        return response.data
