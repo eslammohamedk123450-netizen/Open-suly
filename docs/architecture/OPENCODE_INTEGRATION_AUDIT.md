@@ -142,3 +142,9 @@ Additional source files reviewed at the same immutable upstream revision:
 
 - OpenCode protocol reducer tests are included in the API suite. Platform CI on commit 61c194f8 reports 456 API tests passed and TypeScript/Expo compatibility passed; Web export was still running at this checkpoint.
 - These tests validate pure request/event reduction only. They do not validate a live OpenCode server, a container boundary, or tenant isolation.
+
+## Complete upstream source inclusion — 2026-11-20
+
+The complete OpenCode upstream monorepo is now included in SULY at `engines/opencode/upstream` as a Git submodule. The gitlink is pinned to `4cca18d80450a3dd6a9a4142028bde84ccb3116e`, matching the immutable revision audited above. GitHub reported the upstream commit signature as verified. The exact revision's root LICENSE is MIT; it is retained by the submodule and must remain present in every source distribution.
+
+This changes the source-intake status from “audit only” to “complete upstream source pinned.” It does **not** change the runtime decision: OpenCode remains disabled. The source tree is fetched with `git submodule update --init --recursive engines/opencode/upstream`. No OpenCode process is started by this commit, and no user task is routed to it. A task-attempt sandbox provider, brokered authentication, network egress policy, resource supervisor, cleanup, and cross-tenant isolation tests are still required.

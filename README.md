@@ -40,6 +40,7 @@ Arabic-first with correct RTL, English support, a chat-first home screen, a dedi
 - [Agent runtime local smoke test](./docs/testing/AGENT_RUNTIME_SMOKE_TEST.md)
 - [AI provider setup (Ollama and OpenAI-compatible)](./docs/operations/AI_PROVIDER_SETUP.md)
 - [Hermes integration status](./docs/architecture/HERMES_CAPABILITY_INTEGRATION_STATUS.md)
+- [OpenCode upstream engine source and pin](./engines/opencode/README.md)
 
 ## Engineering rules
 

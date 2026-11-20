@@ -19,7 +19,7 @@
 |---|---|---:|---|---|---|---|
 | [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) | Primary general agent harness; planning, tool selection, skills, delegation | `main` | Python | MIT | 2026-11-20 | Existing source pin; runtime/API remains disabled pending sandbox and lifecycle work |
 | [OpenHands/OpenHands](https://github.com/OpenHands/OpenHands) | Specialist software-engineering agent | `main` | TypeScript | MIT | 2026-11-20 | Candidate; separate coding runtime |
-| [anomalyco/opencode](https://github.com/anomalyco/opencode) | Alternative coding-agent backend | `dev` | TypeScript | MIT | 2026-11-20 | Candidate; compare with OpenHands/Aider; not simultaneous default |
+| [anomalyco/opencode](https://github.com/anomalyco/opencode) | Primary coding-agent source imported for SULY | `dev` | TypeScript | MIT | 2026-11-20 | Complete upstream monorepo pinned as submodule at `4cca18d80450a3dd6a9a4142028bde84ccb3116e`; runtime remains disabled pending per-attempt sandbox and broker |
 | [Aider-AI/aider](https://github.com/Aider-AI/aider) | Lightweight repository editing backend | `main` | Python | Apache-2.0 | 2026-05-22 | Candidate; compare with OpenHands/OpenCode |
 | [browser-use/browser-use](https://github.com/browser-use/browser-use) | Browser automation specialist | `main` | Python | MIT | 2026-11-20 | Candidate; isolated browser context required |
 | [Skyvern-AI/skyvern](https://github.com/Skyvern-AI/skyvern) | Advanced browser workflow specialist | `main` | Python | AGPL-3.0 | 2026-11-19 | Legal/network-service review required before adoption |
@@ -98,3 +98,12 @@ The current immutable Hermes source pin in `engines/hermes/compose.yaml` and `en
 - Added worker-level tests proving that configured Hermes is the only engine enabled by the current runtime builder and that all engines remain disabled when the worker flag is off.
 - Commits: `c4f995fbb1fc`, `cbae5c145a54`, `4c592edc1b09`, `9db260180421`, `2cd2d33777ca`, `de8146717886`, `2f15ec98f5e5`.
 - Tests have been authored but not confirmed by CI yet.
+
+
+## OpenCode source inclusion checkpoint (2026-11-20)
+
+- Added the complete upstream `anomalyco/opencode` monorepo as the Git submodule `engines/opencode/upstream`.
+- Pinned the gitlink to the exact audited and GitHub-signature-verified commit `4cca18d80450a3dd6a9a4142028bde84ccb3116e` (upstream package version `2.3.0`). The root LICENSE at that revision is MIT and remains available inside the checked-out submodule.
+- The original source tree includes the upstream server, core, AI/provider layer, CLI, protocol/schema, plugin framework, browser plugin, TUI, skills, tests, and build scripts. It is not a partial reimplementation.
+- The source is included as a pinned Git submodule, not copied into SULY's FastAPI process. A recursive/submodule checkout is required to materialize the files in a local working tree.
+- This is source inclusion only. It does not enable the engine or prove runtime compatibility. The existing task-scoped sandbox, broker, credential, egress, cleanup, and cross-tenant tests remain mandatory before activation.
