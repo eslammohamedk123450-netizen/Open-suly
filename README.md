@@ -27,6 +27,7 @@ Arabic-first with correct RTL, English support, a chat-first home screen, a dedi
 
 - [Fresh product architecture](./SULY_MASTER_ARCHITECTURE.md)
 - [New delivery roadmap](./SULY_V1_LAUNCH_BLUEPRINT.md)
+- [Open-source engine integration architecture](./docs/architecture/OPEN_SOURCE_ENGINE_INTEGRATION.md)
 - [Supabase clean-slate record](./docs/operations/supabase-clean-slate.md)
 
 ## Engineering rules
