@@ -53,16 +53,16 @@ declare
   v_input_bytes integer;
   v_handoff_id uuid;
 begin
-  if p_target_engine not in ('hermes-agent','opencode')
+  if p_target_engine is null or p_target_engine not in ('hermes-agent','opencode')
      or p_capability is null
      or p_capability !~ '^[a-z][a-z0-9_.-]{1,95}$'
      or p_idempotency_key is null
      or length(p_idempotency_key) not between 16 and 128
      or p_idempotency_key !~ '^[A-Za-z0-9_-]+$'
-     or p_max_child_tasks not between 1 and 8
-     or p_max_parallel_children not between 1 and 2
-     or p_max_runtime_seconds not between 1 and 1800
-     or p_max_input_bytes not between 1 and 64000 then
+     or p_max_child_tasks is null or p_max_child_tasks not between 1 and 8
+     or p_max_parallel_children is null or p_max_parallel_children not between 1 and 2
+     or p_max_runtime_seconds is null or p_max_runtime_seconds not between 1 and 1800
+     or p_max_input_bytes is null or p_max_input_bytes not between 1 and 64000 then
     raise exception 'collaboration_request_invalid';
   end if;
 
