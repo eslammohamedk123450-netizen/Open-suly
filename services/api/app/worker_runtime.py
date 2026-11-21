@@ -138,7 +138,7 @@ def _hermes_prompt_with_conversation_context(step: ClaimedStep, prompt: str) -> 
     """Load only this task owner's conversation history as bounded, non-authoritative context."""
     client = get_supabase_admin_client()
     if client is None:
-        raise RuntimeError("hermes_conversation_context_unavailable")
+        return prompt
     # Lightweight unit-test doubles without a Supabase table interface carry no conversation.
     if not callable(getattr(client, "table", None)):
         return prompt
@@ -217,7 +217,6 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
     prompt = step.input.get("prompt")
     if not isinstance(prompt, str):
         raise ValueError("hermes.agent.turn requires a string input.prompt")
-    prompt = _hermes_prompt_with_conversation_context(step, prompt)
     settings = get_settings()
     runtime_broker = context.runtime_broker if context is not None else None
     if (
@@ -226,6 +225,8 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
         or runtime_broker is None
     ):
         raise RuntimeError("hermes_task_runtime_unavailable")
+
+    prompt = _hermes_prompt_with_conversation_context(step, prompt)
 
     # نجهز طلب المحرك بحد أقصى زمني معروف من إعدادات الخادم.
     request = EngineRequest(
