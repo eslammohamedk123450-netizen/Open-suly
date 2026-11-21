@@ -634,3 +634,50 @@ The overall integration remains **IN PROGRESS**.
 Added `docs/HERMES_RUNTIME_PROVISIONER_ACTIVATION_CHECKLIST.md` as the operational gate for the external provider. It covers the dedicated host boundary, the mandatory `suly-hermes-task-v1` profile, toolset/network restrictions, lease/token lifecycle, worker-crash recovery, process-tree teardown, staging conformance tests, Supabase migration order, and controlled rollout.
 
 This checklist is a deployment plan only. It does not indicate that a provisioner exists or that any checklist item has passed against a live runtime.
+
+
+## Execution checkpoint 16 — source pin and collaboration foundation
+
+**Status:** IN PROGRESS — NOT A COMPLETION CERTIFICATE  
+**Date:** 2026-11-21  
+**Base before this checkpoint:** 0a026bb5ac589df155cae5fdea096492f303d293  
+**Hermes upstream revision:** 2de9f51b8008a7d49a49221c184f2f11cbfc4af1
+
+### Changes committed
+
+- Added Hermes upstream as a Git submodule at `engines/hermes/upstream`, pinned to the exact immutable source commit. `.gitmodules` retains the existing OpenCode submodule and adds Hermes independently.
+- Added `docs/architecture/HERMES_SOURCE_AND_CAPABILITY_INVENTORY.md` describing the upstream package inventory, native API routes, license/provenance, and per-capability integration boundary.
+- Added `services/api/app/services/engine_collaboration.py` with strict immutable artifact references, cross-engine task contracts, metadata-only events, result envelopes, ownership checks, media-type allowlists, bounded depth/concurrency/runtime/input, and rejection of same-engine handoffs.
+- Added unit tests in `services/api/tests/test_engine_collaboration.py`.
+- Added additive migration `20261121190000_engine_collaboration_foundation.sql` for owner-scoped artifact metadata, handoff records, collaboration events, and project workspace writer locks. Client roles receive read-only owner-scoped access; writes are reserved for the service role.
+
+### Important discovery: runtime provisioner is present but Hermes is not yet supported
+
+The repository already contains `services/runtime-provisioner`. Its current Docker manager and HTTP API are OpenCode-specific:
+- It accepts only `engine_id=opencode`.
+- It uses one OpenCode image and OpenCode environment/port/tmpfs assumptions.
+- Runtime rows and recovery responses are not yet profile-aware.
+- Its gateway allowlist proxies OpenCode routes only.
+
+Therefore, the earlier statement that no provisioner implementation exists was too broad. The accurate state is: a provisioner implementation exists for OpenCode, but Hermes task-profile provisioning and its API gateway are not yet implemented.
+
+### Verification status
+
+- No test command was executed by this checkpoint; CI must validate the new contract tests and migration syntax.
+- The Git submodule pointer is committed; recursive checkout/build and upstream Docker image digest verification remain to be run.
+- No Docker daemon, Hermes image, live model/provider, or live Supabase project was changed.
+- The migration is committed but not applied to any database.
+- Hermes remains disabled. The collaboration module defines and validates contracts but is not yet wired to a durable handoff API/worker scheduler; the migration supplies persistence primitives but not lifecycle RPCs.
+
+### Remaining engineering gates
+
+1. Extend the provisioner for a dedicated Hermes image/profile and native API gateway, retaining the OpenCode path unchanged.
+2. Add Hermes API-server startup/readiness and secure per-runtime API key injection; use the upstream port 8642 and strict route allowlist.
+3. Implement SULY-owned memory namespace and memory read/write policy; keep native sessions ephemeral and task-scoped.
+4. Implement signed/hashed skill manifests, provenance review, installation lifecycle, and task-level enablement.
+5. Implement tool permission mapping and MCP credential/server broker.
+6. Implement durable handoff lifecycle RPCs and worker scheduling, including approval, parent-child cancellation, retries, budgets, and artifact publication.
+7. Add unified provider gateway and SULY-owned cron translation.
+8. Run API/provisioner tests, migration checks, Docker image build, container security tests, and cross-tenant end-to-end tests on staging.
+
+**Overall status remains IN PROGRESS. No claim of full Hermes integration or production readiness is made.**
