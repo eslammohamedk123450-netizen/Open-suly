@@ -35,6 +35,7 @@ class HermesAgentCancelled(RuntimeError):
 
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled", "interrupted"})
 _MAX_PROMPT_CHARS = 20_000
+_MAX_SSE_EVENT_BYTES = 256 * 1024
 _RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _SSE_EVENT_NAMES = frozenset({
     "tool.started", "tool.completed", "subagent.start", "subagent.complete",
@@ -137,25 +138,41 @@ async def _consume_run_events(
         ) as response:
             response.raise_for_status()
             data_lines: list[str] = []
+            data_size = 0
+            dropping_event = False
             async for line in response.aiter_lines():
                 if len(line) > 65_536:
                     data_lines.clear()
+                    data_size = 0
+                    dropping_event = True
                     continue
                 if line.startswith("data:"):
-                    data_lines.append(line[5:].strip())
-                elif line == "" and data_lines:
-                    try:
-                        payload = json.loads("\n".join(data_lines))
-                        summary = _safe_run_event(payload, run_id)
-                        if summary is not None:
-                            try:
-                                await asyncio.to_thread(callback, summary)
-                            except Exception:
-                                # Progress delivery must never change task execution outcome.
-                                pass
-                    except (ValueError, TypeError):
-                        pass
+                    if dropping_event:
+                        continue
+                    chunk = line[5:].strip()
+                    data_size += len(chunk.encode("utf-8"))
+                    if data_size > _MAX_SSE_EVENT_BYTES:
+                        data_lines.clear()
+                        data_size = 0
+                        dropping_event = True
+                        continue
+                    data_lines.append(chunk)
+                elif line == "":
+                    if not dropping_event and data_lines:
+                        try:
+                            payload = json.loads("\n".join(data_lines))
+                            summary = _safe_run_event(payload, run_id)
+                            if summary is not None:
+                                try:
+                                    await asyncio.to_thread(callback, summary)
+                                except Exception:
+                                    # Progress delivery must never change task execution outcome.
+                                    pass
+                        except (ValueError, TypeError):
+                            pass
                     data_lines.clear()
+                    data_size = 0
+                    dropping_event = False
     except (httpx.HTTPError, ValueError, TypeError):
         # Status polling remains authoritative if the optional event stream is unavailable.
         return
