@@ -1131,10 +1131,14 @@ def test_hermes_delegated_runtime_budget_reaches_native_runs_adapter(monkeypatch
     assert seen["timeout_seconds"] == 120
 
 
-def test_hermes_rejects_runtime_budget_above_native_runs_limit():
+def test_hermes_rejects_runtime_budget_above_native_runs_limit(monkeypatch):
     import app.worker_runtime as runtime_module
     from types import SimpleNamespace
 
+    monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True, hermes_agent_enabled=True, hermes_agent_timeout_seconds=90.0,
+    ))
+    monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: object())
     with pytest.raises(ValueError, match="hermes_runtime_budget_invalid"):
         runtime_module.hermes_agent_turn(
             make_step({
