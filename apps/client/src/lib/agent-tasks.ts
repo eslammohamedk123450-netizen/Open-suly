@@ -141,6 +141,7 @@ export async function createAgentTask(
   operation: AgentOperation,
   prompt: string,
   projectId?: string,
+  conversationId?: string,
 ): Promise<AgentTask> {
   const cleanPrompt = prompt.trim();
   if (!cleanPrompt) throw new Error("اكتب وصف المهمة أولًا.");
@@ -152,6 +153,7 @@ export async function createAgentTask(
       title: operation === "opencode.task.run" ? "مهمة OpenCode برمجية" : operation === "hermes.agent.turn" ? "مهمة Hermes Agent" : operation === "ai.respond" ? "مهمة SULY AI" : "تحليل نص",
       request: operation === "text.analyze" ? "analyze: " + cleanPrompt : operation === "hermes.agent.turn" ? "agent: " + cleanPrompt : cleanPrompt,
       ...(projectId ? { project_id: projectId } : {}),
+      ...(conversationId ? { conversation_id: conversationId } : {}),
       idempotency_key: "agent-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 14),
     }),
   });
