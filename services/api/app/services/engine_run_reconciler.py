@@ -8,12 +8,13 @@ from __future__ import annotations
 from collections.abc import Callable
 import logging
 
-from app.services.engine_run_store import EngineRunStore
+from app.services.engine_run_store import EngineRunStore, EngineStopClaim
 
 
 logger = logging.getLogger(__name__)
 
 StopHandler = Callable[[str], bool]
+ClaimStopHandler = Callable[[EngineStopClaim], bool]
 
 
 class EngineRunReconciler:
@@ -23,7 +24,8 @@ class EngineRunReconciler:
         self,
         store: EngineRunStore,
         *,
-        stop_handlers: dict[str, StopHandler],
+        stop_handlers: dict[str, StopHandler] | None = None,
+        claim_handlers: dict[str, ClaimStopHandler] | None = None,
         batch_size: int = 10,
         lease_seconds: int = 60,
     ) -> None:
@@ -32,7 +34,8 @@ class EngineRunReconciler:
         if isinstance(lease_seconds, bool) or not isinstance(lease_seconds, int) or not 15 <= lease_seconds <= 900:
             raise ValueError("invalid_engine_stop_claim_bounds")
         self._store = store
-        self._stop_handlers = dict(stop_handlers)
+        self._stop_handlers = dict(stop_handlers or {})
+        self._claim_handlers = dict(claim_handlers or {})
         self._batch_size = batch_size
         self._lease_seconds = lease_seconds
         self._last_missing_identity_count = 0
@@ -55,14 +58,17 @@ class EngineRunReconciler:
         )
         confirmed_count = 0
         for claim in claims:
+            claim_handler = self._claim_handlers.get(claim.engine_id)
             handler = self._stop_handlers.get(claim.engine_id)
             confirmed = False
-            if handler is not None:
-                try:
+            try:
+                if claim_handler is not None:
+                    confirmed = claim_handler(claim) is True
+                elif handler is not None and claim.upstream_run_id is not None:
                     confirmed = handler(claim.upstream_run_id) is True
-                except Exception:
-                    # لا نسجل exception text؛ قد يحتوي على بيانات من المحرك الخارجي.
-                    confirmed = False
+            except Exception:
+                # لا نسجل exception text؛ قد يحتوي على بيانات من المحرك الخارجي.
+                confirmed = False
             finalized = self._store.finish_stop_reconciliation(
                 claim,
                 stop_confirmed=confirmed,
