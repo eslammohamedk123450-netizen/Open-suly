@@ -12,7 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { colors } from "@/theme/tokens";
 import { useAuth } from "@/providers/AuthProvider";
-import { cancelAgentTask, decideOpenCodeChangeSet, getAgentApprovalDetails, getAgentTask, getOpenCodeChangeSet, resolveAgentApproval, retryAgentTask, steerAgentRun, type AgentApprovalDetails, type AgentTaskSnapshot, type OpenCodeChangeSet } from "@/lib/agent-tasks";
+import { cancelAgentTask, decideOpenCodeChangeSet, getAgentApprovalDetails, getAgentTask, getOpenCodeChangeSet, getOpenCodeRunEvents, resolveAgentApproval, retryAgentTask, steerAgentRun, type AgentApprovalDetails, type AgentTaskSnapshot, type OpenCodeChangeSet, type OpenCodeTaskEvent } from "@/lib/agent-tasks";
 
 const terminalStatuses = new Set(["completed", "failed", "cancelled"]);
 
@@ -87,6 +87,8 @@ export default function TaskDetailsScreen() {
   const [changeSets, setChangeSets] = useState<Record<string, { item?: OpenCodeChangeSet; loading?: boolean; error?: string }>>({});
   const [changeSetBusyId, setChangeSetBusyId] = useState<string | null>(null);
   const loadingChangeSets = useRef(new Set<string>());
+  const [opencodeEvents, setOpencodeEvents] = useState<Record<string, OpenCodeTaskEvent[]>>({});
+  const loadingOpencodeEvents = useRef(new Set<string>());
 
   const load = useCallback(async () => {
     if (!id || !user) return;
@@ -118,6 +120,28 @@ export default function TaskDetailsScreen() {
         .finally(() => loadingChangeSets.current.delete(changeSetId));
     }
   }, [snapshot?.steps, changeSets]);
+
+  const opencodeRunIds = (snapshot?.steps ?? [])
+    .map((step) => step.output?.opencode_run_id)
+    .filter((value): value is string => typeof value === "string" && !!value)
+    .join(",");
+
+  useEffect(() => {
+    const ids = opencodeRunIds.split(",").filter(Boolean);
+    const loadEvents = () => {
+      for (const runId of ids) {
+        if (loadingOpencodeEvents.current.has(runId)) continue;
+        loadingOpencodeEvents.current.add(runId);
+        void getOpenCodeRunEvents(runId)
+          .then((items) => setOpencodeEvents((current) => ({ ...current, [runId]: items })))
+          .catch(() => { /* لا نعرض تفاصيل الشبكة/الاستثناء في سجل أحداث المهمة. */ })
+          .finally(() => loadingOpencodeEvents.current.delete(runId));
+      }
+    };
+    loadEvents();
+    const timer = snapshot && !terminalStatuses.has(snapshot.task.status) ? setInterval(loadEvents, 2500) : null;
+    return () => { if (timer) clearInterval(timer); };
+  }, [opencodeRunIds, snapshot?.task.status]);
 
   const reloadChangeSet = async (changeSetId: string) => {
     if (loadingChangeSets.current.has(changeSetId)) return;
@@ -336,6 +360,19 @@ export default function TaskDetailsScreen() {
                   </View>
                   <Text style={styles.muted}>المحاولات: {step.attempt_count} من {step.max_attempts}</Text>
                   {!!step.error_message && <Text style={styles.error}>{step.error_message}</Text>}
+                  {typeof step.output?.opencode_run_id === "string" && (
+                    <View style={styles.eventTimeline}>
+                      <Text style={styles.sectionTitle}>أحداث OpenCode</Text>
+                      {(opencodeEvents[step.output.opencode_run_id] ?? []).length === 0 ? (
+                        <Text style={styles.muted}>لا توجد أحداث محفوظة حتى الآن.</Text>
+                      ) : (opencodeEvents[step.output.opencode_run_id] ?? []).slice(-25).map((event) => (
+                        <View key={event.sequence} style={styles.eventItem}>
+                          <Text style={styles.eventName}>{event.event_type}</Text>
+                          {!!Object.keys(event.payload ?? {}).length && <Text selectable style={styles.eventMeta}>{pretty(event.payload)}</Text>}
+                        </View>
+                      ))}
+                    </View>
+                  )}
                   {typeof step.output?.change_set_id === "string" && (
                     <View style={styles.reviewBox}>
                       <Text style={styles.sectionTitle}>مراجعة تغييرات OpenCode</Text>
@@ -531,6 +568,10 @@ const styles = StyleSheet.create({
   error: { color: "#E88787", fontSize: 12, textAlign: "right", lineHeight: 20 },
   stepHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   stepTitle: { color: colors.text, fontSize: 14, fontWeight: "700", textAlign: "right", flex: 1 },
+  eventTimeline: { marginTop: 8, gap: 7, padding: 10, borderRadius: 10, backgroundColor: colors.background },
+  eventItem: { borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 7, gap: 4 },
+  eventName: { color: colors.gold, fontSize: 11, fontWeight: "700", textAlign: "right" },
+  eventMeta: { color: colors.muted, fontSize: 9, lineHeight: 15, textAlign: "left" },
   reviewBox: { marginTop: 8, padding: 12, borderRadius: 12, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.goldDark, gap: 10 },
   inlineLoading: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 8 },
   changeCard: { borderWidth: 1, borderColor: colors.border, borderRadius: 9, overflow: "hidden", gap: 6 },
