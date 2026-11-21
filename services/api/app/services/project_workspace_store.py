@@ -16,8 +16,33 @@ from supabase import Client
 _MAX_FILES = 200
 _MAX_FILE_BYTES = 256 * 1024
 _MAX_TOTAL_BYTES = 5 * 1024 * 1024
-_BLOCKED = {".git", "node_modules", ".suly", "__pycache__", "secrets"}
+_BLOCKED = {
+    ".git", "node_modules", ".suly", "__pycache__", "secrets",
+    ".ssh", ".aws", ".azure", ".gcloud", ".docker", ".kube", ".gnupg",
+}
+_BLOCKED_NAMES = {
+    ".npmrc", ".pypirc", ".netrc", ".pgpass", "credentials",
+    "credentials.json", "id_rsa", "id_ed25519", "id_ecdsa",
+    "service-account.json", "dockerconfig.json",
+}
+_SECRET_PATTERNS = (
+    re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----", re.IGNORECASE),
+    re.compile(r"\\bAKIA[0-9A-Z]{16}\\b"),
+    re.compile(r"\\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})\\b"),
+    re.compile(r"\\bsk-[A-Za-z0-9]{20,}\\b"),
+    re.compile(r"\\bAIza[0-9A-Za-z_-]{30,}\\b"),
+    re.compile(r"\\bxox[baprs]-[A-Za-z0-9-]{10,}\\b"),
+    re.compile(r"\\b(?:sk|rk)_(?:live|test)_[0-9A-Za-z]{16,}\\b"),
+    re.compile(r"\\bsb_secret_[A-Za-z0-9_-]{20,}\\b"),
+    re.compile(
+        r"""(?im)\\b(?:api[_-]?key|access[_-]?token|client[_-]?secret|password|secret[_-]?key)\\s*[:=]\\s*["']?(?!\\$\\{|\\{\\{|YOUR_|CHANGEME|REPLACE_ME|example|placeholder)[A-Za-z0-9_./+=-]{24,}"""
+    ),
+)
 _REVISION_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _contains_secret_material(content: str) -> bool:
+    return any(pattern.search(content) for pattern in _SECRET_PATTERNS)
 
 
 class ProjectWorkspaceError(RuntimeError):
@@ -38,7 +63,12 @@ class ProjectWorkspaceStore:
         path = PurePosixPath(value)
         if path.is_absolute() or any(part in ("", ".", "..") for part in parts):
             raise ValueError("workspace_path_invalid")
-        if any(part.lower() in _BLOCKED or part.lower().startswith(".env") for part in parts):
+        if any(
+            part.lower() in _BLOCKED
+            or part.lower().startswith(".env")
+            or part.lower() in _BLOCKED_NAMES
+            for part in parts
+        ):
             raise ValueError("workspace_path_reserved")
         return value
 
