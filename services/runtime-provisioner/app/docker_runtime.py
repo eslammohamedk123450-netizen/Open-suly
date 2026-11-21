@@ -218,7 +218,7 @@ class DockerTaskRuntimeManager:
                 # SULY owns conversation context and future delegated child tasks.
                 hermes_config = (
                     "platform_toolsets:\n"
-                    "  api_server: [terminal, file]\n"
+                    "  api_server: []\n"
                     "approvals:\n"
                     "  mode: manual\n"
                     "agent:\n"
