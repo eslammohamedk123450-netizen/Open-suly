@@ -197,11 +197,26 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
             raise RuntimeError("engine_runtime_identity_lease_lost")
     except Exception as exc:
         try:
-            runtime_broker.release(runtime_lease)
+            released = runtime_broker.release(runtime_lease)
         except Exception:
-            logger.warning("Hermes runtime cleanup failed after identity persistence refusal")
-        run_store.finish(run_id, step, "failed", "hermes_runtime_identity_persist_failed")
+            released = False
+        if released is True:
+            run_store.finish(run_id, step, "failed", "hermes_runtime_identity_persist_failed")
+        else:
+            # Leave the engine run open: the task-step transition trigger will move
+            # it to stop_pending so the reconciler can recover and release this runtime.
+            logger.warning("Hermes runtime cleanup remains pending after identity persistence refusal")
         raise RuntimeError("hermes_runtime_identity_persist_failed") from exc
+
+    def release_runtime() -> bool:
+        try:
+            released = runtime_broker.release(runtime_lease)
+            if released is True:
+                return True
+        except Exception:
+            pass
+        logger.warning("Hermes task runtime release was not confirmed for attempt %s", run_id)
+        return False
 
     try:
         registry = build_engine_registry(
@@ -214,35 +229,31 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
             runtime_lease=runtime_lease,
         )
         manager = build_agent_manager(registry)
-        try:
-            route = manager.route("general-agent", "agent.general")
-            selected_engine = route.engines[0]
-        except (ValueError, RuntimeError):
-            run_store.finish(run_id, step, "failed", "agent_route_unavailable")
-            raise
-
-        try:
-            result = registry.execute(selected_engine.engine_id, request)
-        except HermesAgentCancelled:
+        route = manager.route("general-agent", "agent.general")
+        selected_engine = route.engines[0]
+        result = registry.execute(selected_engine.engine_id, request)
+    except HermesAgentCancelled:
+        if release_runtime():
             run_store.finish(run_id, step, "cancelled")
-            raise
-        except Exception:
+        # If release is uncertain, leave the run open; the step transition queues cleanup.
+        raise
+    except Exception:
+        if release_runtime():
             run_store.finish(run_id, step, "failed", "engine_execution_failed")
-            raise
-        if not run_store.finish(run_id, step, "succeeded"):
-            raise RuntimeError("engine_run_lease_lost")
-        return {
-            "operation": "hermes.agent.turn",
-            "engine": result.output["engine"],
-            "content": result.output["content"],
-        }
-    finally:
-        try:
-            released = runtime_broker.release(runtime_lease)
-            if not released:
-                logger.warning("Hermes task runtime release was not confirmed for attempt %s", run_id)
-        except Exception:
-            logger.warning("Hermes task runtime cleanup failed for attempt %s", run_id)
+        # If release is uncertain, leave the run open; the step transition queues cleanup.
+        raise
+
+    if not release_runtime():
+        # Do not mark this attempt successful while its process tree may still exist.
+        # The worker will fail the task step; the DB trigger moves this run to stop_pending.
+        raise RuntimeError("hermes_runtime_cleanup_pending")
+    if not run_store.finish(run_id, step, "succeeded"):
+        raise RuntimeError("engine_run_lease_lost")
+    return {
+        "operation": "hermes.agent.turn",
+        "engine": result.output["engine"],
+        "content": result.output["content"],
+    }
 
 
 def dispatch_cancel_aware(
