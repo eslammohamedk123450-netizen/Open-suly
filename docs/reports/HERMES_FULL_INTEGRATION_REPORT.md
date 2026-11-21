@@ -451,3 +451,33 @@ A lifecycle review found that the Hermes worker previously marked an engine run 
 `engine_runs.status = succeeded` is now written only after the worker receives an affirmative runtime release result. If runtime teardown is uncertain, the engine run remains eligible for database-triggered `stop_pending` reconciliation instead of being prematurely finalized.
 
 The overall integration remains **IN PROGRESS**. Runtime release semantics have not been tested against a deployed provisioner.
+
+
+## 18. Execution checkpoint 09 — subagent progress reaches the SULY task UI
+
+### Implemented
+
+- The owner-scoped task detail endpoint now selects and returns the allow-listed `engine_run_events.metadata` JSON field.
+- The client event type includes a metadata map.
+- The task details screen renders bounded subagent identifiers, lifecycle status, task index/count, depth, tool count, and duration for `subagent.*` events.
+- It does not display child goals, summaries, prompts, reasoning, tool arguments, or output content.
+- Added an API regression fixture asserting the owner-scoped task response includes the safe subagent metadata.
+
+### Verification
+
+- Platform CI API tests at commit `585b408420ad97b23d76065d09e54ff60dcf280b`: **663 passed, 5 warnings**.
+- Repository baseline checks for that commit: **passed**.
+- Client typecheck/web export was still running when this checkpoint was recorded.
+- This is UI visibility for upstream Hermes child lifecycle events; it does not implement SULY-owned child task records or independent child budgets/cancellation.
+
+### Updated capability state
+
+| Capability | Updated status |
+|---|---|
+| Hermes subagent event reduction | Implemented with allow-list; CI passed |
+| Subagent metadata persistence | Implemented with SQL constraints; migration apply pending |
+| Owner-scoped task API metadata | Implemented; API CI passed |
+| Client subagent lifecycle display | Implemented; client CI pending |
+| SULY-owned delegation/task graph per child | Not implemented |
+
+The overall integration remains **IN PROGRESS**.
