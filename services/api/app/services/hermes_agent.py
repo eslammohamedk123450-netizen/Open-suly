@@ -44,14 +44,58 @@ _SSE_EVENT_NAMES = frozenset({
 })
 
 
-def _safe_run_event(payload: object, expected_run_id: str) -> dict[str, str | int | float] | None:
+def _safe_run_event(payload: object, expected_run_id: str) -> dict[str, object] | None:
     """Return metadata-only progress; never forward previews, prompts, or tool output."""
     if not isinstance(payload, dict) or payload.get("run_id") != expected_run_id:
         return None
     name = payload.get("event")
     if not isinstance(name, str) or name not in _SSE_EVENT_NAMES:
         return None
-    summary: dict[str, str | int | float] = {"event": name}
+    summary: dict[str, object] = {"event": name}
+    if name in {"subagent.start", "subagent.complete"}:
+        metadata: dict[str, object] = {}
+        identifier_fields = ("subagent_id", "delegation_id", "parent_id", "child_session_id")
+        for field in identifier_fields:
+            value = payload.get(field)
+            if value is None:
+                continue
+            if (
+                not isinstance(value, str)
+                or not 1 <= len(value) <= 128
+                or not value.isascii()
+                or any(not (ch.isalnum() or ch in "_-") for ch in value)
+            ):
+                return None
+            metadata[field] = value
+        if "subagent_id" not in metadata:
+            return None
+        status = payload.get("status")
+        if status is not None:
+            if not isinstance(status, str) or status not in {
+                "started", "running", "completed", "failed", "cancelled"
+            }:
+                return None
+            metadata["status"] = status
+        for field in (
+            "task_index", "task_count", "depth", "tool_count",
+            "input_tokens", "output_tokens",
+        ):
+            value = payload.get(field)
+            if value is None:
+                continue
+            if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 1_000_000_000:
+                return None
+            metadata[field] = value
+        duration = payload.get("duration_seconds")
+        if duration is not None:
+            if (
+                isinstance(duration, bool)
+                or not isinstance(duration, (int, float))
+                or not 0 <= duration <= 86_400
+            ):
+                return None
+            metadata["duration_seconds"] = float(duration)
+        summary["metadata"] = metadata
     if name in {"approval.request", "approval.responded"}:
         request_id = payload.get("request_id")
         if not (
@@ -81,7 +125,7 @@ async def _consume_run_events(
     base_url: str,
     run_id: str,
     headers: dict[str, str],
-    callback: Callable[[dict[str, str | int | float]], None],
+    callback: Callable[[dict[str, object]], None],
 ) -> None:
     """Consume Hermes SSE as a best-effort metadata-only progress channel."""
     try:
@@ -180,7 +224,7 @@ def run_agent_turn(
     cancel_event: Event | None = None,
     idempotency_key: str | None = None,
     on_run_started: Callable[[str], bool] | None = None,
-    on_event: Callable[[dict[str, str | int | float]], bool | None] | None = None,
+    on_event: Callable[[dict[str, object]], bool | None] | None = None,
     runtime_lease: RuntimeLease | None = None,
     task_id: str | None = None,
     engine_run_id: str | None = None,
