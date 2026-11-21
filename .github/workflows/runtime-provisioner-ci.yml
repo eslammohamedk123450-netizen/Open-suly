@@ -1,0 +1,48 @@
+name: Runtime Provisioner CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/runtime-provisioner/**"
+      - "engines/hermes/**"
+      - ".github/workflows/runtime-provisioner-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provisioner:
+    name: Isolated runtime provisioner tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install provisioner dependencies
+        working-directory: services/runtime-provisioner
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+
+      - name: Compile provisioner
+        working-directory: services/runtime-provisioner
+        env:
+          PYTHONPATH: .
+        run: python -m compileall -q app tests
+
+      - name: Run isolated lifecycle and gateway tests
+        working-directory: services/runtime-provisioner
+        env:
+          PYTHONPATH: .
+        run: python -m pytest -q tests
+
+      - name: Report integration boundary
+        run: |
+          echo "Provisioner tests use fake Docker clients; they do not prove real host, firewall, TLS, image startup, or provider egress isolation."
