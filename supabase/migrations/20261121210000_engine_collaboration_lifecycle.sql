@@ -70,6 +70,7 @@ begin
      or p_max_parallel_children is null or p_max_parallel_children not between 1 and 2
      or p_max_parallel_children > p_max_child_tasks
      or p_max_runtime_seconds is null or p_max_runtime_seconds not between 1 and 1800
+     or (p_target_engine = 'hermes-agent' and p_max_runtime_seconds > 300)
      or p_max_input_bytes is null or p_max_input_bytes not between 1 and 64000 then
     raise exception 'collaboration_request_invalid' using errcode = '22023';
   end if;
@@ -341,11 +342,15 @@ begin
     v_operation := 'opencode.task.run';
     v_step_input := jsonb_build_object(
       'operation',v_operation,'project_id',v_parent.project_id,
-      'prompt',v_prompt,'title',v_title
+      'prompt',v_prompt,'title',v_title,
+      'runtime_budget_seconds',v_handoff.max_runtime_seconds
     );
   elsif v_handoff.target_engine = 'hermes-agent' then
     v_operation := 'hermes.agent.turn';
-    v_step_input := jsonb_build_object('operation',v_operation,'prompt',v_prompt);
+    v_step_input := jsonb_build_object(
+      'operation',v_operation,'prompt',v_prompt,
+      'runtime_budget_seconds',v_handoff.max_runtime_seconds
+    );
   else
     raise exception 'collaboration_target_engine_not_supported' using errcode = '22023';
   end if;
