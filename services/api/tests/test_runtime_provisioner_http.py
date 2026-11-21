@@ -173,3 +173,31 @@ def test_recover_returns_stable_task_runtime_lease():
     assert seen["path"] == f"/v1/runtimes/{runtime}/recover"
     assert '"task_id":"' + task + '"' in seen["body"]
     assert '"engine_run_id":"' + run + '"' in seen["body"]
+
+
+
+def test_recover_supports_hermes_task_runtime_identity():
+    task, run, runtime = str(uuid4()), str(uuid4()), str(uuid4())
+    seen = {}
+
+    def handler(request):
+        seen["body"] = request.read().decode()
+        return httpx.Response(200, json={
+            "runtime_id": runtime,
+            "task_id": task,
+            "engine_run_id": run,
+            "engine_id": "hermes-agent",
+            "base_url": ORIGIN,
+            "gateway_path": f"/v1/runtime-gateway/{runtime}",
+            "access_token": "h" * 48,
+            "expires_at": time() + 600,
+        })
+
+    client = provider(handler)
+    try:
+        lease = client.recover(runtime, task, run, engine_id="hermes-agent")
+    finally:
+        client.close()
+
+    assert lease.engine_id == "hermes-agent"
+    assert '"engine_id":"hermes-agent"' in seen["body"]
