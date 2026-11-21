@@ -481,3 +481,41 @@ The overall integration remains **IN PROGRESS**. Runtime release semantics have 
 | SULY-owned delegation/task graph per child | Not implemented |
 
 The overall integration remains **IN PROGRESS**.
+
+
+## 19. Execution checkpoint 10 — SULY conversation continuity for Hermes tasks
+
+### Implemented
+
+- Added optional `tasks.conversation_id` with a composite foreign key to `conversations(id, user_id)`; deleting a conversation clears only the task's context link and does not delete the task.
+- The task creation API verifies that the selected conversation belongs to the authenticated user before persisting the link.
+- The conversation screen now has a direct handoff to the Agent screen, carrying its conversation ID. The Agent screen defaults to Hermes for this handoff.
+- The client includes the conversation ID when creating the durable task.
+- Before a Hermes task begins, the worker loads up to 30 prior user/assistant messages from that exact owner-matched conversation, bounded by the task creation timestamp.
+- The worker excludes system/tool messages, caps each included message, caps total history context at 8,000 characters, and keeps the full current task request within the Hermes prompt limit.
+- The prompt labels conversation history as context, not system/developer instructions. If a real database read fails, the task fails closed instead of silently claiming that context was supplied.
+
+### Session and memory boundary
+
+- SULY's conversation ID is the logical session key. Each task still receives a fresh isolated Hermes runtime, so task process state and filesystem are not shared across attempts.
+- Conversation history is copied as bounded context into each new task; this is not a persistent Hermes session and does not preserve an interactive Hermes process.
+- This adds short-term conversation continuity only. A separate user/project memory store, memory extraction/retention controls, and memory injection policy remain unimplemented.
+
+### Verification
+
+- Platform CI API tests at commit `dd31092bc2aa699827fa250a7875f20caeb9a1c4`: **665 passed, 5 warnings**.
+- Repository baseline checks for that commit: **passed**.
+- Client typecheck/web export was still running when this checkpoint was recorded.
+- The new migration is committed but has not been applied to the live Supabase project.
+
+### Updated capability state
+
+| Capability | Updated status |
+|---|---|
+| Conversation-to-Hermes handoff | Client/API code implemented; client CI pending |
+| Owner-scoped task/conversation link | API + additive migration implemented; DB apply pending |
+| Bounded conversation context | Worker implementation + tests; API CI passed |
+| Persistent Hermes session | Not implemented; fresh runtime per task is intentional |
+| Long-term user/project memory | Not implemented |
+
+The overall integration remains **IN PROGRESS**.
