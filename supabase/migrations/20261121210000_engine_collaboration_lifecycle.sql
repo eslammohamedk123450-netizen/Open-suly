@@ -539,7 +539,7 @@ returns trigger
 language plpgsql
 security invoker
 set search_path = ''
-as $
+as $$
 declare
   v_pending record;
   v_seq bigint;
@@ -582,7 +582,7 @@ begin
   end if;
   return new;
 end;
-$;
+$$;
 
 drop trigger if exists tasks_cancel_engine_collaboration_children on public.tasks;
 create trigger tasks_cancel_engine_collaboration_children
