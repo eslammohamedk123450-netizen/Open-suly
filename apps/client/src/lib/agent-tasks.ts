@@ -49,6 +49,7 @@ export type AgentEngineEvent = {
   event_timestamp?: number | null;
   approval_request_id?: string | null;
   approval_choice?: "once" | "deny" | null;
+  metadata?: Record<string, unknown>;
   received_at: string;
 };
 
