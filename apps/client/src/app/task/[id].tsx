@@ -100,6 +100,66 @@ export default function TaskDetailsScreen() {
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
+    const ids = (snapshot?.steps ?? [])
+      .map((step) => step.output?.change_set_id)
+      .filter((value): value is string => typeof value === "string" && !!value);
+    for (const changeSetId of ids) {
+      if (changeSets[changeSetId] || loadingChangeSets.current.has(changeSetId)) continue;
+      loadingChangeSets.current.add(changeSetId);
+      setChangeSets((current) => ({ ...current, [changeSetId]: { loading: true } }));
+      void getOpenCodeChangeSet(changeSetId)
+        .then((item) => setChangeSets((current) => ({ ...current, [changeSetId]: { item } })))
+        .catch((error) => setChangeSets((current) => ({
+          ...current, [changeSetId]: { error: error instanceof Error ? error.message : "تعذر تحميل تغييرات OpenCode." },
+        })))
+        .finally(() => loadingChangeSets.current.delete(changeSetId));
+    }
+  }, [snapshot?.steps, changeSets]);
+
+  const reloadChangeSet = async (changeSetId: string) => {
+    if (loadingChangeSets.current.has(changeSetId)) return;
+    loadingChangeSets.current.add(changeSetId);
+    setChangeSets((current) => ({ ...current, [changeSetId]: { loading: true } }));
+    try {
+      const item = await getOpenCodeChangeSet(changeSetId);
+      setChangeSets((current) => ({ ...current, [changeSetId]: { item } }));
+    } catch (error) {
+      setChangeSets((current) => ({
+        ...current, [changeSetId]: { error: error instanceof Error ? error.message : "تعذر تحميل تغييرات OpenCode." },
+      }));
+    } finally {
+      loadingChangeSets.current.delete(changeSetId);
+    }
+  };
+
+  const decideChangeSet = async (changeSetId: string, decision: "apply" | "reject") => {
+    if (changeSetBusyId) return;
+    setChangeSetBusyId(changeSetId);
+    setNotice("");
+    setActionMessage("");
+    try {
+      await decideOpenCodeChangeSet(changeSetId, decision);
+      setChangeSets((current) => ({
+        ...current,
+        [changeSetId]: {
+          item: current[changeSetId]?.item
+            ? { ...current[changeSetId]!.item!, status: decision === "apply" ? "applied" : "rejected" }
+            : current[changeSetId]?.item,
+        },
+      }));
+      await load();
+      setActionMessage(decision === "apply"
+        ? "تم تطبيق التغييرات بعد التحقق من إصدار مساحة المشروع."
+        : "تم رفض تغييرات OpenCode وإغلاق مجموعة التغييرات.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "تعذر اتخاذ قرار مجموعة التغييرات.");
+      await reloadChangeSet(changeSetId);
+    } finally {
+      setChangeSetBusyId(null);
+    }
+  };
+
+  useEffect(() => {
     if (!snapshot || terminalStatuses.has(snapshot.task.status)) return;
     const timer = setInterval(() => { void load(); }, 2500);
     return () => clearInterval(timer);
@@ -273,6 +333,41 @@ export default function TaskDetailsScreen() {
                   </View>
                   <Text style={styles.muted}>المحاولات: {step.attempt_count} من {step.max_attempts}</Text>
                   {!!step.error_message && <Text style={styles.error}>{step.error_message}</Text>}
+                  {typeof step.output?.change_set_id === "string" && (
+                    <View style={styles.reviewBox}>
+                      <Text style={styles.sectionTitle}>مراجعة تغييرات OpenCode</Text>
+                      {changeSets[step.output.change_set_id]?.loading ? (
+                        <View style={styles.inlineLoading}><ActivityIndicator color={colors.gold} /><Text style={styles.muted}>جارٍ تحميل ملفات التغيير...</Text></View>
+                      ) : changeSets[step.output.change_set_id]?.error ? (
+                        <View style={styles.reviewActions}>
+                          <Text style={styles.error}>{changeSets[step.output.change_set_id]?.error}</Text>
+                          <Pressable style={styles.detailsButton} onPress={() => void reloadChangeSet(step.output!.change_set_id as string)}><Text style={styles.steerText}>إعادة التحميل</Text></Pressable>
+                        </View>
+                      ) : changeSets[step.output.change_set_id]?.item ? (
+                        <>
+                          <Text style={styles.muted}>الحالة: {changeSets[step.output.change_set_id]!.item!.status} · {changeSets[step.output.change_set_id]!.item!.changes.length} ملف</Text>
+                          {changeSets[step.output.change_set_id]!.item!.changes.map((change, changeIndex) => (
+                            <View key={change.path + change.action + changeIndex} style={styles.changeCard}>
+                              <Text style={styles.changePath}>{change.action === "create" ? "إنشاء" : change.action === "update" ? "تعديل" : "حذف"}: {change.path}</Text>
+                              <Text selectable style={styles.changeDiff}>{change.diff.slice(0, 8000)}{change.diff.length > 8000 ? "\n… تم اختصار المعاينة (8KB)." : ""}</Text>
+                            </View>
+                          ))}
+                          {changeSets[step.output.change_set_id]!.item!.status === "review_ready" && (
+                            <View style={styles.reviewActions}>
+                              <Pressable style={styles.applyButton} onPress={() => void decideChangeSet(step.output!.change_set_id as string, "apply")} disabled={changeSetBusyId !== null}>
+                                {changeSetBusyId === step.output.change_set_id ? <ActivityIndicator color={colors.background} /> : <Text style={styles.applyText}>اعتماد وتطبيق التغييرات</Text>}
+                              </Pressable>
+                              <Pressable style={styles.denyButton} onPress={() => void decideChangeSet(step.output!.change_set_id as string, "reject")} disabled={changeSetBusyId !== null}>
+                                <Text style={styles.denyText}>رفض التغييرات</Text>
+                              </Pressable>
+                            </View>
+                          )}
+                        </>
+                      ) : (
+                        <Text style={styles.muted}>لم تُرجع مجموعة تغييرات للمراجعة.</Text>
+                      )}
+                    </View>
+                  )}
                   {step.output && (
                     <>
                       <Text style={styles.sectionTitle}>الناتج</Text>
@@ -433,6 +528,14 @@ const styles = StyleSheet.create({
   error: { color: "#E88787", fontSize: 12, textAlign: "right", lineHeight: 20 },
   stepHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   stepTitle: { color: colors.text, fontSize: 14, fontWeight: "700", textAlign: "right", flex: 1 },
+  reviewBox: { marginTop: 8, padding: 12, borderRadius: 12, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.goldDark, gap: 10 },
+  inlineLoading: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 8 },
+  changeCard: { borderWidth: 1, borderColor: colors.border, borderRadius: 9, overflow: "hidden", gap: 6 },
+  changePath: { color: colors.gold, fontSize: 11, fontWeight: "700", textAlign: "right", padding: 8 },
+  changeDiff: { color: colors.text, fontSize: 10, lineHeight: 16, textAlign: "left", backgroundColor: colors.surface, padding: 9, borderRadius: 6 },
+  reviewActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "flex-start" },
+  applyButton: { minHeight: 40, borderRadius: 9, backgroundColor: colors.gold, paddingHorizontal: 14, alignItems: "center", justifyContent: "center" },
+  applyText: { color: colors.background, fontSize: 12, fontWeight: "800" },
   output: { color: colors.text, fontSize: 11, lineHeight: 18, textAlign: "left", backgroundColor: colors.background, padding: 10, borderRadius: 8, overflow: "hidden" },
   cancelButton: { borderWidth: 1, borderColor: "#8D4444", borderRadius: 10, padding: 12, alignItems: "center", marginTop: 8 },
   cancelText: { color: "#E88787", fontSize: 13, fontWeight: "700" },
