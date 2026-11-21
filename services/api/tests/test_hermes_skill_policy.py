@@ -10,12 +10,13 @@ REVISION = "a" * 40
 
 
 def test_skill_package_is_pinned_bounded_and_digest_verified():
-    raw = b"name: helper\n"
+    raw = b"name: helper\\n"
     result = validate_skill_package(
         name="helper", content=raw, source_revision=REVISION, license_id="MIT"
     )
     assert result["content_sha256"] == hashlib.sha256(raw).hexdigest()
     assert result["content_bytes"] == len(raw)
+    assert result["content_utf8"] == raw.decode("utf-8")
     assert result["enabled"] is False
     assert result["status"] == "pending"
 
@@ -24,7 +25,7 @@ def test_skill_package_is_pinned_bounded_and_digest_verified():
     ({"name": "../escape"}, "name_invalid"),
     ({"source_revision": "main"}, "revision_invalid"),
     ({"license_id": "UNKNOWN"}, "license_not_approved"),
-    ({"content": b"\xff"}, "must_be_utf8"),
+    ({"content": b"\\xff"}, "must_be_utf8"),
     ({"content": b""}, "size_invalid"),
 ])
 def test_skill_package_rejects_untrusted_metadata(kwargs, error):
@@ -45,7 +46,7 @@ def test_skill_package_rejects_oversized_content():
         )
 
 
-def test_skill_store_never_activates_candidate_during_registration():
+def test_skill_store_persists_exact_bytes_without_activating_candidate():
     class Query:
         def upsert(self, payload, **_kwargs):
             self.payload = payload
@@ -64,5 +65,17 @@ def test_skill_store_never_activates_candidate_during_registration():
     package.pop("status")
     package.pop("enabled")
     saved = store.register_candidate(user_id=str(uuid4()), package=package)
+    assert client.query.payload["content_utf8"] == "skill"
     assert saved["enabled"] is False
     assert saved["status"] == "pending"
+
+
+def test_skill_store_rejects_content_digest_tampering():
+    package = validate_skill_package(
+        name="helper", content=b"original", source_revision=REVISION, license_id="MIT"
+    )
+    package["content_utf8"] = "tampered"
+    package.pop("status")
+    package.pop("enabled")
+    with pytest.raises(ValueError, match="digest_mismatch"):
+        HermesSkillApprovalStore._validate_package(package)
