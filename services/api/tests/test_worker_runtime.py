@@ -427,7 +427,7 @@ def test_hermes_agent_operation_is_registered_with_approval_and_bounded_fields()
     assert definition is not None
     assert definition.permission_scope == "agent.hermes.run"
     assert definition.requires_approval is True
-    assert definition.allowed_input_fields == frozenset({"prompt"})
+    assert definition.allowed_input_fields == frozenset({"prompt", "runtime_budget_seconds"})
     assert definition.required_input_fields == frozenset({"prompt"})
     assert definition.max_input_bytes <= 20_100
     assert definition.max_output_bytes <= 52_000
@@ -1089,3 +1089,62 @@ def test_opencode_worker_handler_returns_review_ids_and_finishes_engine_run(monk
         "requires_review": True,
     }
     assert finishes == [(engine_run_id, "succeeded", None)]
+
+
+def test_hermes_delegated_runtime_budget_reaches_native_runs_adapter(monkeypatch):
+    import app.worker_runtime as runtime_module
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
+        hermes_agent_enabled=True,
+        hermes_agent_isolation_confirmed=True,
+        hermes_agent_base_url="http://hermes:8642",
+        hermes_agent_api_key=object(),
+        hermes_agent_timeout_seconds=90.0,
+    ))
+    monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: object())
+    monkeypatch.setattr(runtime_module, "EngineRunStore", FakeEngineRunStore)
+
+    class ApprovedScopes:
+        def active_scopes(self, _user_id):
+            return frozenset({"agent.hermes.run"})
+
+    seen = {}
+    def fake_run(prompt, **kwargs):
+        seen.update(kwargs)
+        return {"engine": "hermes-agent", "content": "bounded"}
+
+    monkeypatch.setattr(runtime_module, "run_agent_turn", fake_run)
+    runtime_module.hermes_agent_turn(
+        make_step({
+            "operation": "hermes.agent.turn",
+            "prompt": "bounded delegated task",
+            "runtime_budget_seconds": 120,
+        }),
+        context=runtime_module.ToolExecutionContext(
+            approved_scopes=frozenset({"agent.hermes.run"}),
+            runtime_broker=FakeRuntimeBroker(),
+            engine_run_store=FakeEngineRunStore(),
+        ),
+    )
+    assert seen["timeout_seconds"] == 120
+
+
+def test_hermes_rejects_runtime_budget_above_native_runs_limit():
+    import app.worker_runtime as runtime_module
+    from types import SimpleNamespace
+
+    with pytest.raises(ValueError, match="hermes_runtime_budget_invalid"):
+        runtime_module.hermes_agent_turn(
+            make_step({
+                "operation": "hermes.agent.turn",
+                "prompt": "unsafe budget",
+                "runtime_budget_seconds": 301,
+            }),
+            context=SimpleNamespace(
+                runtime_broker=FakeRuntimeBroker(),
+                engine_run_store=FakeEngineRunStore(),
+                cancel_event=None,
+            ),
+        )
