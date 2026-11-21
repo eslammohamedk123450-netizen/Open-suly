@@ -89,6 +89,7 @@ def _raise_collaboration_error(exc: Exception) -> None:
     if any(code in message for code in (
         "request_invalid", "payload_invalid", "title_invalid", "source_output_invalid",
         "capability_not_supported", "project_required", "depth_exceeded",
+        "hermes_runtime_budget_exceeds_limit",
     )):
         raise HTTPException(status_code=422, detail="The collaboration request is invalid or unsupported.") from exc
     raise HTTPException(status_code=503, detail="Collaboration operation failed.") from exc
@@ -103,6 +104,11 @@ def create_engine_handoff(
 ) -> dict[str, Any]:
     """Create a pending handoff from one running engine attempt; no child runs before approval."""
     client = _admin_client()
+    if request.target_engine == "hermes-agent" and request.max_runtime_seconds > 300:
+        raise HTTPException(
+            status_code=422,
+            detail="Hermes delegated runtime budget cannot exceed 300 seconds.",
+        )
     prompt = request.prompt.strip()
     if not prompt:
         raise HTTPException(status_code=422, detail="Delegated prompt cannot be blank.")
