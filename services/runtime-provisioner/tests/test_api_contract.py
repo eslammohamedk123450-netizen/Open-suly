@@ -38,6 +38,25 @@ def test_create_rejects_other_engines():
     assert response.status_code == 422
 
 
+def test_create_requires_hermes_profile_and_rejects_opencode_profile():
+    headers = {"Authorization": "Bearer " + "t" * 48}
+    hermes_without_profile = client.post("/v1/runtimes", headers=headers, json={
+        "task_id": "00000000-0000-4000-8000-000000000001",
+        "engine_run_id": "00000000-0000-4000-8000-000000000002",
+        "engine_id": "hermes-agent",
+    })
+    assert hermes_without_profile.status_code == 422
+    assert hermes_without_profile.json()["detail"] == "runtime_profile_required"
+    opencode_with_profile = client.post("/v1/runtimes", headers=headers, json={
+        "task_id": "00000000-0000-4000-8000-000000000001",
+        "engine_run_id": "00000000-0000-4000-8000-000000000002",
+        "engine_id": "opencode",
+        "runtime_profile": "suly-hermes-task-v1",
+    })
+    assert opencode_with_profile.status_code == 422
+    assert opencode_with_profile.json()["detail"] == "runtime_profile_not_applicable"
+
+
 
 def test_gateway_route_allowlist_is_task_scoped_and_rejects_arbitrary_routes():
     from app.main import _allowed_opencode_route
@@ -326,3 +345,55 @@ def test_create_runtime_rejects_unknown_request_fields():
         },
     )
     assert response.status_code == 422
+
+
+
+def test_hermes_gateway_allowlist_only_exposes_runs_and_readonly_catalog():
+    from app.main import _allowed_hermes_route
+
+    assert _allowed_hermes_route("POST", "/v1/runs")
+    assert _allowed_hermes_route("GET", "/v1/runs/run_abc123")
+    assert _allowed_hermes_route("GET", "/v1/runs/run_abc123/events")
+    assert _allowed_hermes_route("POST", "/v1/runs/run_abc123/stop")
+    assert _allowed_hermes_route("POST", "/v1/runs/run_abc123/steer")
+    assert _allowed_hermes_route("POST", "/v1/runs/run_abc123/approval")
+    assert _allowed_hermes_route("GET", "/v1/skills")
+    assert _allowed_hermes_route("GET", "/v1/toolsets")
+    assert not _allowed_hermes_route("GET", "/api/sessions")
+    assert not _allowed_hermes_route("POST", "/api/sessions")
+    assert not _allowed_hermes_route("POST", "/v1/runs/run_abc123/resolve-unknown")
+    assert not _allowed_hermes_route("POST", "/v1/runs/run_abc123/approval/always")
+    assert not _allowed_hermes_route("GET", "/v1/runs/run_abc123/../../etc/passwd")
+
+
+def test_runtime_manager_factory_is_distinct_for_each_engine(monkeypatch):
+    import app.main as runtime_api
+
+    created = []
+    class FakeManager:
+        def __init__(self, *, image, workspace_root):
+            self.image = image
+            created.append(self)
+
+    monkeypatch.setattr(runtime_api, "DockerTaskRuntimeManager", FakeManager)
+    monkeypatch.setattr(runtime_api, "IMAGE", "registry.example/opencode@sha256:" + "a" * 64)
+    monkeypatch.setattr(runtime_api, "HERMES_IMAGE", "registry.example/hermes@sha256:" + "b" * 64)
+    monkeypatch.setattr(runtime_api, "_runtime_managers", {})
+
+    opencode = runtime_api._get_manager("opencode")
+    hermes = runtime_api._get_manager("hermes-agent")
+    assert opencode is runtime_api._get_manager("opencode")
+    assert hermes is runtime_api._get_manager("hermes-agent")
+    assert opencode is not hermes
+    assert opencode.image.endswith("a" * 64)
+    assert hermes.image.endswith("b" * 64)
+
+
+def test_hermes_manager_requires_digest_pinned_image(monkeypatch):
+    import app.main as runtime_api
+    import pytest
+
+    monkeypatch.setattr(runtime_api, "HERMES_IMAGE", "registry.example/hermes:latest")
+    monkeypatch.setattr(runtime_api, "_runtime_managers", {})
+    with pytest.raises(RuntimeError, match="digest-pinned"):
+        runtime_api._get_manager("hermes-agent")

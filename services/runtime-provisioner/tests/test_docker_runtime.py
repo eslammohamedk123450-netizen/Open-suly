@@ -15,9 +15,9 @@ class FakeNetwork:
 
 
 class FakeContainer:
-    def __init__(self, name, labels, ports=None):
+    def __init__(self, name, labels, ports=None, container_port="4096/tcp"):
         self.name, self.id, self.labels = name, "container-id", labels
-        self.attrs = {"NetworkSettings": {"Ports": {"4096/tcp": ports or [{"HostIp": "127.0.0.1", "HostPort": "43123"}]}}}
+        self.attrs = {"NetworkSettings": {"Ports": {container_port: ports or [{"HostIp": "127.0.0.1", "HostPort": "43123"}]}}}
         self.removed = False
     def reload(self): pass
     def remove(self, **kwargs): self.removed = True
@@ -35,7 +35,8 @@ class FakeContainers:
     def __init__(self): self.items = {}; self.kwargs = None
     def run(self, image, **kwargs):
         self.kwargs = kwargs
-        value = FakeContainer(kwargs["name"], kwargs["labels"])
+        container_port = next(iter(kwargs["ports"]))
+        value = FakeContainer(kwargs["name"], kwargs["labels"], container_port=container_port)
         self.items[value.name] = value
         return value
     def get(self, name): return self.items[name]
@@ -170,3 +171,59 @@ def test_network_egress_false_values_keep_internal_network(tmp_path, monkeypatch
     mgr, fake = manager(tmp_path)
     mgr.create(task_id=str(uuid4()), engine_run_id=str(uuid4()), engine_id="opencode", files=[])
     assert fake.networks.kwargs["internal"] is True
+
+
+
+def test_hermes_runtime_requires_exact_profile_and_uses_separate_locked_down_container(tmp_path):
+    mgr, fake = manager(tmp_path)
+    task, run = str(uuid4()), str(uuid4())
+    with pytest.raises(ValueError, match="runtime_profile_required"):
+        mgr.create(task_id=task, engine_run_id=run, engine_id="hermes-agent", files=[])
+
+    result = mgr.create(
+        task_id=task,
+        engine_run_id=run,
+        engine_id="hermes-agent",
+        runtime_profile="suly-hermes-task-v1",
+        files=[{"path": "src/app.py", "content": "print('hermes')"}],
+    )
+    options = fake.containers.kwargs
+    assert options["command"] == ["gateway", "run"]
+    assert options["ports"] == {"8642/tcp": ("127.0.0.1", None)}
+    assert options["environment"]["API_SERVER_ENABLED"] == "true"
+    assert options["environment"]["API_SERVER_HOST"] == "0.0.0.0"
+    assert options["environment"]["API_SERVER_PORT"] == "8642"
+    assert options["environment"]["API_SERVER_KEY"] == result["access_token"]
+    assert options["environment"]["HERMES_HOME"] == "/opt/data"
+    assert options["cap_drop"] == ["ALL"]
+    assert options["privileged"] is False
+    assert options["read_only"] is True
+    assert fake.networks.kwargs["internal"] is True
+    assert result["runtime_profile"] == "suly-hermes-task-v1"
+    runtime_root = Path(result["workspace_path"])
+    assert (runtime_root / "workspace" / "src" / "app.py").read_text() == "print('hermes')"
+    profile = (runtime_root / "hermes_home" / "config.yaml").read_text()
+    assert "api_server: []" in profile
+    assert "memory_enabled: false" in profile
+    assert "orchestrator_enabled: false" in profile
+    assert Path(options["volumes"][str(runtime_root / "hermes_home")]["bind"]) == Path("/opt/data")
+
+
+def test_hermes_runtime_rejects_profile_on_opencode(tmp_path):
+    mgr, fake = manager(tmp_path)
+    with pytest.raises(ValueError, match="runtime_profile_not_applicable"):
+        mgr.create(
+            task_id=str(uuid4()), engine_run_id=str(uuid4()), engine_id="opencode",
+            runtime_profile="suly-hermes-task-v1", files=[],
+        )
+    assert not fake.containers.items
+
+
+def test_hermes_runtime_rejects_unknown_profile_before_docker(tmp_path):
+    mgr, fake = manager(tmp_path)
+    with pytest.raises(ValueError, match="runtime_profile_required"):
+        mgr.create(
+            task_id=str(uuid4()), engine_run_id=str(uuid4()), engine_id="hermes-agent",
+            runtime_profile="unrestricted", files=[],
+        )
+    assert not fake.containers.items

@@ -1,7 +1,7 @@
-"""Docker lifecycle primitives for one isolated OpenCode task attempt.
+"""Docker lifecycle primitives for one isolated SULY engine task attempt.
 
-This module is deliberately not imported by the public API. Run it only in the
-separate provisioner service, with a dedicated Docker daemon and host firewall.
+This module runs only inside the trusted runtime provisioner. Each attempt gets
+its own internal network, container, workspace, data directory and lease.
 """
 from __future__ import annotations
 
@@ -138,11 +138,24 @@ class DockerTaskRuntimeManager:
         self.limits.validate()
         self.client = client or docker.from_env()
 
-    def create(self, *, task_id: str, engine_run_id: str, engine_id: str, files: list[dict[str, Any]], access_token_factory: Callable[[str, str, str], str] | None = None) -> dict[str, Any]:
+    def create(
+        self,
+        *,
+        task_id: str,
+        engine_run_id: str,
+        engine_id: str,
+        files: list[dict[str, Any]],
+        runtime_profile: str | None = None,
+        access_token_factory: Callable[[str, str, str], str] | None = None,
+    ) -> dict[str, Any]:
         task_id = _canonical_uuid(task_id)
         run_id = _canonical_uuid(engine_run_id)
-        if not isinstance(engine_id, str) or not _ENGINE.fullmatch(engine_id) or engine_id != "opencode":
+        if engine_id not in {"opencode", "hermes-agent"}:
             raise ValueError("runtime_engine_not_allowed")
+        if engine_id == "hermes-agent" and runtime_profile != "suly-hermes-task-v1":
+            raise ValueError("runtime_profile_required")
+        if engine_id == "opencode" and runtime_profile is not None:
+            raise ValueError("runtime_profile_not_applicable")
         runtime_id = str(uuid4())
         token = (
             access_token_factory(runtime_id, task_id, run_id)
@@ -151,8 +164,44 @@ class DockerTaskRuntimeManager:
         )
         if not isinstance(token, str) or not re.fullmatch(r"[A-Za-z0-9._~+/-]{32,256}", token):
             raise ValueError("runtime_access_token_invalid")
-        workspace = Path(tempfile.mkdtemp(prefix=f"{runtime_id}-", dir=self.root))
-        os.chmod(workspace, 0o700)
+        runtime_root = Path(tempfile.mkdtemp(prefix=f"{runtime_id}-", dir=self.root))
+        os.chmod(runtime_root, 0o700)
+        workspace = runtime_root / "workspace" if engine_id == "hermes-agent" else runtime_root
+        workspace.mkdir(mode=0o700, exist_ok=True)
+        hermes_home = runtime_root / "hermes_home" if engine_id == "hermes-agent" else None
+        if hermes_home is not None:
+            hermes_home.mkdir(mode=0o700, exist_ok=True)
+            # The upstream API server reads this profile at process start. An
+            # explicit empty list is intentional: no terminal/browser/MCP/file
+            # toolsets are exposed until a reviewed SULY grant and egress proxy
+            # are implemented. Native memory and native delegation are off;
+            # SULY owns conversation context and future delegated child tasks.
+            hermes_config = (
+                "platform_toolsets:\n"
+                "  api_server: []\n"
+                "agent:\n"
+                "  disabled_toolsets: [terminal, browser, computer_use, file, web, mcp, delegate_task]\n"
+                "  environment_probe: false\n"
+                "terminal:\n"
+                "  cwd: /workspace\n"
+                "  env_passthrough: []\n"
+                "  client_env_passthrough: []\n"
+                "  docker_forward_env: []\n"
+                "  docker_env: {}\n"
+                "memory:\n"
+                "  memory_enabled: false\n"
+                "  user_profile_enabled: false\n"
+                "  write_approval: true\n"
+                "delegation:\n"
+                "  orchestrator_enabled: false\n"
+                "  max_spawn_depth: 1\n"
+                "  max_concurrent_children: 1\n"
+                "  oneshot_max_children: 0\n"
+            )
+            config_path = hermes_home / "config.yaml"
+            fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                stream.write(hermes_config)
         network = container = None
         labels = {
             f"{_LABEL_PREFIX}.id": runtime_id,
@@ -165,6 +214,40 @@ class DockerTaskRuntimeManager:
         }
         try:
             _safe_workspace(files, workspace, self.limits.workspace_bytes)
+            is_hermes = engine_id == "hermes-agent"
+            container_port = "8642/tcp" if is_hermes else "4096/tcp"
+            container_environment = (
+                {
+                    "API_SERVER_ENABLED": "true",
+                    "API_SERVER_KEY": token,
+                    "API_SERVER_HOST": "0.0.0.0",
+                    "API_SERVER_PORT": "8642",
+                    "API_SERVER_MODEL_NAME": "hermes-agent",
+                    "HERMES_HOME": "/opt/data",
+                }
+                if is_hermes
+                else {"OPENCODE_SERVER_PASSWORD": token, "OPENCODE_SERVER_USERNAME": "opencode"}
+            )
+            container_volumes = (
+                {
+                    str(workspace): {"bind": "/workspace", "mode": "rw"},
+                    str(hermes_home): {"bind": "/opt/data", "mode": "rw"},
+                }
+                if is_hermes
+                else {str(workspace): {"bind": "/workspace", "mode": "rw"}}
+            )
+            container_tmpfs = {
+                "/tmp": f"rw,noexec,nosuid,size={self.limits.tmpfs_bytes}",
+                "/var/tmp": f"rw,noexec,nosuid,size={self.limits.tmpfs_bytes}",
+            }
+            if is_hermes:
+                container_tmpfs["/opt/data/.cache"] = "rw,nosuid,nodev,size=128m,uid=10000,gid=10000"
+            else:
+                container_tmpfs.update({
+                    "/var/lib/opencode/config": "rw,nosuid,size=32m,uid=10001,gid=10001",
+                    "/var/lib/opencode/data": "rw,nosuid,size=128m,uid=10001,gid=10001",
+                    "/home/opencode/.cache": "rw,nosuid,size=128m,uid=10001,gid=10001",
+                })
             network = self.client.networks.create(
                 name=f"suly-{runtime_id}", driver="bridge",
                 # Always internal: no proxy or destination enforcement exists yet.
@@ -173,26 +256,21 @@ class DockerTaskRuntimeManager:
             )
             container = self.client.containers.run(
                 self.image,
+                command=["gateway", "run"] if is_hermes else None,
                 detach=True,
                 name=f"suly-{runtime_id}",
                 network=network.name,
                 labels=labels,
-                environment={"OPENCODE_SERVER_PASSWORD": token, "OPENCODE_SERVER_USERNAME": "opencode"},
-                volumes={str(workspace): {"bind": "/workspace", "mode": "rw"}},
+                environment=container_environment,
+                volumes=container_volumes,
                 working_dir="/workspace",
-                ports={"4096/tcp": ("127.0.0.1", None)},
+                ports={container_port: ("127.0.0.1", None)},
                 mem_limit=self.limits.memory_bytes,
                 memswap_limit=self.limits.memory_bytes,
                 nano_cpus=self.limits.nano_cpus,
                 pids_limit=self.limits.pids_limit,
                 read_only=True,
-                tmpfs={
-                    "/tmp": f"rw,noexec,nosuid,size={self.limits.tmpfs_bytes}",
-                    "/var/tmp": f"rw,noexec,nosuid,size={self.limits.tmpfs_bytes}",
-                    "/var/lib/opencode/config": "rw,nosuid,size=32m,uid=10001,gid=10001",
-                    "/var/lib/opencode/data": "rw,nosuid,size=128m,uid=10001,gid=10001",
-                    "/home/opencode/.cache": "rw,nosuid,size=128m,uid=10001,gid=10001",
-                },
+                tmpfs=container_tmpfs,
                 cap_drop=["ALL"],
                 security_opt=["no-new-privileges:true"],
                 privileged=False,
@@ -202,7 +280,7 @@ class DockerTaskRuntimeManager:
                 stdin_open=False,
             )
             container.reload()
-            port = container.attrs.get("NetworkSettings", {}).get("Ports", {}).get("4096/tcp") or []
+            port = container.attrs.get("NetworkSettings", {}).get("Ports", {}).get(container_port) or []
             if not port:
                 raise RuntimeErrorSafe("runtime_port_not_allocated")
             # Host port is loopback-only. A separately configured TLS gateway must
@@ -212,8 +290,9 @@ class DockerTaskRuntimeManager:
                 raise RuntimeErrorSafe("runtime_port_binding_not_loopback")
             return {
                 "runtime_id": runtime_id, "task_id": task_id, "engine_run_id": run_id,
-                "engine_id": engine_id, "container_id": container.id,
-                "network_id": network.id, "workspace_path": str(workspace),
+                "engine_id": engine_id, "runtime_profile": runtime_profile,
+                "container_id": container.id, "network_id": network.id,
+                "workspace_path": str(runtime_root),
                 "host_port": int(binding["HostPort"]), "access_token": token,
                 "expires_at": time.time() + self.limits.lifetime_seconds,
             }
@@ -224,7 +303,7 @@ class DockerTaskRuntimeManager:
             if network is not None:
                 try: network.remove()
                 except Exception: pass
-            shutil.rmtree(workspace, ignore_errors=True)
+            shutil.rmtree(runtime_root, ignore_errors=True)
             raise
 
     def cleanup_expired(self, *, now: int | None = None) -> int:

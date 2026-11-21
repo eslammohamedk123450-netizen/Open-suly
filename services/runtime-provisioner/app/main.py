@@ -1,4 +1,4 @@
-"""Private SULY runtime API and task-scoped OpenCode gateway.
+"""Private SULY runtime API for isolated OpenCode and Hermes task runtimes.
 
 Deploy behind TLS on a dedicated worker host. This service alone owns Docker access.
 """
@@ -32,6 +32,7 @@ DATABASE = os.environ.get("RUNTIME_DB_PATH", "/var/lib/suly-runtime/runtimes.sql
 SULY_TOKEN = os.environ.get("SULY_PROVISIONER_TOKEN", "")
 PUBLIC_GATEWAY_ORIGIN = os.environ.get("RUNTIME_GATEWAY_ORIGIN", "")
 IMAGE = os.environ.get("OPENCODE_RUNTIME_IMAGE", "")
+HERMES_IMAGE = os.environ.get("HERMES_RUNTIME_IMAGE", "")
 WORKSPACE_ROOT = os.environ.get("RUNTIME_WORKSPACE_ROOT", "/var/lib/suly-runtime/workspaces")
 MAX_RESULT_BYTES = 8 * 1024 * 1024
 MAX_RESULT_FILES = 500
@@ -40,6 +41,16 @@ _ID = re.compile(r"^[0-9a-f-]{36}$")
 _ALLOWED_PROXY = {
     ("GET", "/api/event"), ("GET", "/api/info"), ("POST", "/api/session"),
     ("GET", "/api/skill"), ("GET", "/api/provider"),
+}
+_HERMES_RUNTIME_PROFILE = "suly-hermes-task-v1"
+_HERMES_RUN_ID = r"[A-Za-z0-9_-]{1,128}"
+_HERMES_ALLOWED_ROUTES = {
+    ("GET", "/health"),
+    ("GET", "/v1/capabilities"),
+    ("GET", "/v1/models"),
+    ("GET", "/v1/skills"),
+    ("GET", "/v1/toolsets"),
+    ("POST", "/v1/runs"),
 }
 
 def _allowed_opencode_route(method: str, route: str) -> bool:
@@ -51,12 +62,26 @@ def _allowed_opencode_route(method: str, route: str) -> bool:
         ("POST", r"/api/session/ses[A-Za-z0-9_-]{1,128}/prompt"),
         ("POST", r"/api/session/ses[A-Za-z0-9_-]{1,128}/interrupt"),
     )
+    return any(method == expected and re.fullmatch(pattern, route) for method, pattern in patterns)
+
+
+def _allowed_hermes_route(method: str, route: str) -> bool:
+    """Allow only SULY-required Hermes routes; never expose generic upstream APIs."""
+    if (method, route) in _HERMES_ALLOWED_ROUTES:
+        return True
+    patterns = (
+        ("GET", rf"/v1/runs/{_HERMES_RUN_ID}"),
+        ("GET", rf"/v1/runs/{_HERMES_RUN_ID}/events"),
+        ("POST", rf"/v1/runs/{_HERMES_RUN_ID}/stop"),
+        ("POST", rf"/v1/runs/{_HERMES_RUN_ID}/steer"),
+        ("POST", rf"/v1/runs/{_HERMES_RUN_ID}/approval"),
+    )
     return any(method == expected and re.fullmatch(pattern, route) for expected, pattern in patterns)
 logger = logging.getLogger("suly.runtime_provisioner")
 _cleanup_task: asyncio.Task | None = None
 
 app = FastAPI(title="SULY Runtime Provisioner", docs_url=None, redoc_url=None, openapi_url=None)
-_runtime_manager: DockerTaskRuntimeManager | None = None
+_runtime_managers: dict[str, DockerTaskRuntimeManager] = {}
 _runtime_manager_lock = Lock()
 
 
@@ -74,6 +99,7 @@ class CreateRuntime(BaseModel):
     task_id: str
     engine_run_id: str
     engine_id: str = "opencode"
+    runtime_profile: str | None = None
     files: list[FileSnapshot] = Field(default_factory=list, max_length=200)
 
 
@@ -103,6 +129,8 @@ def _db() -> sqlite3.Connection:
     columns = {row[1] for row in db.execute("PRAGMA table_info(runtimes)")}
     if "baseline_json" not in columns:
         db.execute("ALTER TABLE runtimes ADD COLUMN baseline_json TEXT NOT NULL DEFAULT '{}'")
+    if "runtime_profile" not in columns:
+        db.execute("ALTER TABLE runtimes ADD COLUMN runtime_profile TEXT")
     db.execute("CREATE INDEX IF NOT EXISTS idx_runtime_expiry ON runtimes(expires_at)")
     return db
 
@@ -131,16 +159,43 @@ def _wait_for_opencode(host_port: int, token: str, timeout_seconds: float = 30.0
             time.sleep(0.5)
     raise RuntimeErrorSafe("opencode_startup_timeout")
 
+def _wait_for_hermes(host_port: int, token: str, timeout_seconds: float = 45.0) -> None:
+    """Wait for the pinned upstream Hermes API server, not merely an open TCP port."""
+    deadline = time.monotonic() + timeout_seconds
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    with httpx.Client(
+        base_url=f"http://127.0.0.1:{host_port}",
+        headers=headers,
+        timeout=httpx.Timeout(2.0, connect=1.0),
+        follow_redirects=False,
+        trust_env=False,
+    ) as client:
+        while time.monotonic() < deadline:
+            try:
+                response = client.get("/v1/capabilities")
+                if response.status_code == 200 and response.headers.get("content-type", "").split(";", 1)[0].lower() == "application/json":
+                    payload = response.json()
+                    if isinstance(payload, dict) and payload:
+                        return
+            except (httpx.HTTPError, ValueError, AttributeError):
+                pass
+            time.sleep(0.5)
+    raise RuntimeErrorSafe("hermes_startup_timeout")
 
-def _get_manager() -> DockerTaskRuntimeManager:
-    """Return one lazily-created Docker manager without shadowing its state."""
-    global _runtime_manager
+def _get_manager(engine_id: str = "opencode") -> DockerTaskRuntimeManager:
+    """Return a lazy per-engine manager; Hermes and OpenCode have different immutable images."""
+    if engine_id not in {"opencode", "hermes-agent"}:
+        raise ValueError("runtime_engine_not_allowed")
+    image = IMAGE if engine_id == "opencode" else HERMES_IMAGE
+    env_name = "OPENCODE_RUNTIME_IMAGE" if engine_id == "opencode" else "HERMES_RUNTIME_IMAGE"
+    if not image or not re.fullmatch(r"[A-Za-z0-9./:_-]+@sha256:[0-9a-f]{64}", image):
+        raise RuntimeError(f"{env_name} must be digest-pinned")
     with _runtime_manager_lock:
-        if _runtime_manager is None:
-            if not IMAGE or not re.fullmatch(r"[A-Za-z0-9./:_-]+@sha256:[0-9a-f]{64}", IMAGE):
-                raise RuntimeError("OPENCODE_RUNTIME_IMAGE must be digest-pinned")
-            _runtime_manager = DockerTaskRuntimeManager(image=IMAGE, workspace_root=WORKSPACE_ROOT)
-        return _runtime_manager
+        manager = _runtime_managers.get(engine_id)
+        if manager is None:
+            manager = DockerTaskRuntimeManager(image=image, workspace_root=WORKSPACE_ROOT)
+            _runtime_managers[engine_id] = manager
+        return manager
 
 
 def _require_suly(authorization: str | None) -> None:
@@ -244,36 +299,56 @@ async def create_runtime(request: Request, authorization: str | None = Header(de
     task_id, run_id = _identity(body.task_id), _identity(body.engine_run_id)
     if body.engine_id != "opencode":
         raise HTTPException(422, "engine_not_allowed")
+    if body.engine_id not in {"opencode", "hermes-agent"}:
+        raise HTTPException(422, "engine_not_allowed")
+    if body.engine_id == "hermes-agent" and body.runtime_profile != _HERMES_RUNTIME_PROFILE:
+        raise HTTPException(422, "runtime_profile_required")
+    if body.engine_id == "opencode" and body.runtime_profile is not None:
+        raise HTTPException(422, "runtime_profile_not_applicable")
     try:
-        result = _get_manager().create(
-            task_id=task_id, engine_run_id=run_id, engine_id=body.engine_id,
+        manager = _get_manager(body.engine_id)
+    except RuntimeError as exc:
+        raise HTTPException(503, "runtime_image_not_configured") from exc
+    try:
+        result = manager.create(
+            task_id=task_id,
+            engine_run_id=run_id,
+            engine_id=body.engine_id,
+            runtime_profile=body.runtime_profile,
             files=[item.model_dump(exclude_none=True) for item in body.files],
             access_token_factory=_derive_runtime_access_token,
         )
     except (ValueError, RuntimeErrorSafe) as exc:
         raise HTTPException(422, str(exc)) from exc
     try:
-        _wait_for_opencode(result["host_port"], result["access_token"])
+        if body.engine_id == "hermes-agent":
+            _wait_for_hermes(result["host_port"], result["access_token"])
+        else:
+            _wait_for_opencode(result["host_port"], result["access_token"])
         with _db() as db:
             db.execute(
-                "INSERT INTO runtimes (runtime_id,task_id,engine_run_id,engine_id,container_id,host_port,token_hash,expires_at,created_at,baseline_json) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO runtimes (runtime_id,task_id,engine_run_id,engine_id,runtime_profile,container_id,host_port,token_hash,expires_at,created_at,baseline_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 (result["runtime_id"], task_id, run_id, body.engine_id,
-                 result["container_id"], result["host_port"],
+                 body.runtime_profile, result["container_id"], result["host_port"],
                  hashlib.sha256(result["access_token"].encode()).hexdigest(),
                  result["expires_at"], time.time(),
                  json.dumps({item.path: item.sha256 or hashlib.sha256(item.content.encode()).hexdigest() for item in body.files}, separators=(",", ":"))),
             )
     except Exception as exc:
-        _get_manager().destroy(runtime_id=result["runtime_id"], task_id=task_id, engine_run_id=run_id)
+        manager.destroy(runtime_id=result["runtime_id"], task_id=task_id, engine_run_id=run_id)
         if isinstance(exc, RuntimeErrorSafe):
-            raise HTTPException(503, "opencode_startup_failed") from exc
+            raise HTTPException(503, f"{body.engine_id}_startup_failed") from exc
         raise HTTPException(503, "runtime_registration_failed") from exc
     return {
-        "runtime_id": result["runtime_id"], "task_id": task_id,
-        "engine_run_id": run_id, "engine_id": body.engine_id,
+        "runtime_id": result["runtime_id"],
+        "task_id": task_id,
+        "engine_run_id": run_id,
+        "engine_id": body.engine_id,
+        "runtime_profile": body.runtime_profile,
         "base_url": PUBLIC_GATEWAY_ORIGIN.rstrip("/"),
         "gateway_path": f"/v1/runtime-gateway/{result['runtime_id']}",
-        "access_token": result["access_token"], "expires_at": result["expires_at"],
+        "access_token": result["access_token"],
+        "expires_at": result["expires_at"],
     }
 
 
@@ -289,7 +364,7 @@ def release_runtime(runtime_id: str, body: dict[str, str], authorization: str | 
     if row["task_id"] != task_id or row["engine_run_id"] != run_id:
         raise HTTPException(404, "runtime_not_found")
     try:
-        released = _get_manager().destroy(runtime_id=runtime_id, task_id=task_id, engine_run_id=run_id)
+        released = _get_manager(row["engine_id"]).destroy(runtime_id=runtime_id, task_id=task_id, engine_run_id=run_id)
     except (ValueError, RuntimeErrorSafe) as exc:
         raise HTTPException(409, "runtime_release_rejected") from exc
     if released:
@@ -315,7 +390,7 @@ def recover_runtime(
     run_id = _identity(body.engine_run_id)
     with _db() as db:
         row = db.execute(
-            "SELECT task_id,engine_run_id,expires_at,token_hash FROM runtimes WHERE runtime_id=?",
+            "SELECT task_id,engine_run_id,engine_id,runtime_profile,expires_at,token_hash FROM runtimes WHERE runtime_id=?",
             (runtime_id,),
         ).fetchone()
     if (
@@ -333,7 +408,8 @@ def recover_runtime(
         "runtime_id": runtime_id,
         "task_id": task_id,
         "engine_run_id": run_id,
-        "engine_id": "opencode",
+        "engine_id": row["engine_id"],
+        "runtime_profile": row["runtime_profile"],
         "base_url": PUBLIC_GATEWAY_ORIGIN.rstrip("/"),
         "gateway_path": f"/v1/runtime-gateway/{runtime_id}",
         "access_token": token,
@@ -353,16 +429,28 @@ async def runtime_gateway(runtime_id: str, path: str, request: Request, authoriz
         return await execute(runtime_id, payload, authorization)
     route = "/" + path
     method = request.method
-    if not _allowed_opencode_route(method, route):
+    allowed_route = (
+        _allowed_hermes_route(method, route)
+        if row["engine_id"] == "hermes-agent"
+        else _allowed_opencode_route(method, route)
+    )
+    if not allowed_route:
         raise HTTPException(404, "route_not_allowed")
     body = await _read_bounded_request_body(request, limit=65536)
     headers = {"Accept": request.headers.get("accept", "application/json")}
     if body:
         headers["Content-Type"] = request.headers.get("content-type", "application/json")
+    runtime_token = _runtime_token_from_request(authorization)
+    upstream_headers = (
+        {"Authorization": f"Bearer {runtime_token}"}
+        if row["engine_id"] == "hermes-agent"
+        else {}
+    )
     client = httpx.AsyncClient(
         base_url=f"http://127.0.0.1:{row['host_port']}",
-        auth=("opencode", _runtime_token_from_request(authorization)),
-        timeout=httpx.Timeout(60, connect=3, read=55),
+        auth=None if row["engine_id"] == "hermes-agent" else ("opencode", runtime_token),
+        headers=upstream_headers,
+        timeout=httpx.Timeout(300, connect=3, read=240),
         follow_redirects=False, trust_env=False,
     )
     upstream = None
@@ -379,10 +467,16 @@ async def runtime_gateway(runtime_id: str, path: str, request: Request, authoriz
 
         # OpenCode's event endpoint is an unbounded SSE stream. Buffering it
         # until EOF deadlocks the event consumer and loses real-time updates.
-        if method == "GET" and route == "/api/event":
+        is_opencode_events = row["engine_id"] == "opencode" and method == "GET" and route == "/api/event"
+        is_hermes_events = (
+            row["engine_id"] == "hermes-agent"
+            and method == "GET"
+            and re.fullmatch(rf"/v1/runs/{_HERMES_RUN_ID}/events", route) is not None
+        )
+        if is_opencode_events or is_hermes_events:
             content_type = upstream.headers.get("content-type", "").split(";", 1)[0].strip().lower()
             if content_type != "text/event-stream":
-                raise HTTPException(502, "opencode_event_stream_invalid_content_type")
+                raise HTTPException(502, "runtime_event_stream_invalid_content_type")
             safe_headers["Cache-Control"] = "no-cache"
             safe_headers["X-Accel-Buffering"] = "no"
             streaming = True
