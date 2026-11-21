@@ -423,6 +423,38 @@ def test_hermes_run_is_recorded_as_succeeded(monkeypatch):
     assert store.events[1][2] == store.events[0][1]
 
 
+def test_hermes_run_is_not_marked_succeeded_when_runtime_release_is_unconfirmed(monkeypatch):
+    import app.worker_runtime as runtime_module
+    from types import SimpleNamespace
+    from app.services.tool_registry import ToolExecutionContext
+
+    class UnconfirmedReleaseBroker(FakeRuntimeBroker):
+        def release(self, lease):
+            self.released.append(lease)
+            return False
+
+    store = FakeEngineRunStore()
+    broker = UnconfirmedReleaseBroker()
+    monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
+        hermes_agent_enabled=True,
+        hermes_agent_isolation_confirmed=True,
+        hermes_agent_base_url="http://hermes:8642",
+        hermes_agent_api_key=object(),
+        hermes_agent_timeout_seconds=90.0,
+    ))
+    monkeypatch.setattr(runtime_module, "run_agent_turn", lambda *_args, **_kwargs: {
+        "engine": "hermes-agent", "content": "finished",
+    })
+    with pytest.raises(RuntimeError, match="hermes_runtime_cleanup_pending"):
+        runtime_module.hermes_agent_turn(
+            make_step({"operation": "hermes.agent.turn", "prompt": "safe"}),
+            ToolExecutionContext(engine_run_store=store, runtime_broker=broker),
+        )
+    assert broker.released
+    assert not any(event[0] == "finish" for event in store.events)
+
+
 def test_hermes_run_records_failure_without_raw_error(monkeypatch):
     import app.worker_runtime as runtime_module
     from types import SimpleNamespace
