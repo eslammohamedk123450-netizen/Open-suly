@@ -150,7 +150,11 @@ def _hermes_prompt_with_conversation_context(step: ClaimedStep, prompt: str) -> 
                 .execute()
                 .data
             )
-            if not task_rows or not task_rows[0].get("conversation_id"):
+            if (
+                not task_rows
+                or not task_rows[0].get("conversation_id")
+                or not isinstance(task_rows[0].get("created_at"), str)
+            ):
                 return prompt
             task_row = task_rows[0]
             query = (
@@ -160,8 +164,7 @@ def _hermes_prompt_with_conversation_context(step: ClaimedStep, prompt: str) -> 
                 .eq("user_id", str(step.user_id))
                 .in_("role", ["user", "assistant"])
             )
-            if task_row.get("created_at"):
-                query = query.lte("created_at", task_row["created_at"])
+            query = query.lte("created_at", task_row["created_at"])
             rows = (
                 query.order("created_at", desc=True)
                 .limit(30)
