@@ -266,3 +266,23 @@ def test_execution_uses_upstream_default_basic_auth_username(monkeypatch):
 
     assert captured["auth"][0] == "opencode"
     assert result["session_id"] == "sesABC123"
+
+
+def test_execute_gateway_rejects_oversized_body_before_json_parse(monkeypatch):
+    runtime_id = "00000000-0000-4000-8000-000000000001"
+    monkeypatch.setattr(runtime_api, "_runtime", lambda _runtime_id, _token: {"host_port": 4096})
+    response = client.post(
+        f"/v1/runtime-gateway/{runtime_id}/execute",
+        headers={"Authorization": "Bearer " + "x" * 48, "Content-Type": "application/json"},
+        content=b"x" * 65537,
+    )
+    assert response.status_code == 413
+    assert response.json()["detail"] == "request_too_large"
+
+
+def test_execute_request_rejects_unexpected_fields():
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        runtime_api.ExecuteRequest.model_validate({"prompt": "safe prompt", "extra": "ignored before"})
