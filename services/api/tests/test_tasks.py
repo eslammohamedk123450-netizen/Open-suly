@@ -322,6 +322,7 @@ class _TaskDetailAdmin:
                 "status": "running",
                 "attempt_count": 1,
             }],
+            "engine_handoffs": [],
             "engine_run_events": [{
                 "id": 1,
                 "engine_run_id": "run-1",
