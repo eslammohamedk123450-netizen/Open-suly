@@ -23,7 +23,7 @@ class Broker:
         self.calls = []
 
     def run_task(self, task_id, run_id, engine_id, *, files, prompt, title, timeout_seconds=900, on_lease_acquired=None, on_session_created=None):
-        self.calls.append((task_id, run_id, engine_id, files, prompt, title))
+        self.calls.append((task_id, run_id, engine_id, files, prompt, title, timeout_seconds))
         return {
             "execution": {"session_id": "sesABC123", "result": {"ok": True}},
             "results": {
@@ -280,3 +280,16 @@ def test_executor_releases_runtime_when_worker_lease_cancel_event_fires():
     )
     assert broker.release_calls == 1
     assert any(call[0] == "status" and call[1]["status"] == "failed" for call in lifecycle.calls)
+
+
+def test_executor_forwards_per_task_runtime_budget_to_broker():
+    user_id, project_id, task_id, run_id = (str(uuid4()) for _ in range(4))
+    broker, sessions = Broker(), Sessions()
+    executor = OpenCodeTaskExecutor(
+        workspace_store=Workspace(), session_store=sessions, runtime_broker=broker,
+    )
+    executor.execute(
+        user_id=user_id, project_id=project_id, task_id=task_id,
+        engine_run_id=run_id, prompt="Bound this task", timeout_seconds=321,
+    )
+    assert broker.calls[0][6] == 321
