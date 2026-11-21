@@ -128,8 +128,10 @@ def test_claim_pending_stops_parses_lease_guarded_external_run():
     token = UUID("00000000-0000-0000-0000-000000000088")
     client = FakeRpc([{
         "run_id": str(RUN_ID),
+        "task_id": "00000000-0000-0000-0000-000000000001",
         "engine_id": "hermes-agent",
         "upstream_run_id": "run_native_123",
+        "runtime_id": "00000000-0000-0000-0000-000000000055",
         "reconcile_token": str(token),
         "reconcile_attempt_count": 2,
     }])
@@ -140,6 +142,8 @@ def test_claim_pending_stops_parses_lease_guarded_external_run():
         upstream_run_id="run_native_123",
         reconcile_token=token,
         attempt_count=2,
+        task_id=UUID("00000000-0000-0000-0000-000000000001"),
+        runtime_id=UUID("00000000-0000-0000-0000-000000000055"),
     ),)
     assert client.calls == [(
         "claim_engine_runs_for_stop",
