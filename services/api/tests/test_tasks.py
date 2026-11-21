@@ -319,6 +319,9 @@ def test_auto_plan_routes_general_agent_only_when_isolated_runtime_is_ready(monk
         hermes_agent_isolation_confirmed=True,
         hermes_agent_base_url="http://hermes:8642",
         hermes_agent_api_key=object(),
+        runtime_provisioner_url="https://runtime-provisioner.internal",
+        runtime_provisioner_token=object(),
+        runtime_provisioner_allowed_origins=("https://hermes-runtime.internal:8443",),
     ))
     app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
     monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
@@ -348,6 +351,9 @@ def test_auto_plan_refuses_general_agent_without_isolation(monkeypatch):
         hermes_agent_isolation_confirmed=False,
         hermes_agent_base_url="http://hermes:8642",
         hermes_agent_api_key=object(),
+        runtime_provisioner_url=None,
+        runtime_provisioner_token=None,
+        runtime_provisioner_allowed_origins=(),
     ))
     app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
     monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
