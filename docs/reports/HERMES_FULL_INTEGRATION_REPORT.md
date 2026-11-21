@@ -681,3 +681,80 @@ Therefore, the earlier statement that no provisioner implementation exists was t
 8. Run API/provisioner tests, migration checks, Docker image build, container security tests, and cross-tenant end-to-end tests on staging.
 
 **Overall status remains IN PROGRESS. No claim of full Hermes integration or production readiness is made.**
+
+
+---
+
+## Execution checkpoint 17 — Hermes native provisioner path, engine separation, and collaboration contracts
+
+**Checkpoint date:** 2026-11-21  
+**Branch:** `main`  
+**Hermes upstream revision:** `2de9f51b8008a7d49a49221c184f2f11cbfc4af1`  
+**Status:** IMPLEMENTATION CONTINUES — NOT A PRODUCTION COMPLETION CERTIFICATE
+
+### Corrections to earlier checkpoints
+
+The statements in checkpoints 13–16 that the repository had no provisioner implementation, or that its provisioner supported OpenCode only, are historical and have been superseded by the current `main` implementation. The repository now contains a multi-engine provisioner path for both OpenCode and Hermes. This does **not** mean a live provisioner host or production runtime has been deployed or verified.
+
+### Original Hermes source
+
+- Added `engines/hermes/upstream` as an independent Git submodule pinned to the exact upstream commit above.
+- Preserved the existing OpenCode submodule entry in `.gitmodules`; Hermes and OpenCode source trees remain separate.
+- The upstream Dockerfile and license remain upstream-owned; SULY does not copy Hermes into the FastAPI process or fork it into an unverified reimplementation.
+- The upstream API server is enabled only inside a task-scoped Hermes container with a per-runtime key. Its exposed route surface is constrained by the SULY provisioner gateway.
+
+### Hermes task runtime path now present in code
+
+The current `services/runtime-provisioner` implementation includes:
+
+- Separate digest-pinned image configuration for `OPENCODE_RUNTIME_IMAGE` and `HERMES_RUNTIME_IMAGE`.
+- Separate manager identities, containers, private internal Docker networks, task-attempt directories, process trees, runtime tokens, and expiry cleanup.
+- Exact Hermes profile enforcement: `suly-hermes-task-v1`.
+- Hermes API server on container port 8642, published only on host loopback, with an HMAC-derived per-runtime credential.
+- A separate task-local `/opt/data` and `/workspace`; no shared writable Hermes home across attempts.
+- Restrictive task config: no native memory writes, no user-profile memory, no upstream orchestration/delegation, and no terminal/browser/computer-use/file/web/MCP/skills toolsets granted by default.
+- An engine-specific route allowlist for Runs API admission/status/events/stop/steer/one-time approval, health/capabilities/models, and read-only skill/toolset metadata.
+- Internal Docker networks remain egress-disabled. There is still no task-aware outbound model-provider proxy; do not turn on direct egress as a workaround.
+
+### Additional separation fixes in this checkpoint
+
+- The OpenCode convenience `/execute` route now rejects Hermes runtimes. Hermes tasks must use the native Runs API so upstream run identity, approvals, events, cancellation, and SULY leases remain correlated.
+- The OpenCode workspace-results exporter now rejects Hermes runtimes. Hermes output is handled by the Hermes/SULY task-result path rather than being treated as an OpenCode changeset.
+- Result retrieval selects the manager for the recorded engine identity rather than silently defaulting to OpenCode.
+- Added regression tests for these cross-engine rejection boundaries.
+
+### Collaboration layer
+
+- Added strict typed collaboration contracts for cross-engine task handoffs, immutable owner-scoped artifact references, metadata-only lifecycle events, bounded result envelopes, approved media types, depth/concurrency/runtime/input budgets, and same-engine handoff rejection.
+- Added unit tests for owner mismatch, duplicate artifacts, malformed events, unsupported media types, budget bounds, and expected-engine result validation.
+- The repository also contains the durable collaboration handoff API/router and additive SQL lifecycle migrations. These remain **code-level integration** until the migrations are applied and RPC/RLS behavior is verified against a staging database.
+- A handoff is not allowed to share a live process, session, memory namespace, writable directory, secret, or provider credential between engines. Parent approval and SULY task creation remain the intended handoff boundary.
+
+### CI evidence
+
+For commit `361f3175606949561beccf1344731b560e4f2f7d`:
+
+- Runtime Provisioner CI run `44900390070`: **47 passed, 5 warnings**.
+- Repository baseline checks run `44900390092`: **passed**.
+- Platform CI run `44900390076`: pending at report preparation.
+- OpenCode upstream verification run `44900390067`: pending at report preparation.
+
+The provisioner tests use fake Docker clients and API test doubles. They do not prove a real Docker host, kernel isolation, host firewall, TLS ingress, upstream Hermes image startup, live model access, or successful end-to-end AI task execution.
+
+### Live Supabase state checked read-only
+
+The connected Supabase project `razvryvazmqvvqkzetuo` is `ACTIVE_HEALTHY` on PostgreSQL 17.11. Its migration history currently ends at `20261120003706`. The engine-run and collaboration migrations committed in this repository after that version are **not applied** to the live database. The currently visible public tables do not yet include the engine-run or collaboration tables.
+
+No remote migration was applied in this checkpoint. This is intentional: the pending migration chain must first be reconciled and validated as a whole against the live schema; applying only a late migration would be unsafe.
+
+### Remaining gates — still mandatory
+
+1. Validate the complete ordered Supabase migration chain against a disposable/staging database, including RLS, grants, owner constraints, RPC privileges, and migration ordering. Then obtain explicit deployment approval before touching production.
+2. Build the Hermes image from the pinned submodule, record its immutable image digest, and run it on a dedicated non-root worker host with real Docker.
+3. Verify task-level kernel/container isolation, process-tree teardown, resource limits, host/metadata isolation, expiry recovery, and cross-tenant non-interference.
+4. Implement a task-aware model/provider egress gateway. Until then, the current no-egress profile cannot make real provider-backed model calls.
+5. Implement SULY-owned persistent memory, native session mapping, reviewed skill installation/execution, tool permission grants, MCP credential brokering, and bounded child-task delegation as separate gated components. Their upstream existence is not proof that SULY has integrated them.
+6. Finish provider-independent usage/budget accounting and collaboration result/artifact verification.
+7. Run the final API/client/provisioner CI on the latest commit, then staging runtime and end-to-end tests.
+
+**Readiness after checkpoint 17:** source provenance and task-runtime code are materially advanced; OpenCode/Hermes execution shortcuts are separated; collaboration contracts and durable handoff code exist. Hermes remains **not safe to enable in production** until the database, provider egress, real container isolation, and runtime conformance gates above pass. Overall integration remains **IN PROGRESS**.
