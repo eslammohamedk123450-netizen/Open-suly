@@ -24,7 +24,7 @@ export default function AppearanceScreen() {
         </View>
         <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
           {options.map((option) => {
-            const isSelected = option.mode ===[...]
+            const isSelected = option.mode === mode;
             return (
               <Pressable
                 key={option.mode}
@@ -45,7 +45,7 @@ export default function AppearanceScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   page: { flex: 1, direction: "rtl" },
-  header: { minHeight:  ال, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1 },
+  header: { minHeight: 60, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1 },
   headerAction: { fontSize: 26, fontWeight: "600" },
   headerTitle: { fontSize: 16, fontWeight: "700" },
   headerSpacer: { width: 26 },
