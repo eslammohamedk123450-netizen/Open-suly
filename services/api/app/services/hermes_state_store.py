@@ -7,6 +7,7 @@ chooses the scope and passes only the bounded context returned here.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -74,7 +75,7 @@ class HermesStateStore:
         if status not in {"active", "paused", "completed", "failed", "expired"}:
             raise ValueError("hermes_session_status_invalid")
         rows = self._client.table("hermes_sessions").update({
-            "status": status, "updated_at": "now()", "last_activity_at": "now()",
+            "status": status, "updated_at": datetime.now(timezone.utc).isoformat(), "last_activity_at": datetime.now(timezone.utc).isoformat(),
         }).eq("id", session).eq("user_id", owner).execute().data
         return bool(rows)
 
