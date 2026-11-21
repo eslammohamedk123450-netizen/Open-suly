@@ -1,9 +1,12 @@
 from threading import Event
+from time import time
+from uuid import uuid4
 
 import pytest
 from pydantic import SecretStr
 
 from app.services import hermes_agent
+from app.services.runtime_broker_contract import RuntimeLease
 
 
 def settings(**overrides):
@@ -14,6 +17,7 @@ def settings(**overrides):
         "hermes_agent_api_key": SecretStr("test-only-token"),
         "hermes_agent_timeout_seconds": 90.0,
         "hermes_agent_max_output_chars": 12000,
+        "runtime_provisioner_allowed_origins": frozenset({"https://hermes-runtime.internal:8443"}),
     }
     values.update(overrides)
     return type("Settings", (), values)()
@@ -797,3 +801,110 @@ def test_hermes_steer_rejects_unaccepted_or_mismatched_response(monkeypatch):
     monkeypatch.setattr(hermes_agent.httpx, "AsyncClient", lambda **_kw: Client())
     with pytest.raises(hermes_agent.HermesAgentError, match="did not match"):
         hermes_agent.steer_agent_run("run_steer_123", "please continue")
+
+
+
+def make_hermes_runtime_lease():
+    runtime_id = str(uuid4())
+    task_id = str(uuid4())
+    engine_run_id = str(uuid4())
+    return RuntimeLease(
+        runtime_id=runtime_id,
+        task_id=task_id,
+        engine_run_id=engine_run_id,
+        engine_id="hermes-agent",
+        base_url="https://hermes-runtime.internal:8443",
+        access_token="x" * 48,
+        expires_at=time() + 1800,
+        gateway_path=f"/v1/runtime-gateway/{runtime_id}",
+    ), task_id, engine_run_id
+
+
+def test_runtime_credentials_accepts_exact_task_lease_without_shared_endpoint():
+    lease, task_id, engine_run_id = make_hermes_runtime_lease()
+    configured = settings(
+        hermes_agent_isolation_confirmed=False,
+        hermes_agent_base_url=None,
+        hermes_agent_api_key=None,
+    )
+    base_url, token = hermes_agent._runtime_credentials(
+        configured,
+        runtime_lease=lease,
+        task_id=task_id,
+        engine_run_id=engine_run_id,
+    )
+    assert base_url == (
+        f"{lease.base_url}/v1/runtime-gateway/{lease.runtime_id}"
+    )
+    assert token == lease.access_token
+
+
+def test_runtime_credentials_rejects_cross_task_or_cross_engine_lease():
+    lease, task_id, engine_run_id = make_hermes_runtime_lease()
+    configured = settings(runtime_provisioner_allowed_origins=frozenset({
+        "https://hermes-runtime.internal:8443",
+    }))
+    with pytest.raises(hermes_agent.HermesAgentUnavailable, match="lease is invalid"):
+        hermes_agent._runtime_credentials(
+            configured,
+            runtime_lease=lease,
+            task_id=str(uuid4()),
+            engine_run_id=engine_run_id,
+        )
+
+
+def test_hermes_run_uses_task_lease_url_and_short_lived_token(monkeypatch):
+    lease, task_id, engine_run_id = make_hermes_runtime_lease()
+    configured = settings(
+        hermes_agent_isolation_confirmed=False,
+        hermes_agent_base_url=None,
+        hermes_agent_api_key=None,
+    )
+    monkeypatch.setattr(hermes_agent, "get_settings", lambda: configured)
+
+    class Client:
+        def __init__(self):
+            self.calls = []
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, url, **kwargs):
+            self.calls.append(("POST", url, kwargs))
+            return Response({"run_id": "run_lease_123"})
+
+        async def get(self, url, **kwargs):
+            self.calls.append(("GET", url, kwargs))
+            return Response({
+                "run_id": "run_lease_123",
+                "status": "completed",
+                "output": "lease-scoped result",
+            })
+
+    client = Client()
+    monkeypatch.setattr(hermes_agent.httpx, "AsyncClient", lambda **_kwargs: client)
+    persisted = []
+    result = hermes_agent.run_agent_turn(
+        "run in isolated task runtime",
+        idempotency_key="suly-task-runtime-lease",
+        on_run_started=lambda upstream_id: persisted.append(upstream_id) or True,
+        runtime_lease=lease,
+        task_id=task_id,
+        engine_run_id=engine_run_id,
+    )
+    assert result == {"engine": "hermes-agent", "content": "lease-scoped result"}
+    assert persisted == ["run_lease_123"]
+    assert len(client.calls) == 2
+    assert all(
+        call[1].startswith(
+            f"{lease.base_url}{lease.gateway_path}/v1/runs"
+        )
+        for call in client.calls
+    )
+    assert all(
+        call[2]["headers"]["Authorization"] == f"Bearer {lease.access_token}"
+        for call in client.calls
+    )
