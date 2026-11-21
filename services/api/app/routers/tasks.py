@@ -239,7 +239,10 @@ def auto_plan_task(
             if task.get("status") != "queued":
                 raise HTTPException(status_code=409, detail="Only queued, unplanned tasks can be planned.")
             try:
-                planned = plan_request(str(task.get("request") or ""))
+                planned = plan_request(
+                    str(task.get("request") or ""),
+                    project_id=str(task["project_id"]) if task.get("project_id") else None,
+                )
             except UnsupportedTaskRequest as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
             result = client.rpc(
