@@ -293,3 +293,31 @@ def test_executor_forwards_per_task_runtime_budget_to_broker():
         engine_run_id=run_id, prompt="Bound this task", timeout_seconds=321,
     )
     assert broker.calls[0][6] == 321
+
+
+def test_executor_rejects_secret_material_in_generated_changeset():
+    user_id, project_id, task_id, run_id = (str(uuid4()) for _ in range(4))
+    broker, sessions, lifecycle = Broker(), Sessions(), Lifecycle()
+    broker.run_task = lambda *args, **kwargs: {
+        "execution": {"session_id": "sesABC123"},
+        "results": {
+            "changed_files": [{
+                "path": "src/config.py",
+                "content": "SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzZXJ2aWNlX3JvbGUifQ.signaturepayload12345",
+            }],
+            "deleted_paths": [],
+            "changed_count": 1,
+        },
+    }
+    broker.release_attempt = lambda *_args: True
+    executor = OpenCodeTaskExecutor(
+        workspace_store=Workspace(), session_store=sessions,
+        runtime_broker=broker, lifecycle_store=lifecycle,
+    )
+
+    with pytest.raises(ValueError, match="opencode_result_secret_material_detected"):
+        executor.execute(
+            user_id=user_id, project_id=project_id, task_id=task_id,
+            engine_run_id=run_id, prompt="Add configuration",
+        )
+    assert not any(call[0] == "change_set" for call in lifecycle.calls)
