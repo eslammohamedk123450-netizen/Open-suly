@@ -3,15 +3,15 @@ import logging
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field
 
 from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.config import get_settings
-from app.core.config import get_settings
 from app.core.supabase import get_supabase_admin_client
 from app.services.agent_planner import UnsupportedTaskRequest, plan_request, validate_agent_plan
 from app.services.hermes_agent import HermesAgentError, HermesAgentUnavailable, get_agent_approval_details, resolve_agent_approval, steer_agent_run
+from app.services.runtime_provisioner_http import RuntimeProvisionerError
 
 router = APIRouter(prefix="/v1/tasks", tags=["tasks"])
 logger = logging.getLogger("suly.api.tasks")
@@ -54,6 +54,28 @@ def _admin_client():
         )
     return client
 
+
+
+def _recover_hermes_runtime(
+    request: Request,
+    *,
+    task_id: UUID,
+    engine_run_id: UUID,
+    runtime_id: str,
+):
+    """Recover a short-lived task runtime credential without persisting the token."""
+    provider = getattr(request.app.state, "runtime_provider", None)
+    if provider is None or not callable(getattr(provider, "recover", None)):
+        raise HTTPException(status_code=503, detail="Hermes task runtime recovery is unavailable.")
+    try:
+        return provider.recover(
+            runtime_id,
+            str(task_id),
+            str(engine_run_id),
+            engine_id="hermes-agent",
+        )
+    except (RuntimeProvisionerError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=503, detail="Hermes task runtime recovery failed.") from exc
 
 def _owned_task(client: Any, task_id: UUID, user_id: str) -> dict[str, Any]:
     rows = (
@@ -304,6 +326,7 @@ def steer_task_engine_run(
     task_id: UUID,
     run_id: UUID,
     request: SteerEngineRunRequest,
+    http_request: Request,
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Allow the authenticated task owner to steer only their active Hermes run."""
@@ -316,7 +339,7 @@ def steer_task_engine_run(
 
             runs = (
                 client.table("engine_runs")
-                .select("id,step_id,engine_id,status,upstream_run_id")
+                .select("id,step_id,engine_id,status,upstream_run_id,runtime_id")
                 .eq("id", str(run_id))
                 .eq("task_id", str(task_id))
                 .eq("user_id", user.id)
@@ -336,14 +359,14 @@ def steer_task_engine_run(
                 raise HTTPException(status_code=409, detail="This engine run is not accepting steering input.")
 
             settings = get_settings()
-            if (
-                not settings.worker_enabled
-                or not settings.hermes_agent_enabled
-                or not settings.hermes_agent_isolation_confirmed
-                or not settings.hermes_agent_base_url
-                or settings.hermes_agent_api_key is None
-            ):
+            if not settings.worker_enabled or not settings.hermes_agent_enabled:
                 raise HTTPException(status_code=503, detail="Hermes steering is not available.")
+            runtime_id = engine_run.get("runtime_id")
+            if not isinstance(runtime_id, str):
+                raise HTTPException(status_code=409, detail="The isolated runtime identity is unavailable.")
+            runtime_lease = _recover_hermes_runtime(
+                http_request, task_id=task_id, engine_run_id=run_id, runtime_id=runtime_id
+            )
 
             steps = (
                 client.table("task_steps")
@@ -360,7 +383,10 @@ def steer_task_engine_run(
                 raise HTTPException(status_code=409, detail="The task worker no longer owns this run.")
 
             try:
-                steer_agent_run(upstream_run_id, request.input)
+                steer_agent_run(
+                    upstream_run_id, request.input, runtime_lease=runtime_lease,
+                    task_id=str(task_id), engine_run_id=str(run_id),
+                )
             except HermesAgentUnavailable as exc:
                 raise HTTPException(status_code=503, detail="Hermes steering is unavailable.") from exc
             except HermesAgentError as exc:
@@ -397,6 +423,7 @@ def get_task_engine_approval_details(
     run_id: UUID,
     request_id: str,
     response: Response,
+    http_request: Request,
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Return upstream-redacted approval details to the task owner; do not persist display text."""
@@ -418,7 +445,7 @@ def get_task_engine_approval_details(
                 raise HTTPException(status_code=409, detail="The task is no longer running.")
             runs = (
                 client.table("engine_runs")
-                .select("id,step_id,engine_id,status,upstream_run_id")
+                .select("id,step_id,engine_id,status,upstream_run_id,runtime_id")
                 .eq("id", str(run_id))
                 .eq("task_id", str(task_id))
                 .eq("user_id", user.id)
@@ -469,19 +496,22 @@ def get_task_engine_approval_details(
             if not events or answered:
                 raise HTTPException(status_code=404, detail="Pending approval request not found.")
             settings = get_settings()
-            if (
-                not settings.worker_enabled
-                or not settings.hermes_agent_enabled
-                or not settings.hermes_agent_isolation_confirmed
-                or not settings.hermes_agent_base_url
-                or settings.hermes_agent_api_key is None
-            ):
+            if not settings.worker_enabled or not settings.hermes_agent_enabled:
                 raise HTTPException(status_code=503, detail="Hermes approval details are unavailable.")
+            runtime_id = run.get("runtime_id")
+            if not isinstance(runtime_id, str):
+                raise HTTPException(status_code=409, detail="The isolated runtime identity is unavailable.")
+            runtime_lease = _recover_hermes_runtime(
+                http_request, task_id=task_id, engine_run_id=run_id, runtime_id=runtime_id
+            )
             upstream_run_id = run.get("upstream_run_id")
             if not isinstance(upstream_run_id, str):
                 raise HTTPException(status_code=409, detail="The upstream run identity is unavailable.")
             try:
-                details = get_agent_approval_details(upstream_run_id, request_id)
+                details = get_agent_approval_details(
+                    upstream_run_id, request_id, runtime_lease=runtime_lease,
+                    task_id=str(task_id), engine_run_id=str(run_id),
+                )
             except HermesAgentUnavailable as exc:
                 raise HTTPException(status_code=503, detail="Hermes approval details are unavailable.") from exc
             except HermesAgentError as exc:
@@ -502,6 +532,7 @@ def resolve_task_engine_approval(
     task_id: UUID,
     run_id: UUID,
     request: ResolveEngineApprovalRequest,
+    http_request: Request,
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Resolve one exact pending Hermes approval; SULY exposes once/deny only."""
@@ -514,7 +545,7 @@ def resolve_task_engine_approval(
 
             runs = (
                 client.table("engine_runs")
-                .select("id,step_id,engine_id,status,upstream_run_id")
+                .select("id,step_id,engine_id,status,upstream_run_id,runtime_id")
                 .eq("id", str(run_id))
                 .eq("task_id", str(task_id))
                 .eq("user_id", user.id)
@@ -560,14 +591,14 @@ def resolve_task_engine_approval(
                 raise HTTPException(status_code=409, detail="This approval request has already been answered.")
 
             settings = get_settings()
-            if (
-                not settings.worker_enabled
-                or not settings.hermes_agent_enabled
-                or not settings.hermes_agent_isolation_confirmed
-                or not settings.hermes_agent_base_url
-                or settings.hermes_agent_api_key is None
-            ):
+            if not settings.worker_enabled or not settings.hermes_agent_enabled:
                 raise HTTPException(status_code=503, detail="Hermes approvals are not available.")
+            runtime_id = engine_run.get("runtime_id")
+            if not isinstance(runtime_id, str):
+                raise HTTPException(status_code=409, detail="The isolated runtime identity is unavailable.")
+            runtime_lease = _recover_hermes_runtime(
+                http_request, task_id=task_id, engine_run_id=run_id, runtime_id=runtime_id
+            )
 
             steps = (
                 client.table("task_steps")
@@ -585,7 +616,10 @@ def resolve_task_engine_approval(
                 raise HTTPException(status_code=409, detail="The task worker no longer owns this run.")
 
             try:
-                resolve_agent_approval(upstream_run_id, request.request_id, request.choice)
+                resolve_agent_approval(
+                    upstream_run_id, request.request_id, request.choice,
+                    runtime_lease=runtime_lease, task_id=str(task_id), engine_run_id=str(run_id),
+                )
             except HermesAgentUnavailable as exc:
                 raise HTTPException(status_code=503, detail="Hermes approvals are unavailable.") from exc
             except HermesAgentError as exc:
