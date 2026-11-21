@@ -470,3 +470,13 @@ For every engine:
 - Platform CI #1049 at commit `b6f896dff319ad184eb36c020cb567e7b81b2aa1` is green: **608 API tests passed** (5 warnings); TypeScript, Expo compatibility, and Web export succeeded; repository baseline #1067 passed. Latest source commit is `b6f896d` (progress-doc-only commit after it does not change code).
 - Upstream verification #177 is still running; isolated-runtime primitive tests and protocol/provenance/typecheck steps are green, Docker build and smoke are pending. Previous upstream verification #1014 is green.
 - Do not enable or deploy. The remaining blockers are live Staging runtime/provisioner validation, DB migrations under explicit approval, real cancellation/release and orphan recovery integration, frontend acceptance on Android/web, and any usage/credits accounting for coding-engine execution.
+
+
+## OpenCode core code integration — closure checkpoint (2026-11-21)
+
+- **Core code integration is closed for the current scope.** The project-linked UI creates a dedicated OpenCode task; the API validates owner/task/project/runtime readiness; the allow-listed worker operation requires `engine.opencode.run`; the worker establishes an engine-run record and calls the original pinned OpenCode executor in a task-scoped runtime; output is bounded and contains review IDs/status; sanitized events are surfaced; users can inspect diffs and Apply/Reject with revision/CAS checks.
+- CI evidence on code commit `7399ec775d25aa523ed0ba3a19d697d221e21e88`: Platform CI #1059 green (**609 API tests passed, 5 warnings**, API compile, TypeScript, Expo dependency compatibility, Web export); Repository baseline #1077 green.
+- Upstream OpenCode verification #177 green on `1a84d30d`: runtime primitive/security tests, protocol bridge tests, provenance, frozen install, server typecheck, Docker image build and authenticated server smoke. Upstream code unchanged after that verification.
+- New guide: `docs/operations/OPENCODE_TASK_FLOW_AR.md` explains route, worker flow, IDs, event feed, review/apply, defaults, and staging gates.
+- **Do not mark Controlled Beta/production ready.** Live Staging integration is not run or approved. No migrations applied, worker or runtime activated, deployment, or paid service activation.
+- Blocking pre-activation items: coding usage/credits metering and cost model (not implemented); approved disposable/staging migrations; provisioner runtime integration; end-to-end cancel/release/recovery and cross-user isolation tests; egress and resource-limit review; real Android/Web account acceptance. These are deployment readiness gates, not a reason to claim the code wiring itself is unfinished.
