@@ -85,16 +85,26 @@ def validate_engine_manifests(
 
 def build_engine_registry(
     runtime_overrides: Mapping[str, tuple[bool, EngineAdapter | None]] | None = None,
+    *,
+    additional_manifests: tuple[EngineManifest, ...] = (),
 ) -> EngineRegistry:
-    """Register pinned engines; only explicit server-side overrides may enable one."""
-    validate_engine_manifests()
+    """Register pinned built-ins plus reviewed extensions; nothing is enabled implicitly.
+
+    A new engine must arrive with immutable upstream provenance, a declared
+    capability set, and an explicit adapter override. Merely adding metadata
+    never provisions a runtime or enables collaboration handoffs.
+    """
+    if not isinstance(additional_manifests, tuple):
+        raise ValueError("additional_engine_manifests_must_be_tuple")
+    manifests = ENGINE_MANIFESTS + additional_manifests
+    validate_engine_manifests(manifests)
     overrides = dict(runtime_overrides or {})
-    known_ids = {item.engine_id for item in ENGINE_MANIFESTS}
+    known_ids = {item.engine_id for item in manifests}
     if set(overrides) - known_ids:
         raise ValueError("unknown_engine_runtime_override")
 
     definitions = []
-    for item in ENGINE_MANIFESTS:
+    for item in manifests:
         enabled, adapter = overrides.get(item.engine_id, (False, None))
         if not isinstance(enabled, bool):
             raise ValueError("invalid_engine_runtime_override")
