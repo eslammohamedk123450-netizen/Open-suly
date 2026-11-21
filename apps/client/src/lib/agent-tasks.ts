@@ -2,7 +2,7 @@ import { supabase } from "@/lib/supabase";
 
 const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim().replace(/\/$/, "");
 
-export type AgentOperation = "text.analyze" | "ai.respond" | "hermes.agent.turn";
+export type AgentOperation = "text.analyze" | "ai.respond" | "hermes.agent.turn" | "opencode.task.run";
 
 export type AgentTask = {
   id: string;
@@ -115,7 +115,7 @@ export async function grantAIApproval(): Promise<void> {
   });
 }
 
-export async function revokeToolApproval(permissionScope: "ai.provider.run" | "agent.hermes.run"): Promise<void> {
+export async function revokeToolApproval(permissionScope: "ai.provider.run" | "agent.hermes.run" | "engine.opencode.run"): Promise<void> {
   await request("/v1/tools/approvals", {
     method: "DELETE",
     body: JSON.stringify({ permission_scope: permissionScope }),
@@ -126,6 +126,13 @@ export async function grantHermesApproval(): Promise<void> {
   await request("/v1/tools/approvals", {
     method: "POST",
     body: JSON.stringify({ permission_scope: "agent.hermes.run" }),
+  });
+}
+
+export async function grantOpenCodeApproval(): Promise<void> {
+  await request("/v1/tools/approvals", {
+    method: "POST",
+    body: JSON.stringify({ permission_scope: "engine.opencode.run" }),
   });
 }
 
@@ -140,13 +147,19 @@ export async function createAgentTask(
   const task = await request<AgentTask>("/v1/tasks", {
     method: "POST",
     body: JSON.stringify({
-      title: operation === "hermes.agent.turn" ? "مهمة Hermes Agent" : operation === "ai.respond" ? "مهمة SULY AI" : "تحليل نص",
+      title: operation === "opencode.task.run" ? "مهمة OpenCode برمجية" : operation === "hermes.agent.turn" ? "مهمة Hermes Agent" : operation === "ai.respond" ? "مهمة SULY AI" : "تحليل نص",
       request: operation === "text.analyze" ? "analyze: " + cleanPrompt : operation === "hermes.agent.turn" ? "agent: " + cleanPrompt : cleanPrompt,
       ...(projectId ? { project_id: projectId } : {}),
       idempotency_key: "agent-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 14),
     }),
   });
-  if (operation === "text.analyze" || operation === "hermes.agent.turn") {
+  if (operation === "opencode.task.run") {
+    if (!projectId) throw new Error("اربط المهمة بمشروع قبل إرسالها إلى OpenCode.");
+    await request("/v1/tasks/" + encodeURIComponent(task.id) + "/opencode-plan", {
+      method: "POST",
+      body: "{}",
+    });
+  } else if (operation === "text.analyze" || operation === "hermes.agent.turn") {
     // يترك العميل اختيار العملية للخادم؛ auto-plan يتحقق من توفر الوكيل والعزل والـallow-list.
     await request("/v1/tasks/" + encodeURIComponent(task.id) + "/auto-plan", {
       method: "POST",
