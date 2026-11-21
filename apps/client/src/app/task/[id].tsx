@@ -52,6 +52,31 @@ function pretty(value: unknown): string {
   }
 }
 
+function subagentMetadataLabel(metadata?: Record<string, unknown>): string | null {
+  if (!metadata) return null;
+  const parts: string[] = [];
+  const subagentId = metadata.subagent_id;
+  if (typeof subagentId === "string") parts.push("وكيل " + subagentId.slice(0, 20));
+  if (typeof metadata.status === "string") parts.push(statusLabel(metadata.status));
+  const taskIndex = metadata.task_index;
+  const taskCount = metadata.task_count;
+  if (typeof taskIndex === "number" && Number.isInteger(taskIndex) && taskIndex >= 0
+      && typeof taskCount === "number" && Number.isInteger(taskCount) && taskCount > 0) {
+    parts.push("المهمة " + String(taskIndex + 1) + " من " + String(taskCount));
+  }
+  if (typeof metadata.depth === "number" && Number.isInteger(metadata.depth) && metadata.depth >= 0) {
+    parts.push("مستوى " + String(metadata.depth));
+  }
+  if (typeof metadata.tool_count === "number" && Number.isInteger(metadata.tool_count) && metadata.tool_count >= 0) {
+    parts.push("الأدوات " + String(metadata.tool_count));
+  }
+  if (typeof metadata.duration_seconds === "number" && Number.isFinite(metadata.duration_seconds)
+      && metadata.duration_seconds >= 0) {
+    parts.push("المدة " + metadata.duration_seconds.toFixed(1) + " ث");
+  }
+  return parts.length ? parts.join(" · ") : null;
+}
+
 function eventLabel(name: string): string {
   const labels: Record<string, string> = {
     "tool.started": "بدأ تنفيذ أداة",
@@ -537,6 +562,10 @@ export default function TaskDetailsScreen() {
                             {formatDate(event.received_at)}
                             {event.event_seq != null ? " · #" + event.event_seq : ""}
                           </Text>
+                          {event.event_name.startsWith("subagent.")
+                            && !!subagentMetadataLabel(event.metadata) && (
+                              <Text style={styles.muted}>{subagentMetadataLabel(event.metadata)}</Text>
+                            )}
                         </View>
                         <View style={styles.eventDot} />
                       </View>
