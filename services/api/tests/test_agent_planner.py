@@ -149,3 +149,24 @@ def test_planner_rejects_text_analysis_when_worker_is_disabled(monkeypatch):
     monkeypatch.setattr(config, "get_settings", lambda: SimpleNamespace(worker_enabled=False))
     with pytest.raises(UnsupportedTaskRequest, match="worker is disabled"):
         plan_request("analyze: text")
+
+
+
+def test_agent_plan_validator_accepts_the_new_opencode_worker_operation():
+    from app.services.agent_planner import validate_agent_plan
+
+    project_id = "00000000-0000-0000-0000-000000000099"
+    planned = validate_agent_plan([{
+        "step_key": "opencode_run",
+        "title": "OpenCode coding task",
+        "description": "Run isolated coding task and collect a reviewable change set.",
+        "depends_on": [],
+        "input": {
+            "operation": "opencode.task.run",
+            "project_id": project_id,
+            "prompt": "Create a small feature",
+            "title": "Feature implementation",
+        },
+    }])
+    assert planned[0]["input"]["operation"] == "opencode.task.run"
+    assert planned[0]["input"]["project_id"] == project_id
