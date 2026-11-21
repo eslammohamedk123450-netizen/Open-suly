@@ -231,3 +231,50 @@ def test_hermes_runtime_rejects_unknown_profile_before_docker(tmp_path):
             runtime_profile="unrestricted", files=[],
         )
     assert not fake.containers.items
+
+
+@pytest.mark.parametrize("path", [
+    ".ssh/id_rsa",
+    ".aws/credentials",
+    ".npmrc",
+    "config/.netrc",
+    "service-account.json",
+])
+def test_hermes_and_opencode_runtime_reject_sensitive_credential_paths(tmp_path, path):
+    mgr, fake = manager(tmp_path)
+    with pytest.raises(ValueError, match="path_reserved"):
+        mgr.create(
+            task_id=str(uuid4()), engine_run_id=str(uuid4()),
+            engine_id="opencode",
+            files=[{"path": path, "content": "credential file"}],
+        )
+    assert not fake.containers.items
+
+
+@pytest.mark.parametrize("content", [
+    "-----BEGIN RSA PRIVATE KEY-----\\nprivate-data\\n-----END RSA PRIVATE KEY-----",
+    "AWS_ACCESS_KEY_ID=AKIAABCDEFGHIJKLMNOP",
+    "GITHUB_TOKEN=ghp_" + "a" * 36,
+    "OPENAI_API_KEY=sk-" + "b" * 28,
+    "api_key = \"" + "c" * 32 + "\"",
+    "SUPABASE_KEY=sb_secret_" + "e" * 32,
+])
+def test_runtime_rejects_secret_material_before_creating_container(tmp_path, content):
+    mgr, fake = manager(tmp_path)
+    with pytest.raises(ValueError, match="secret_material_detected"):
+        mgr.create(
+            task_id=str(uuid4()), engine_run_id=str(uuid4()),
+            engine_id="opencode",
+            files=[{"path": "src/config.py", "content": content}],
+        )
+    assert not fake.containers.items
+
+
+def test_runtime_allows_nonsecret_environment_placeholders(tmp_path):
+    mgr, fake = manager(tmp_path)
+    mgr.create(
+        task_id=str(uuid4()), engine_run_id=str(uuid4()),
+        engine_id="opencode",
+        files=[{"path": "config/example.env", "content": "API_KEY=${API_KEY}\\nPASSWORD=YOUR_PASSWORD"}],
+    )
+    assert len(fake.containers.items) == 1
