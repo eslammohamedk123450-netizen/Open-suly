@@ -73,6 +73,16 @@ def test_runtime_manager_factory_is_lazy_and_singleton(monkeypatch):
     assert len(created) == 1
 
 
+def test_startup_rejects_runtime_egress_opt_in_before_starting_services(monkeypatch):
+    import asyncio
+    import pytest
+    from app.docker_runtime import RuntimeErrorSafe
+
+    monkeypatch.setenv("RUNTIME_ALLOW_EGRESS", "true")
+    with pytest.raises(RuntimeErrorSafe, match="egress_proxy_required"):
+        asyncio.run(runtime_api.startup())
+
+
 def test_runtime_manager_factory_rejects_mutable_image_tag(monkeypatch):
     import app.main as runtime_api
 

@@ -26,7 +26,7 @@ from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.docker_runtime import DockerTaskRuntimeManager, RuntimeErrorSafe
+from app.docker_runtime import DockerTaskRuntimeManager, RuntimeErrorSafe, validate_egress_disabled
 
 DATABASE = os.environ.get("RUNTIME_DB_PATH", "/var/lib/suly-runtime/runtimes.sqlite3")
 SULY_TOKEN = os.environ.get("SULY_PROVISIONER_TOKEN", "")
@@ -205,6 +205,9 @@ async def _cleanup_expired_loop() -> None:
 @app.on_event("startup")
 async def startup() -> None:
     global _cleanup_task
+    # Reject unsafe or misspelled egress settings before starting cleanup or
+    # accepting runtime requests. Docker networks remain internal in all cases.
+    validate_egress_disabled()
     if not SULY_TOKEN:
         raise RuntimeError("SULY_PROVISIONER_TOKEN is required")
     if not IMAGE or not re.fullmatch(r"[A-Za-z0-9./:_-]+@sha256:[0-9a-f]{64}", IMAGE):

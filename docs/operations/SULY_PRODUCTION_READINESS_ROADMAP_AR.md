@@ -480,3 +480,12 @@ For every engine:
 - New guide: `docs/operations/OPENCODE_TASK_FLOW_AR.md` explains route, worker flow, IDs, event feed, review/apply, defaults, and staging gates.
 - **Do not mark Controlled Beta/production ready.** Live Staging integration is not run or approved. No migrations applied, worker or runtime activated, deployment, or paid service activation.
 - Blocking pre-activation items: coding usage/credits metering and cost model (not implemented); approved disposable/staging migrations; provisioner runtime integration; end-to-end cancel/release/recovery and cross-user isolation tests; egress and resource-limit review; real Android/Web account acceptance. These are deployment readiness gates, not a reason to claim the code wiring itself is unfinished.
+
+
+## Security checkpoint — 2026-11-21 (Fail-closed task-runtime egress)
+
+- مراجعة `services/runtime-provisioner/app/docker_runtime.py` كشفت أن `RUNTIME_ALLOW_EGRESS=true` أو وسيط البناء `egress_allowed=True` كانا يحولان Docker bridge إلى `internal=False`، بينما لا توجد في المستودع بوابة egress task-aware أو آلية تثبت تطبيق host firewall allowlist. وجود تحذير في README وحده لا يفرض هذا الشرط تقنيًا.
+- أُغلق هذا المسار: إعدادات egress المفعّلة تُرفض، والقيم غير المعروفة تُرفض، وفحص الإعداد يحدث قبل لمس Docker/workspace؛ فحص startup يمنع تشغيل الخدمة بإعداد egress غير آمن؛ وكل task network تُنشأ `internal=True` دائمًا.
+- أضيفت اختبارات لقيم opt-in المختلفة، والقيم غير الصالحة، ورفض التشغيل قبل إنشاء أي Docker network/container. تم تحديث دليل التشغيل والضوابط الإلزامية.
+- هذا hard gate فقط؛ لا ينفذ egress proxy ولا يثبت العزل على Docker host حقيقي. لا يتم تشغيل OpenCode أو Worker ولا نشر أو تطبيق migrations. يظل مسارا runtime isolation وBrowser Use egress مفتوحين حتى تنفيذ proxy واختبارات شبكة فعلية.
+- يجب ربط حالة الاختبارات بنتيجة CI الفعلية للـcommit الذي يحمل هذا التغيير؛ لا تُعد هذه المراجعة إثبات تشغيل runtime.

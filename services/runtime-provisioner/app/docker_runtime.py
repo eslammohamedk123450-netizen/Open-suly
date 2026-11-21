@@ -95,28 +95,48 @@ def _safe_workspace(files: list[dict[str, Any]], root: Path, max_bytes: int) -> 
     return hashlib.sha256(str(total).encode() + b":" + str(len(files)).encode()).hexdigest()
 
 
-class DockerTaskRuntimeManager:
-    """Creates a fresh network, container, and workspace for each task attempt.
+def validate_egress_disabled(value: object | None = None) -> None:
+    """Reject direct task egress until a task-aware, enforced proxy exists.
 
-    Networks are internal (no container egress) unless egress is explicitly
-    allowed; see the provisioner README for the mandatory host firewall controls.
+    A Docker bridge marked internal=False is not an egress allowlist. The
+    provisioner currently has no proxy/firewall attestation, so even an explicit
+    operator opt-in must fail closed rather than expose arbitrary outbound access.
+    """
+    configured = os.environ.get("RUNTIME_ALLOW_EGRESS", "false") if value is None else value
+    if type(configured) is bool:
+        enabled = configured
+    elif isinstance(configured, str):
+        normalized = configured.strip().lower()
+        if normalized in {"0", "false", "no", "off", ""}:
+            return
+        if normalized in {"1", "true", "yes", "on"}:
+            raise RuntimeErrorSafe("runtime_egress_proxy_required")
+        raise RuntimeErrorSafe("runtime_egress_config_invalid")
+    else:
+        raise RuntimeErrorSafe("runtime_egress_config_invalid")
+    if enabled:
+        raise RuntimeErrorSafe("runtime_egress_proxy_required")
+
+
+class DockerTaskRuntimeManager:
+    """Creates a fresh internal network, container, and workspace per attempt.
+
+    Task containers have no direct external routing. Direct egress stays blocked
+    until a task-aware proxy enforces DNS pinning, destination policy, and redirects.
     """
 
     def __init__(self, *, image: str, workspace_root: str, limits: RuntimeLimits | None = None, client=None, egress_allowed: bool | None = None):
         if not isinstance(image, str) or not re.fullmatch(r"[A-Za-z0-9./:_-]+@sha256:[0-9a-f]{64}", image):
             raise ValueError("runtime_image_must_be_digest_pinned")
+        # Validate before touching the workspace or Docker daemon. No direct
+        # outbound mode is available until a task-aware egress proxy is enforced.
+        validate_egress_disabled(egress_allowed)
         self.image = image
         self.root = Path(workspace_root).resolve()
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.limits = limits or RuntimeLimits()
         self.limits.validate()
         self.client = client or docker.from_env()
-        # Fail closed: task containers get no outbound network access unless an
-        # operator explicitly opts in (RUNTIME_ALLOW_EGRESS=true) and enforces the
-        # host firewall egress allowlist documented in the provisioner README.
-        if egress_allowed is None:
-            egress_allowed = os.environ.get("RUNTIME_ALLOW_EGRESS", "false").strip().lower() in {"1", "true", "yes"}
-        self.egress_allowed = bool(egress_allowed)
 
     def create(self, *, task_id: str, engine_run_id: str, engine_id: str, files: list[dict[str, Any]], access_token_factory: Callable[[str, str, str], str] | None = None) -> dict[str, Any]:
         task_id = _canonical_uuid(task_id)
@@ -147,9 +167,8 @@ class DockerTaskRuntimeManager:
             _safe_workspace(files, workspace, self.limits.workspace_bytes)
             network = self.client.networks.create(
                 name=f"suly-{runtime_id}", driver="bridge",
-                # Fail closed: an internal network blocks container egress unless
-                # explicitly allowed together with the host firewall allowlist.
-                internal=not self.egress_allowed,
+                # Always internal: no proxy or destination enforcement exists yet.
+                internal=True,
                 check_duplicate=True, labels=labels,
             )
             container = self.client.containers.run(

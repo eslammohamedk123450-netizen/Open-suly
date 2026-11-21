@@ -20,14 +20,14 @@ Runtime ownership, container mapping, token hashes, expiry and the initial works
 - `OPENCODE_RUNTIME_IMAGE`: immutable `repository@sha256:<64 hex>` image built from `engines/opencode/Dockerfile`.
 - `RUNTIME_DB_PATH`: persistent volume path (default `/var/lib/suly-runtime/runtimes.sqlite3`).
 - `RUNTIME_WORKSPACE_ROOT`: persistent workspace path.
-- `RUNTIME_ALLOW_EGRESS`: optional explicit opt-in (`true`) for task containers to reach the external network. Defaults to `false`; task networks are created `internal` so containers cannot make any outbound connection. Enabling egress is only safe together with mandatory production control 2 (host firewall egress allowlist).
+- `RUNTIME_ALLOW_EGRESS`: must remain unset or a recognized false value (`false`, `0`, `no`, `off`). Any truthy or unrecognized value causes provisioner startup to fail. Task networks are always Docker `internal`; direct egress is deliberately unavailable because no task-aware egress proxy is implemented or verified. Do not enable this setting as a workaround for provider connectivity.
 
 Terminate TLS at a trusted reverse proxy/load balancer. The public SULY API connects to the private provisioner endpoint over TLS. Docker only publishes OpenCode on 127.0.0.1. If the provisioner itself runs in a container while using the host Docker socket, it must use host networking (or an equivalently verified host-loopback route); otherwise 127.0.0.1 inside the provisioner container will not reach the Docker host's loopback-published ports. Prefer running this control plane directly on its dedicated worker host.
 
 ## Mandatory production controls
 
 1. Use a dedicated VM and restrict Docker socket access to this service. Docker socket access is effectively host-root.
-2. Apply host firewall egress restrictions: allow only approved AI gateway/provider endpoints and DNS; block metadata IPs, private control-plane ranges, host management ports and Docker endpoints. Per-task bridge networks alone are not an egress firewall.
+2. Keep task networks internal. Before permitting any outbound traffic, implement and independently verify a task-aware default-deny egress gateway that pins DNS answers at connection time, blocks private/loopback/link-local/metadata destinations, and revalidates redirects and subresources; then restrict the host firewall so tasks can reach only that gateway. Independently block task-bridge access to host services and control-plane/metadata ranges: Docker internal networking alone is not proof of host isolation. A host firewall note or internal=False network is not proof of destination enforcement.
 3. Configure TLS, request rate limits, body limits and DDoS protection at ingress.
 4. Persist and encrypt SQLite/workspace volumes; do not run multiple replicas with independent local SQLite stores. Multi-host deployments require a shared transactional lease store and distributed watchdog.
 5. Results are a bounded UTF-8 snapshot with changed files and deleted paths compared with the initial content hashes; binary files, symlinks and files over 1 MiB are omitted. The provider exposes `run_task()` to submit and collect the result. SULY must apply results against the recorded workspace revision and show a reviewable diff before changing canonical project files; this provisioner does not write directly to Supabase.

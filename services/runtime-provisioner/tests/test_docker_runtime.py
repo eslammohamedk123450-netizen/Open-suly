@@ -127,25 +127,46 @@ def test_network_has_no_outbound_egress_by_default(tmp_path):
     assert fake.networks.kwargs["internal"] is True
 
 
-def test_network_egress_requires_explicit_opt_in(tmp_path):
+def test_network_egress_cannot_be_enabled_by_constructor(tmp_path):
     fake = FakeDocker()
-    mgr = DockerTaskRuntimeManager(
-        image="registry.example/opencode@sha256:" + "a" * 64,
-        workspace_root=str(tmp_path / "egress"), client=fake, egress_allowed=True,
-    )
-    mgr.create(task_id=str(uuid4()), engine_run_id=str(uuid4()), engine_id="opencode", files=[])
-    assert fake.networks.kwargs["internal"] is False
+    with pytest.raises(RuntimeErrorSafe, match="egress_proxy_required"):
+        DockerTaskRuntimeManager(
+            image="registry.example/opencode@sha256:" + "a" * 64,
+            workspace_root=str(tmp_path / "egress"), client=fake, egress_allowed=True,
+        )
+    assert not fake.networks.items
+    assert not fake.containers.items
 
 
-def test_network_egress_env_opt_in(tmp_path, monkeypatch):
-    monkeypatch.setenv("RUNTIME_ALLOW_EGRESS", "true")
-    mgr, fake = manager(tmp_path)
-    mgr.create(task_id=str(uuid4()), engine_run_id=str(uuid4()), engine_id="opencode", files=[])
-    assert fake.networks.kwargs["internal"] is False
+@pytest.mark.parametrize("value", ["true", "TRUE", "1", "yes", "on"])
+def test_network_egress_env_opt_in_is_rejected_before_docker(tmp_path, monkeypatch, value):
+    monkeypatch.setenv("RUNTIME_ALLOW_EGRESS", value)
+    fake = FakeDocker()
+    with pytest.raises(RuntimeErrorSafe, match="egress_proxy_required"):
+        DockerTaskRuntimeManager(
+            image="registry.example/opencode@sha256:" + "a" * 64,
+            workspace_root=str(tmp_path), client=fake,
+        )
+    assert not fake.networks.items
+    assert not fake.containers.items
 
 
-def test_network_egress_env_rejects_random_values(tmp_path, monkeypatch):
-    monkeypatch.setenv("RUNTIME_ALLOW_EGRESS", "yes-please")
+@pytest.mark.parametrize("value", ["yes-please", "maybe", "enabled"])
+def test_network_egress_env_rejects_unknown_values(tmp_path, monkeypatch, value):
+    monkeypatch.setenv("RUNTIME_ALLOW_EGRESS", value)
+    fake = FakeDocker()
+    with pytest.raises(RuntimeErrorSafe, match="egress_config_invalid"):
+        DockerTaskRuntimeManager(
+            image="registry.example/opencode@sha256:" + "a" * 64,
+            workspace_root=str(tmp_path), client=fake,
+        )
+    assert not fake.networks.items
+    assert not fake.containers.items
+
+
+@pytest.mark.parametrize("value", ["false", "0", "no", "off", ""])
+def test_network_egress_false_values_keep_internal_network(tmp_path, monkeypatch, value):
+    monkeypatch.setenv("RUNTIME_ALLOW_EGRESS", value)
     mgr, fake = manager(tmp_path)
     mgr.create(task_id=str(uuid4()), engine_run_id=str(uuid4()), engine_id="opencode", files=[])
     assert fake.networks.kwargs["internal"] is True
