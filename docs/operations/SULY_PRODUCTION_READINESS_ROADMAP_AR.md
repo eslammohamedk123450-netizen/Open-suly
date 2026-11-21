@@ -424,3 +424,11 @@ For every engine:
 - Platform CI #1005 على commit `38fdd402` اكتمل: **601 API tests passed, 5 warnings**؛ TypeScript typecheck، Expo compatibility، Web export نجحت. Repository baseline #1023 نجح.
 - Repository baseline #1024 على commit `e0d9741d` نجح؛ Platform CI #1006 pending وقت checkpoint. OpenCode verification #166: runtime primitive tests نجحت؛ upstream Docker build/smoke pending.
 - Rate limits المحلية لا تزال process-local؛ لا تُحسب IP/global limits أو distributed quota كمنجزة. المحركات/worker/deploy والمigrations ما زالت off/untouched.
+
+
+### تحديث نتائج CI بعد checkpoint
+- Platform CI #1006 على commit `e0d9741d` اكتمل بنجاح: API tests، TypeScript، Expo compatibility، وWeb export.
+- Repository baseline checks #1024 على `e0d9741d` نجح. Baseline #1025 على commit `442ccd06` و#1026 على `45aacc23` نجحا أيضًا.
+- OpenCode verification #166: Runtime primitives نجحت، upstream provenance/Bun install/server typecheck/Docker image build نجحت، وDocker smoke-test الأصلي كان قيد التنفيذ عند آخر قراءة.
+- آخر HEAD وقت التحديث: `45aacc232cf720725c590c08aefdaf87ccaf8392`. التغييرات بعد #1006 هي توثيق فقط؛ Platform CI على commits الوثائق ما زال pending.
+- Worker workflow لم يعد له schedule؛ لا يوجد worker execution في هذا التحديث.
