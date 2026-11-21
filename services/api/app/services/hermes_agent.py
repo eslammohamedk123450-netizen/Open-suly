@@ -353,15 +353,24 @@ def run_agent_turn(
     return asyncio.run(request())
 
 
-def stop_agent_run(upstream_run_id: str, *, timeout_seconds: float = 30.0) -> bool:
+def stop_agent_run(
+    upstream_run_id: str,
+    *,
+    timeout_seconds: float = 30.0,
+    runtime_lease: RuntimeLease | None = None,
+    task_id: str | None = None,
+    engine_run_id: str | None = None,
+) -> bool:
     """Request upstream stop and confirm a terminal state without reading output.
 
     لا تعتبر استجابة طلب الإيقاف وحدها دليلاً على توقف المحرك؛ ننتظر حالة
     نهائية مؤكدة، وإلا نعيد خطأ آمنًا كي يعيد reconciler المحاولة لاحقًا.
     """
     settings = get_settings()
-    # إيقاف تشغيل معروف لا يبدأ runtime جديدًا؛ يجب أن يظل متاحًا حتى بعد تعطيل المحرك.
-    if not settings.hermes_agent_base_url or not settings.hermes_agent_api_key:
+    # إيقاف تشغيل معروف لا يبدأ runtime جديدًا؛ task leases تستخدم بيانات اعتماد قصيرة العمر.
+    if runtime_lease is None and (
+        not settings.hermes_agent_base_url or not settings.hermes_agent_api_key
+    ):
         raise HermesAgentUnavailable("Hermes agent runtime is not configured.")
     if not isinstance(upstream_run_id, str) or not _RUN_ID_PATTERN.fullmatch(upstream_run_id):
         raise ValueError("Hermes upstream run identifier is invalid.")
@@ -372,8 +381,12 @@ def stop_agent_run(upstream_run_id: str, *, timeout_seconds: float = 30.0) -> bo
     ):
         raise ValueError("Hermes stop timeout is outside the allowed range.")
 
-    base_url = _validate_base_url(settings.hermes_agent_base_url)
-    token = settings.hermes_agent_api_key.get_secret_value()
+    base_url, token = _runtime_credentials(
+        settings,
+        runtime_lease=runtime_lease,
+        task_id=task_id,
+        engine_run_id=engine_run_id,
+    )
 
     async def stop_and_confirm() -> bool:
         deadline = asyncio.get_running_loop().time() + timeout_seconds
