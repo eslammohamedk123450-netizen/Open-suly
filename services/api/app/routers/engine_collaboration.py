@@ -81,12 +81,13 @@ def _raise_collaboration_error(exc: Exception) -> None:
     if "not_found" in message:
         raise HTTPException(status_code=404, detail="Task or handoff not found.") from exc
     if any(code in message for code in (
-        "not_running", "not_pending", "budget_exceeded", "parallel_limit",
-        "idempotency_conflict", "budget_mismatch", "not_cancellable", "engine_pair_invalid",
+        "not_running", "not_available", "not_successful", "not_pending",
+        "budget_exceeded", "budget_mismatch", "parallel_limit",
+        "idempotency_conflict", "not_cancellable", "engine_pair_invalid",
     )):
         raise HTTPException(status_code=409, detail="The collaboration state no longer permits this action.") from exc
     if any(code in message for code in (
-        "request_invalid", "payload_invalid", "title_invalid",
+        "request_invalid", "payload_invalid", "title_invalid", "source_output_invalid",
         "capability_not_supported", "project_required", "depth_exceeded",
     )):
         raise HTTPException(status_code=422, detail="The collaboration request is invalid or unsupported.") from exc
