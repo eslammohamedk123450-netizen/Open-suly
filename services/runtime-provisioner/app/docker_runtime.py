@@ -125,12 +125,15 @@ class DockerTaskRuntimeManager:
     until a task-aware proxy enforces DNS pinning, destination policy, and redirects.
     """
 
-    def __init__(self, *, image: str, workspace_root: str, limits: RuntimeLimits | None = None, client=None, egress_allowed: bool | None = None):
+    def __init__(self, *, image: str, workspace_root: str, engine_id: str = "opencode", limits: RuntimeLimits | None = None, client=None, egress_allowed: bool | None = None):
         if not isinstance(image, str) or not re.fullmatch(r"[A-Za-z0-9./:_-]+@sha256:[0-9a-f]{64}", image):
             raise ValueError("runtime_image_must_be_digest_pinned")
         # Validate before touching the workspace or Docker daemon. No direct
         # outbound mode is available until a task-aware egress proxy is enforced.
         validate_egress_disabled(egress_allowed)
+        if engine_id not in {"opencode", "hermes-agent"}:
+            raise ValueError("runtime_engine_not_allowed")
+        self.engine_id = engine_id
         self.image = image
         self.root = Path(workspace_root).resolve()
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -150,7 +153,7 @@ class DockerTaskRuntimeManager:
     ) -> dict[str, Any]:
         task_id = _canonical_uuid(task_id)
         run_id = _canonical_uuid(engine_run_id)
-        if engine_id not in {"opencode", "hermes-agent"}:
+        if engine_id not in {"opencode", "hermes-agent"} or engine_id != self.engine_id:
             raise ValueError("runtime_engine_not_allowed")
         if engine_id == "hermes-agent" and runtime_profile != "suly-hermes-task-v1":
             raise ValueError("runtime_profile_required")
@@ -182,7 +185,7 @@ class DockerTaskRuntimeManager:
                     "platform_toolsets:\n"
                     "  api_server: []\n"
                     "agent:\n"
-                    "  disabled_toolsets: [terminal, browser, computer_use, file, web, mcp, delegate_task]\n"
+                    "  disabled_toolsets: [terminal, browser, computer_use, file, web, mcp, delegate_task, skills, memory]\n"
                     "  environment_probe: false\n"
                     "terminal:\n"
                     "  cwd: /workspace\n"
@@ -251,7 +254,9 @@ class DockerTaskRuntimeManager:
                 "/var/tmp": f"rw,noexec,nosuid,size={self.limits.tmpfs_bytes}",
             }
             if is_hermes:
-                container_tmpfs["/opt/data/.cache"] = "rw,nosuid,nodev,size=128m,uid=10000,gid=10000"
+                container_tmpfs["/opt/data/.cache"] = (
+                    f"rw,nosuid,nodev,size=128m,uid={os.getuid()},gid={os.getgid()}"
+                )
             else:
                 container_tmpfs.update({
                     "/var/lib/opencode/config": "rw,nosuid,size=32m,uid=10001,gid=10001",
@@ -320,7 +325,13 @@ class DockerTaskRuntimeManager:
         """Reap only SULY-labelled containers whose signed ownership metadata is complete."""
         current = int(time.time()) if now is None else now
         removed = 0
-        for container in self.client.containers.list(all=True, filters={"label": f"{_LABEL_PREFIX}.managed=true"}):
+        for container in self.client.containers.list(
+            all=True,
+            filters={"label": [
+                f"{_LABEL_PREFIX}.managed=true",
+                f"{_LABEL_PREFIX}.engine={self.engine_id}",
+            ]},
+        ):
             labels = container.labels or {}
             try:
                 expiry = int(labels.get(f"{_LABEL_PREFIX}.expires", "0"))
@@ -346,6 +357,7 @@ class DockerTaskRuntimeManager:
             f"{_LABEL_PREFIX}.task": task_id,
             f"{_LABEL_PREFIX}.run": engine_run_id,
             f"{_LABEL_PREFIX}.managed": "true",
+            f"{_LABEL_PREFIX}.engine": self.engine_id,
         }
         if any(labels.get(key) != value for key, value in expected.items()):
             raise RuntimeErrorSafe("runtime_ownership_mismatch")
