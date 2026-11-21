@@ -102,7 +102,6 @@ def validate_agent_plan(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 _PREFIXES = ("analyze:", "analyse:", "حلل:", "حلّل:")
 _AGENT_PREFIXES = ("agent:", "وكيل:")
-_TEAM_PREFIXES = ("team:", "فريق:")
 
 
 def plan_request(request: str) -> PlannedTask:
@@ -110,54 +109,6 @@ def plan_request(request: str) -> PlannedTask:
         raise UnsupportedTaskRequest("Task request is empty.")
     normalized = request.strip()
     lowered = normalized.lower()
-    team_prefix = next((item for item in _TEAM_PREFIXES if lowered.startswith(item)), None)
-    if team_prefix is not None:
-        prompt = normalized[len(team_prefix):].strip()
-        if not prompt:
-            raise UnsupportedTaskRequest("Provide the team task after the team: prefix.")
-        if len(prompt) > 8_000:
-            raise UnsupportedTaskRequest("Team task input exceeds 8,000 characters.")
-        from app.core.config import get_settings
-        from app.worker_runtime import TOOL_REGISTRY
-
-        settings = get_settings()
-        if (
-            not settings.worker_enabled
-            or not settings.hermes_agent_enabled
-            or not settings.opencode_enabled
-            or not settings.runtime_provisioner_url
-            or not settings.runtime_provisioner_token
-            or not settings.runtime_provisioner_allowed_origins
-        ):
-            raise UnsupportedTaskRequest(
-                "The two-engine team is unavailable until Hermes, OpenCode and their isolated runtime provisioner are explicitly enabled."
-            )
-        if TOOL_REGISTRY.get("hermes.agent.turn") is None or TOOL_REGISTRY.get("engine.collaborate") is None:
-            raise UnsupportedTaskRequest("The cross-engine collaboration operation is not registered.")
-        return PlannedTask(steps=validate_agent_plan([
-            {
-                "step_key": "hermes_prepare",
-                "title": "Hermes analysis and preparation",
-                "description": "Hermes prepares a bounded plan and task context for the coding engine.",
-                "depends_on": [],
-                "input": {"operation": "hermes.agent.turn", "prompt": prompt},
-            },
-            {
-                "step_key": "opencode_handoff",
-                "title": "OpenCode implementation handoff",
-                "description": "OpenCode receives the completed Hermes output through the SULY collaboration boundary.",
-                "depends_on": ["hermes_prepare"],
-                "input": {
-                    "operation": "engine.collaborate",
-                    "target_engine": "opencode",
-                    "source_step_key": "hermes_prepare",
-                    "capability": "code.edit",
-                    "prompt": prompt,
-                    "title": "SULY team implementation",
-                },
-            },
-        ]), planner="engine-team-v1")
-
     agent_prefix = next((item for item in _AGENT_PREFIXES if lowered.startswith(item)), None)
     if agent_prefix is not None:
         prompt = normalized[len(agent_prefix):].strip()
