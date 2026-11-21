@@ -552,13 +552,13 @@ The overall integration remains **IN PROGRESS**.
 - Hermes task execution now checks whether the durable task is linked to a SULY project.
 - For project-linked tasks, it uses the existing owner-scoped `ProjectWorkspaceStore` to create a deterministic, bounded snapshot.
 - The worker passes only normalized `path`, `content`, and `sha256` entries into `TaskScopedRuntimeBroker.acquire(..., files=...)`.
-- The existing workspace policy limits the snapshot to 200 files / 5 MiB, caps individual files at 256 KiB, and excludes reserved paths such as `.git`, `node_modules`, `.env*`, and secret directories.
+- The workspace policy limits the snapshot to 200 files / 5 MiB, caps individual files at 256 KiB, caps paths at 240 characters to match the provisioner contract, and excludes reserved paths such as `.git`, `node_modules`, `.env*`, and `secrets/`.
 - The project is re-verified against the task owner before any file rows are loaded. No host filesystem path is mounted or exposed to Hermes.
 - Added a regression test proving the project snapshot is passed into the task-scoped Hermes runtime lease.
 
 ### Verification
 
-- Platform CI API tests at commit `ceabd3a3681d9252be8c2c7a0dff1ac6b2f3c1d1`: **668 passed, 5 warnings**.
+- Platform CI API tests at commit `5b324305789bf4f6cf24a5a71168ea3e78bf93a7`: **670 passed, 5 warnings**.
 - Repository baseline checks for that commit: **passed**.
 - Client typecheck/web export was still running when this checkpoint was recorded.
 - The external provisioner must still prove that it materializes the supplied files inside the correct isolated container and never into a shared host workspace.
