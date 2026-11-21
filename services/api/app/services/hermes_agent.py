@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from app.core.config import get_settings
+from app.services.runtime_broker_contract import RuntimeLease
 
 
 class HermesAgentUnavailable(RuntimeError):
@@ -139,6 +140,7 @@ def run_agent_turn(
     idempotency_key: str | None = None,
     on_run_started: Callable[[str], bool] | None = None,
     on_event: Callable[[dict[str, str | int | float]], bool | None] | None = None,
+    runtime_lease: RuntimeLease | None = None,
 ) -> dict[str, str]:
     """Create and poll one durable Hermes run; stop it when SULY signals cancellation.
 
@@ -148,10 +150,30 @@ def run_agent_turn(
     settings = get_settings()
     if not settings.hermes_agent_enabled:
         raise HermesAgentUnavailable("Hermes agent runtime is disabled.")
-    if not settings.hermes_agent_isolation_confirmed:
-        raise HermesAgentUnavailable("Hermes per-task isolation is not confirmed.")
-    if not settings.hermes_agent_base_url or not settings.hermes_agent_api_key:
-        raise HermesAgentUnavailable("Hermes agent runtime is not configured.")
+    if runtime_lease is None:
+        # Legacy shared endpoint remains gated by explicit operator attestation.
+        if not settings.hermes_agent_isolation_confirmed:
+            raise HermesAgentUnavailable("Hermes per-task isolation is not confirmed.")
+        if not settings.hermes_agent_base_url or not settings.hermes_agent_api_key:
+            raise HermesAgentUnavailable("Hermes agent runtime is not configured.")
+        base_url = _validate_base_url(settings.hermes_agent_base_url)
+        token = settings.hermes_agent_api_key.get_secret_value()
+    else:
+        # Preferred path: one lease, one engine, one task attempt, one isolated process.
+        allowed_origins = frozenset(settings.runtime_provisioner_allowed_origins)
+        try:
+            runtime_lease.validate(
+                task_id=runtime_lease.task_id,
+                engine_run_id=runtime_lease.engine_run_id,
+                engine_id="hermes-agent",
+                allowed_origins=allowed_origins,
+            )
+        except (TypeError, ValueError) as exc:
+            raise HermesAgentUnavailable("Hermes task runtime lease is invalid.") from exc
+        if not runtime_lease.gateway_path:
+            raise HermesAgentUnavailable("Hermes task runtime gateway is missing.")
+        base_url = _validate_base_url(runtime_lease.base_url + runtime_lease.gateway_path)
+        token = runtime_lease.access_token
     if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > _MAX_PROMPT_CHARS:
         raise ValueError("Hermes prompt must contain 1–20000 characters.")
     if (
@@ -164,8 +186,6 @@ def run_agent_turn(
     if on_run_started is None:
         raise ValueError("Hermes upstream run persistence callback is required.")
 
-    base_url = _validate_base_url(settings.hermes_agent_base_url)
-    token = settings.hermes_agent_api_key.get_secret_value()
     timeout = timeout_seconds if timeout_seconds is not None else settings.hermes_agent_timeout_seconds
     if (
         isinstance(timeout, bool)
