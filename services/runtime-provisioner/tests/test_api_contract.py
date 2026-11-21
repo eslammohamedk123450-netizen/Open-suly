@@ -286,3 +286,33 @@ def test_execute_request_rejects_unexpected_fields():
 
     with pytest.raises(ValidationError):
         runtime_api.ExecuteRequest.model_validate({"prompt": "safe prompt", "extra": "ignored before"})
+
+
+def test_create_runtime_rejects_oversized_body_before_docker(monkeypatch):
+    import pytest
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(
+        runtime_api, "_get_manager",
+        lambda: pytest.fail("Docker manager must not be reached for oversized body"),
+    )
+    response = client.post(
+        "/v1/runtimes",
+        headers={"Authorization": "Bearer " + "t" * 48, "Content-Type": "application/json"},
+        content=b"x" * (runtime_api.MAX_RUNTIME_CREATE_BODY_BYTES + 1),
+    )
+    assert response.status_code == 413
+    assert response.json()["detail"] == "request_too_large"
+
+
+def test_create_runtime_rejects_unknown_request_fields():
+    response = client.post(
+        "/v1/runtimes",
+        headers={"Authorization": "Bearer " + "t" * 48, "Content-Type": "application/json"},
+        json={
+            "task_id": "00000000-0000-4000-8000-000000000001",
+            "engine_run_id": "00000000-0000-4000-8000-000000000002",
+            "unexpected": "ignored fields are not accepted",
+        },
+    )
+    assert response.status_code == 422
