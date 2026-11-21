@@ -69,7 +69,7 @@ class HermesAgentAdapter:
         *,
         idempotency_key: str,
         on_run_started: Callable[[str], bool],
-        on_event: Callable[[dict[str, str | int | float]], bool | None] | None = None,
+        on_event: Callable[[dict[str, object]], bool | None] | None = None,
         runtime_lease: RuntimeLease | None = None,
     ) -> None:
         # نمرر إشارة الإلغاء وهوية المحاولة وقناة أحداث لا تقبل إلا metadata.
@@ -107,7 +107,7 @@ def build_engine_registry(
     *,
     idempotency_key: str,
     on_run_started: Callable[[str], bool],
-    on_event: Callable[[dict[str, str | int | float]], bool] | None = None,
+    on_event: Callable[[dict[str, object]], bool] | None = None,
     runtime_lease: RuntimeLease | None = None,
 ) -> EngineRegistry:
     """Build the full pinned engine catalogue with only configured Hermes enabled."""
@@ -165,7 +165,7 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
     # ننشئ سجل المحاولة أولًا ليصبح UUID الخاص به مفتاح idempotency ثابتًا لدى Hermes.
     run_id = run_store.start(step, "hermes-agent")
 
-    def persist_engine_event(event: dict[str, str | int | float]) -> bool:
+    def persist_engine_event(event: dict[str, object]) -> bool:
         # نسجل metadata فقط؛ لا نطبع محتوى الحدث أو أي نص من المحرك.
         try:
             persisted = run_store.append_event(run_id, step, event)
