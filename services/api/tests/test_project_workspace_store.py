@@ -68,3 +68,20 @@ def test_snapshot_rejects_project_file_over_limit():
     client = Client({"projects": [{"id": project, "user_id": user}], "project_files": rows})
     with pytest.raises(ProjectWorkspaceError, match="file_too_large"):
         ProjectWorkspaceStore(client).snapshot(user_id=user, project_id=project)
+
+
+
+def test_snapshot_rejects_paths_longer_than_runtime_gateway_contract():
+    user, project = str(uuid4()), str(uuid4())
+    long_path = "a" * 241
+    client = Client({
+        "projects": [{"id": project, "user_id": user}],
+        "project_files": [{
+            "project_id": project,
+            "user_id": user,
+            "path": long_path,
+            "content": "content",
+        }],
+    })
+    with pytest.raises(ValueError, match="workspace_path_invalid"):
+        ProjectWorkspaceStore(client).snapshot(user_id=user, project_id=project)
