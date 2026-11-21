@@ -265,6 +265,40 @@ def test_hermes_sse_consumer_parses_events_and_never_forwards_free_text():
     assert all("output" not in event and "text" not in event for event in received)
 
 
+def test_hermes_sse_consumer_drops_aggregate_oversized_event_and_resumes():
+    import asyncio
+    import json
+
+    class StreamResponse:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+        def raise_for_status(self):
+            return None
+        async def aiter_lines(self):
+            for _ in range(6):
+                yield "data: " + ("x" * 50_000)
+            yield ""
+            yield "data: " + json.dumps({
+                "event": "run.completed",
+                "run_id": "run_sse_bounded",
+                "seq": 2,
+            })
+            yield ""
+
+    class Client:
+        def stream(self, *_args, **_kwargs):
+            return StreamResponse()
+
+    received = []
+    asyncio.run(hermes_agent._consume_run_events(
+        Client(), "https://hermes-runtime.internal:8443", "run_sse_bounded",
+        {"Authorization": "Bearer test-token"}, received.append,
+    ))
+    assert received == [{"event": "run.completed", "seq": 2}]
+
+
 def test_hermes_native_runs_api_admits_polls_and_persists_run_id(monkeypatch):
     calls = []
     class Client:
