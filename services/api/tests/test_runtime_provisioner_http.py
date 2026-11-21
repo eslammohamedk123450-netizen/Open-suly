@@ -44,6 +44,33 @@ def test_acquire_sends_only_task_attempt_identity_and_returns_opaque_lease():
     assert "access_token" not in seen["body"]
 
 
+def test_acquire_requests_and_returns_hermes_isolation_profile():
+    task, run, runtime = str(uuid4()), str(uuid4()), str(uuid4())
+    seen = {}
+
+    def handler(request):
+        seen["body"] = request.read().decode()
+        return httpx.Response(201, json={
+            "runtime_id": runtime,
+            "task_id": task,
+            "engine_run_id": run,
+            "engine_id": "hermes-agent",
+            "runtime_profile": "suly-hermes-task-v1",
+            "base_url": ORIGIN,
+            "gateway_path": f"/v1/runtime-gateway/{runtime}",
+            "access_token": "h" * 48,
+            "expires_at": time() + 600,
+        })
+
+    client = provider(handler)
+    try:
+        lease = client.acquire(task, run, "hermes-agent")
+    finally:
+        client.close()
+    assert lease.runtime_profile == "suly-hermes-task-v1"
+    assert '"runtime_profile":"suly-hermes-task-v1"' in seen["body"]
+
+
 def test_acquire_rejects_mismatched_attempt_identity():
     client = provider(lambda request: httpx.Response(201, json={}))
     try:
