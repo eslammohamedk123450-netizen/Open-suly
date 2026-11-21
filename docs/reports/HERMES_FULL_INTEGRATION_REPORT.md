@@ -424,3 +424,30 @@ A source audit found that `EngineRunStore.count_missing_upstream_identity()` cal
 | Runtime provisioner implementation/deployment | External dependency; not available in this repository's current verified state |
 
 The overall integration remains **IN PROGRESS**. The 661 passing API tests do not establish production isolation or completion of Hermes feature parity.
+
+
+## 17. Execution checkpoint 08 — runtime teardown must precede engine success
+
+A lifecycle review found that the Hermes worker previously marked an engine run `succeeded` before the `finally` block attempted to release its task-scoped runtime. If the provisioner did not confirm release, the engine ledger was already terminal and the orphan reconciler could not claim that runtime for cleanup.
+
+### Implemented
+
+- Hermes now attempts runtime release before writing any terminal engine-run status.
+- A run is marked `succeeded` only after provider-confirmed runtime release.
+- On execution failure or cooperative cancellation, the worker likewise records a terminal status only after runtime release is confirmed.
+- If release is false or raises, the engine run remains `running` with its opaque runtime identity. The worker then fails/cancels the task step; the database step-transition trigger moves the still-open engine run to `stop_pending`, allowing the reconciler to recover and release the runtime.
+- The same rule applies when runtime identity persistence is refused: the worker does not mark the engine run terminal if runtime cleanup remains unconfirmed.
+- Added a regression test proving that an unconfirmed release cannot be reported as a successful Hermes engine run.
+
+### Verification
+
+- Platform CI API tests at commit `20bfe9171be3a8ff0d1aa132c604b16a1ae78a78`: **663 passed, 5 warnings**.
+- Repository baseline checks for that commit: **passed**.
+- Client typecheck/web export for that commit was still in progress when this checkpoint was recorded.
+- This is mocked provider/worker verification. The external provisioner must still prove that release is idempotent and that recovery after worker crash can terminate the entire process tree.
+
+### Updated lifecycle invariant
+
+`engine_runs.status = succeeded` is now written only after the worker receives an affirmative runtime release result. If runtime teardown is uncertain, the engine run remains eligible for database-triggered `stop_pending` reconciliation instead of being prematurely finalized.
+
+The overall integration remains **IN PROGRESS**. Runtime release semantics have not been tested against a deployed provisioner.
