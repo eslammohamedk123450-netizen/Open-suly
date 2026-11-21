@@ -1,0 +1,75 @@
+name: SULY engine runtime image builds
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".gitmodules"
+      - "engines/hermes/**"
+      - "engines/opencode/**"
+      - "services/runtime-provisioner/**"
+      - ".github/workflows/engine-runtime-build.yml"
+  pull_request:
+    paths:
+      - ".gitmodules"
+      - "engines/hermes/**"
+      - "engines/opencode/**"
+      - "services/runtime-provisioner/**"
+      - ".github/workflows/engine-runtime-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: suly-engine-runtime-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-original-engine-images:
+    name: Verify pinned sources and build both original engines
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout SULY with complete pinned upstream checkouts
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Verify exact upstream source revisions and license notices
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C engines/hermes/upstream rev-parse HEAD)" = "2de9f51b8008a7d49a49221c184f2f11cbfc4af1"
+          test "$(git -C engines/opencode/upstream rev-parse HEAD)" = "4cca18d80450a3dd6a9a4142028bde84ccb3116e"
+          test -s engines/hermes/upstream/LICENSE
+          test -s engines/hermes/upstream/Dockerfile
+          test -s engines/opencode/upstream/LICENSE
+          test -s engines/opencode/upstream/package.json
+          test -s engines/opencode/upstream/bun.lock || test -s engines/opencode/upstream/bun.lockb
+          python engines/opencode/verify_upstream.py
+
+      - name: Build original Hermes runtime image
+        run: docker build --pull=false -f engines/hermes/upstream/Dockerfile -t suly-hermes-agent:ci engines/hermes/upstream
+
+      - name: Build original OpenCode runtime image
+        run: docker build --pull=false -f engines/opencode/Dockerfile -t suly-opencode:ci .
+
+      - name: Record local image identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker image inspect suly-hermes-agent:ci --format='Hermes image ID: {{.Id}}'
+          docker image inspect suly-opencode:ci --format='OpenCode image ID: {{.Id}}'
+
+  build-runtime-provisioner:
+    name: Build SULY runtime provisioner image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build provisioner image
+        run: docker build --pull=false -f services/runtime-provisioner/Dockerfile -t suly-runtime-provisioner:ci services/runtime-provisioner
+      - name: Record local image identity
+        run: docker image inspect suly-runtime-provisioner:ci --format='Provisioner image ID: {{.Id}}'
