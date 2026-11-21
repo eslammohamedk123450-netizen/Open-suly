@@ -532,7 +532,13 @@ def main() -> None:
             run_store = EngineRunStore(client)
 
             def stop_hermes_claim(claim) -> bool:
-                if claim.runtime_id is None or claim.task_id is None:
+                if claim.runtime_id is None:
+                    # Legacy shared-runtime rows can still be stopped by their known run ID.
+                    return (
+                        claim.upstream_run_id is not None
+                        and stop_agent_run(claim.upstream_run_id) is True
+                    )
+                if claim.task_id is None:
                     return False
                 lease = runtime_provider.recover(
                     str(claim.runtime_id),
