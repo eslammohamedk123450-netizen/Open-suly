@@ -211,6 +211,11 @@ begin
 end;
 $$;
 
+-- Remove the earlier draft overload; only the owner-explicit RPC signature remains.
+drop function if exists public.create_engine_collaboration_handoff(
+  uuid,uuid,text,text,text,jsonb,smallint,smallint,integer,integer
+);
+
 create or replace function public.approve_engine_collaboration_handoff(
   p_handoff_id uuid,
   p_user_id uuid
