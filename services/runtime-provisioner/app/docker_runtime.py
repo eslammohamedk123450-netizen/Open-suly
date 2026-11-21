@@ -167,49 +167,58 @@ class DockerTaskRuntimeManager:
         runtime_root = Path(tempfile.mkdtemp(prefix=f"{runtime_id}-", dir=self.root))
         os.chmod(runtime_root, 0o700)
         workspace = runtime_root / "workspace" if engine_id == "hermes-agent" else runtime_root
-        workspace.mkdir(mode=0o700, exist_ok=True)
         hermes_home = runtime_root / "hermes_home" if engine_id == "hermes-agent" else None
-        if hermes_home is not None:
-            hermes_home.mkdir(mode=0o700, exist_ok=True)
-            # The upstream API server reads this profile at process start. An
-            # explicit empty list is intentional: no terminal/browser/MCP/file
-            # toolsets are exposed until a reviewed SULY grant and egress proxy
-            # are implemented. Native memory and native delegation are off;
-            # SULY owns conversation context and future delegated child tasks.
-            hermes_config = (
-                "platform_toolsets:\n"
-                "  api_server: []\n"
-                "agent:\n"
-                "  disabled_toolsets: [terminal, browser, computer_use, file, web, mcp, delegate_task]\n"
-                "  environment_probe: false\n"
-                "terminal:\n"
-                "  cwd: /workspace\n"
-                "  env_passthrough: []\n"
-                "  client_env_passthrough: []\n"
-                "  docker_forward_env: []\n"
-                "  docker_env: {}\n"
-                "memory:\n"
-                "  memory_enabled: false\n"
-                "  user_profile_enabled: false\n"
-                "  write_approval: true\n"
-                "delegation:\n"
-                "  orchestrator_enabled: false\n"
-                "  max_spawn_depth: 1\n"
-                "  max_concurrent_children: 1\n"
-                "  oneshot_max_children: 0\n"
-            )
-            config_path = hermes_home / "config.yaml"
-            fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8") as stream:
-                stream.write(hermes_config)
         network = container = None
+        try:
+            workspace.mkdir(mode=0o700, exist_ok=True)
+            if hermes_home is not None:
+                hermes_home.mkdir(mode=0o700, exist_ok=True)
+                # The upstream API server reads this profile at process start. An
+                # explicit empty list is intentional: no terminal/browser/MCP/file
+                # toolsets are exposed until a reviewed SULY grant and egress proxy
+                # are implemented. Native memory and native delegation are off;
+                # SULY owns conversation context and future delegated child tasks.
+                hermes_config = (
+                    "platform_toolsets:\\n"
+                    "  api_server: []\\n"
+                    "agent:\\n"
+                    "  disabled_toolsets: [terminal, browser, computer_use, file, web, mcp, delegate_task]\\n"
+                    "  environment_probe: false\\n"
+                    "terminal:\\n"
+                    "  cwd: /workspace\\n"
+                    "  env_passthrough: []\\n"
+                    "  client_env_passthrough: []\\n"
+                    "  docker_forward_env: []\\n"
+                    "  docker_env: {}\\n"
+                    "memory:\\n"
+                    "  memory_enabled: false\\n"
+                    "  user_profile_enabled: false\\n"
+                    "  write_approval: true\\n"
+                    "delegation:\\n"
+                    "  orchestrator_enabled: false\\n"
+                    "  max_spawn_depth: 1\\n"
+                    "  max_concurrent_children: 1\\n"
+                    "  oneshot_max_children: 0\\n"
+                )
+                config_path = hermes_home / "config.yaml"
+                fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                    stream.write(hermes_config)
+                # Upstream Hermes runs its supervised gateway as UID/GID 10000.
+                # Bind-mounted data must be accessible to that non-root identity.
+                os.chown(hermes_home, 10000, 10000)
+                os.chown(config_path, 10000, 10000)
+                os.chown(workspace, 10000, 10000)
+        except Exception:
+            shutil.rmtree(runtime_root, ignore_errors=True)
+            raise
         labels = {
             f"{_LABEL_PREFIX}.id": runtime_id,
             f"{_LABEL_PREFIX}.task": task_id,
             f"{_LABEL_PREFIX}.run": run_id,
             f"{_LABEL_PREFIX}.engine": engine_id,
             f"{_LABEL_PREFIX}.managed": "true",
-            f"{_LABEL_PREFIX}.workspace": str(workspace),
+            f"{_LABEL_PREFIX}.workspace": str(runtime_root),
             f"{_LABEL_PREFIX}.expires": str(int(time.time() + self.limits.lifetime_seconds)),
         }
         try:

@@ -1,13 +1,10 @@
-# Isolated upstream Hermes Agent runtime.
-# Build context is pinned to a verified immutable upstream commit; no floating main branch.
-# Upstream SECURITY.md describes Hermes as single-tenant and requires whole-process OS isolation
-# for untrusted/multi-user production workloads. This profile is not yet production-ready:
-# per-tenant isolation, egress policy, and resource limits must be completed before activation.
+# Original Hermes Agent source is checked out at its immutable submodule revision.
+# This shared Compose profile is development-only and keeps its API disabled.
 services:
   hermes-agent:
-    image: suly-hermes-agent:2026-11-20
+    image: suly-hermes-agent:2026-11-21
     build:
-      context: https://github.com/NousResearch/hermes-agent.git#2de9f51b8008a7d49a49221c184f2f11cbfc4af1
+      context: ./upstream
       dockerfile: Dockerfile
     profiles: ["agent-engines"]
     restart: unless-stopped
@@ -18,8 +15,8 @@ services:
       - hermes-data:/opt/data
     networks:
       - suly-agent-internal
-    # No host port is published. The API stays disabled by default. If it is
-    # enabled later, require a unique API key and a completed tool/sandbox audit.
+    # Never enable the API in this shared local profile. Production SULY tasks
+    # receive separate instances, workspaces and credentials via the provisioner.
 
 volumes:
   hermes-data:

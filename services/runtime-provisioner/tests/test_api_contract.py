@@ -83,10 +83,10 @@ def test_runtime_manager_factory_is_lazy_and_singleton(monkeypatch):
 
     monkeypatch.setattr(runtime_api, "DockerTaskRuntimeManager", FakeManager)
     monkeypatch.setattr(runtime_api, "IMAGE", "registry.example/opencode@sha256:" + "a" * 64)
-    monkeypatch.setattr(runtime_api, "_runtime_manager", None)
+    monkeypatch.setattr(runtime_api, "_runtime_managers", {})
 
-    first = runtime_api._get_manager()
-    second = runtime_api._get_manager()
+    first = runtime_api._get_manager("opencode")
+    second = runtime_api._get_manager("opencode")
 
     assert first is second
     assert len(created) == 1
@@ -105,12 +105,12 @@ def test_startup_rejects_runtime_egress_opt_in_before_starting_services(monkeypa
 def test_runtime_manager_factory_rejects_mutable_image_tag(monkeypatch):
     import app.main as runtime_api
 
-    monkeypatch.setattr(runtime_api, "_runtime_manager", None)
+    monkeypatch.setattr(runtime_api, "_runtime_managers", {})
     monkeypatch.setattr(runtime_api, "IMAGE", "registry.example/opencode:latest")
 
     import pytest
     with pytest.raises(RuntimeError, match="digest-pinned"):
-        runtime_api._get_manager()
+        runtime_api._get_manager("opencode")
 
 
 def test_gateway_body_limit_is_enforced_during_streaming():
@@ -183,7 +183,7 @@ def test_event_gateway_forwards_sse_without_buffering(monkeypatch):
         clients.append(instance)
         return instance
 
-    monkeypatch.setattr(runtime_api, "_runtime", lambda runtime_id, token: {"host_port": 4096})
+    monkeypatch.setattr(runtime_api, "_runtime", lambda runtime_id, token: {"host_port": 4096, "engine_id": "opencode"})
     monkeypatch.setattr(runtime_api.httpx, "AsyncClient", make_client)
 
     response = client.get(
