@@ -48,6 +48,7 @@ class OpenCodeTaskExecutor:
         engine_run_id: str,
         prompt: str,
         title: str = "SULY coding task",
+        cancel_event: Event | None = None,
     ) -> dict[str, Any]:
         if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 32_000:
             raise ValueError("opencode_prompt_invalid")
@@ -65,6 +66,26 @@ class OpenCodeTaskExecutor:
         session_holder: dict[str, Any] = {}
         event_stop = Event()
         event_thread: Thread | None = None
+        cancel_watch_stop = Event()
+        cancel_release_done = Event()
+        cancel_watch_thread: Thread | None = None
+
+        def watch_cancellation() -> None:
+            # فقدان lease يلغي runtime attempt بدل ترك prompt يعمل خارج ملكية المهمة.
+            if cancel_event is None:
+                return
+            while not cancel_watch_stop.wait(0.1):
+                if cancel_event.is_set():
+                    try:
+                        self._broker.release_attempt(task_id, engine_run_id, "opencode")
+                    finally:
+                        cancel_release_done.set()
+                    return
+
+        def stop_cancel_watch() -> None:
+            cancel_watch_stop.set()
+            if cancel_watch_thread is not None:
+                cancel_watch_thread.join(timeout=2.0)
 
         def persist_runtime_lease(lease) -> None:
             if lifecycle_run is None:
@@ -78,6 +99,14 @@ class OpenCodeTaskExecutor:
             )
             if not persisted:
                 raise RuntimeError("opencode_runtime_persistence_failed")
+            nonlocal cancel_watch_thread
+            if cancel_event is not None and cancel_watch_thread is None:
+                cancel_watch_thread = Thread(
+                    target=watch_cancellation,
+                    name=f"suly-opencode-cancel-{engine_run_id}",
+                    daemon=True,
+                )
+                cancel_watch_thread.start()
 
         def persist_upstream_session(lease, session_id: str) -> None:
             nonlocal event_thread
@@ -145,6 +174,7 @@ class OpenCodeTaskExecutor:
             if not isinstance(results, dict) or not isinstance(results.get("changed_files"), list):
                 raise RuntimeError("opencode_workspace_result_invalid")
             event_stop.set()
+            stop_cancel_watch()
             if event_thread is not None:
                 event_thread.join(timeout=3.0)
             if session_holder and session_holder["session"].get("upstream_session_id") != execution["session_id"]:
@@ -169,9 +199,11 @@ class OpenCodeTaskExecutor:
                 )
         except Exception:
             event_stop.set()
+            stop_cancel_watch()
             if event_thread is not None:
                 event_thread.join(timeout=1.0)
-            self._broker.release_attempt(task_id, engine_run_id, "opencode")
+            if not cancel_release_done.is_set():
+                self._broker.release_attempt(task_id, engine_run_id, "opencode")
             if lifecycle_run is not None:
                 self._lifecycle.update_status(
                     user_id=user_id, run_id=lifecycle_run["id"], status="failed",
@@ -252,6 +284,7 @@ class OpenCodeTaskExecutor:
                 )
     
         except Exception:
+            stop_cancel_watch()
             if lifecycle_run is not None:
                 self._lifecycle.update_status(
                     user_id=user_id, run_id=lifecycle_run["id"], status="failed",
