@@ -78,7 +78,7 @@ def test_skill_catalog_normalizes_and_drops_untrusted_fields():
     })
     assert result == {
         "source": "hermes-upstream",
-        "count": 3,
+        "count": 2,
         "items": [
             {
                 "name": "python-helper",
@@ -89,11 +89,6 @@ def test_skill_catalog_normalizes_and_drops_untrusted_fields():
                 "name": "bad name",
                 "description": "safe",
                 "category": "misc",
-            },
-            {
-                "name": "../unsafe",
-                "description": "Path-like names are metadata only",
-                "category": "",
             },
         ],
     }
