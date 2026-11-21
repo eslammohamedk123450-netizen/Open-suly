@@ -258,6 +258,7 @@ def test_hermes_and_opencode_runtime_reject_sensitive_credential_paths(tmp_path,
     "OPENAI_API_KEY=sk-" + "b" * 28,
     "api_key = \"" + "c" * 32 + "\"",
     "SUPABASE_KEY=sb_secret_" + "e" * 32,
+    "SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzZXJ2aWNlX3JvbGUifQ.signaturepayload12345",
 ])
 def test_runtime_rejects_secret_material_before_creating_container(tmp_path, content):
     mgr, fake = manager(tmp_path)
