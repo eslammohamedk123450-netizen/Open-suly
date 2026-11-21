@@ -674,7 +674,7 @@ def main() -> None:
                     )
                 if claim.task_id is None:
                     return False
-                lease = runtime_provider.recover(
+                lease = runtime_broker.recover(
                     str(claim.runtime_id),
                     str(claim.task_id),
                     str(claim.run_id),
@@ -692,7 +692,7 @@ def main() -> None:
                         except Exception:
                             # Runtime release below is the final process-tree cleanup boundary.
                             logger.warning("Hermes upstream stop did not confirm for run %s", claim.run_id)
-                    return runtime_provider.release(lease) is True
+                    return runtime_broker.release(lease) is True
                 except Exception:
                     return False
 
