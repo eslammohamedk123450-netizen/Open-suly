@@ -48,8 +48,11 @@ class OpenCodeTaskExecutor:
         engine_run_id: str,
         prompt: str,
         title: str = "SULY coding task",
+        timeout_seconds: int = 900,
         cancel_event: Event | None = None,
     ) -> dict[str, Any]:
+        if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= 1800:
+            raise ValueError("opencode_timeout_invalid")
         if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 32_000:
             raise ValueError("opencode_prompt_invalid")
         snapshot = self._workspace.snapshot(user_id=user_id, project_id=project_id)
@@ -168,6 +171,7 @@ class OpenCodeTaskExecutor:
                 files=snapshot["files"],
                 prompt=prompt,
                 title=title,
+                timeout_seconds=timeout_seconds,
                 on_lease_acquired=persist_runtime_lease,
                 on_session_created=persist_upstream_session,
             )
