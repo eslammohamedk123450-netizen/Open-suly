@@ -330,3 +330,37 @@ def test_append_engine_run_event_rejects_invalid_rpc_response():
         EngineRunStore(FakeRpc("true")).append_event(
             RUN_ID, step(), {"event": "run.queued"},
         )
+
+
+
+def test_attach_runtime_id_uses_active_step_lease_and_only_persists_uuid():
+    runtime_id = "00000000-0000-0000-0000-000000000055"
+    client = FakeRpc(True)
+    assert EngineRunStore(client).attach_runtime_id(RUN_ID, step(), runtime_id)
+    assert client.calls == [(
+        "attach_engine_runtime_identity",
+        {
+            "p_run_id": str(RUN_ID),
+            "p_step_id": str(step().step_id),
+            "p_lease_token": str(step().lease_token),
+            "p_runtime_id": runtime_id,
+        },
+    )]
+
+
+@pytest.mark.parametrize("runtime_id", ["", "not-a-uuid", "00000000-0000-0000-0000-000000000055/../x"])
+def test_attach_runtime_id_rejects_noncanonical_identity(runtime_id):
+    client = FakeRpc(True)
+    with pytest.raises(ValueError, match="invalid_engine_runtime_id"):
+        EngineRunStore(client).attach_runtime_id(RUN_ID, step(), runtime_id)
+    assert client.calls == []
+
+
+def test_attach_runtime_id_reports_lease_loss_and_rejects_non_boolean_response():
+    assert EngineRunStore(FakeRpc(False)).attach_runtime_id(
+        RUN_ID, step(), "00000000-0000-0000-0000-000000000055",
+    ) is False
+    with pytest.raises(RuntimeError, match="engine_run_runtime_attach_invalid_response"):
+        EngineRunStore(FakeRpc("true")).attach_runtime_id(
+            RUN_ID, step(), "00000000-0000-0000-0000-000000000055",
+        )
