@@ -101,7 +101,7 @@ class EngineRunStore:
         self,
         run_id: UUID,
         step: ClaimedStep,
-        event: dict[str, str | int | float],
+        event: dict[str, object],
     ) -> bool:
         """Persist allow-listed progress metadata only while the task lease is valid."""
         allowed_events = frozenset({
@@ -113,7 +113,7 @@ class EngineRunStore:
         if not isinstance(event, dict):
             raise ValueError("invalid_engine_run_event")
         allowed_fields = {
-            "event", "seq", "timestamp", "approval_request_id", "approval_choice",
+            "event", "seq", "timestamp", "approval_request_id", "approval_choice", "metadata",
         }
         if set(event) - allowed_fields:
             raise ValueError("invalid_engine_run_event_fields")
@@ -154,6 +154,46 @@ class EngineRunStore:
         elif approval_request_id is not None or approval_choice is not None:
             raise ValueError("invalid_engine_run_approval_metadata")
 
+        metadata = event.get("metadata", {})
+        if not isinstance(metadata, dict) or len(str(metadata).encode("utf-8")) > 2048:
+            raise ValueError("invalid_engine_run_event_metadata")
+        allowed_metadata = {
+            "subagent_id", "delegation_id", "parent_id", "child_session_id",
+            "status", "task_index", "task_count", "depth", "tool_count",
+            "input_tokens", "output_tokens", "duration_seconds",
+        }
+        if set(metadata) - allowed_metadata:
+            raise ValueError("invalid_engine_run_event_metadata")
+        if event_name in {"subagent.start", "subagent.complete"}:
+            identifier_fields = {"subagent_id", "delegation_id", "parent_id", "child_session_id"}
+            for field in identifier_fields & set(metadata):
+                value = metadata[field]
+                if (
+                    not isinstance(value, str)
+                    or not 1 <= len(value) <= 128
+                    or not value.isascii()
+                    or any(not (ch.isalnum() or ch in "_-") for ch in value)
+                ):
+                    raise ValueError("invalid_engine_run_event_metadata")
+            if not isinstance(metadata.get("subagent_id"), str):
+                raise ValueError("invalid_engine_run_event_metadata")
+            if "status" in metadata and metadata["status"] not in {
+                "started", "running", "completed", "failed", "cancelled"
+            }:
+                raise ValueError("invalid_engine_run_event_metadata")
+            for field in {
+                "task_index", "task_count", "depth", "tool_count", "input_tokens", "output_tokens"
+            } & set(metadata):
+                value = metadata[field]
+                if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 1_000_000_000:
+                    raise ValueError("invalid_engine_run_event_metadata")
+            if "duration_seconds" in metadata:
+                value = metadata["duration_seconds"]
+                if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 86_400:
+                    raise ValueError("invalid_engine_run_event_metadata")
+        elif metadata:
+            raise ValueError("invalid_engine_run_event_metadata")
+
         response = self._client.rpc(
             "append_engine_run_event",
             {
@@ -165,6 +205,7 @@ class EngineRunStore:
                 "p_event_timestamp": event_timestamp,
                 "p_approval_request_id": approval_request_id,
                 "p_approval_choice": approval_choice,
+                "p_metadata": metadata,
             },
         ).execute()
         if not isinstance(response.data, bool):
