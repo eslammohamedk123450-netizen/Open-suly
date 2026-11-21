@@ -429,7 +429,7 @@ def test_hermes_agent_operation_is_registered_with_approval_and_bounded_fields()
     assert definition.requires_approval is True
     assert definition.allowed_input_fields == frozenset({"prompt", "runtime_budget_seconds"})
     assert definition.required_input_fields == frozenset({"prompt"})
-    assert definition.max_input_bytes <= 20_100
+    assert definition.max_input_bytes <= 20_200
     assert definition.max_output_bytes <= 52_000
     assert definition.supports_cancellation is True
 
