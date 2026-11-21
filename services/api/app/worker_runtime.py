@@ -516,7 +516,7 @@ def build_tool_registry() -> ToolRegistry:
         permission_scope="agent.hermes.run",
         allowed_input_fields=frozenset({"prompt", "runtime_budget_seconds"}),
         required_input_fields=frozenset({"prompt"}),
-        max_input_bytes=20_100,
+        max_input_bytes=20_200,
         handler=hermes_agent_turn,
         requires_approval=True,
         max_output_bytes=52_000,
