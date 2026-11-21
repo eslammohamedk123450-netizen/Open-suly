@@ -394,7 +394,7 @@ class WorkerRuntime:
         *,
         poll_interval_seconds: float = 2.0,
         idle_backoff_max_seconds: float = 15.0,
-        handler: Callable[[ClaimedStep], dict[str, Any]] = dispatch,
+        handler: Callable[[ClaimedStep], dict[str, Any]] | None = None,
         cancel_aware_handler: Callable[[ClaimedStep, Event], dict[str, Any]] | None = None,
         reconciler: EngineRunReconciler | None = None,
         reconcile_interval_seconds: int = 30,
@@ -407,8 +407,13 @@ class WorkerRuntime:
         self.worker = worker
         self.poll_interval_seconds = poll_interval_seconds
         self.idle_backoff_max_seconds = idle_backoff_max_seconds
-        self.handler = handler
+        self.runtime_broker = runtime_broker
+        self.handler = handler or (lambda step: dispatch(step, runtime_broker=runtime_broker))
         self.cancel_aware_handler = cancel_aware_handler
+        if handler is None and cancel_aware_handler is None:
+            self.cancel_aware_handler = lambda step, cancel_event: dispatch_cancel_aware(
+                step, cancel_event, runtime_broker=runtime_broker
+            )
         if not 10 <= reconcile_interval_seconds <= 600:
             raise ValueError("reconcile interval must be between 10 and 600 seconds")
         self.reconciler = reconciler
