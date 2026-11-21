@@ -461,3 +461,12 @@ For every engine:
 - **Tool approvals:** catalog includes the OpenCode operation, and reports availability false unless worker/runtime opt-in is configured. The approval scope cannot be self-granted through task input.
 - **Current default:** `SULY_WORKER_ENABLED=false`, `OPENCODE_ENABLED=false`; no worker starts, no provisioner contact, no migrations, no deploy.
 - **Remaining closure requirements:** confirm latest CI; inspect failing/pending runs and correct issues; verify runtime release semantics for cancellation against the provisioner contract; add/validate durable task/run recovery and event streaming behavior for OpenCode; confirm change-set review/apply lifecycle transitions and UI integration; run isolated staging integration tests after user approval. Until these checks, do not mark OpenCode integration complete or enable live execution.
+
+
+## OpenCode frontend checkpoint — 2026-11-21
+
+- The coding mode is now exposed in the project-linked task composer with explicit user consent and a server readiness gate. The client refuses to create an OpenCode task without a project context.
+- Task details load the owner-scoped OpenCode change set, display bounded diff previews, allow apply/reject, and poll sanitized lifecycle events while the task is active.
+- Platform CI #1049 at commit `b6f896dff319ad184eb36c020cb567e7b81b2aa1` is green: **608 API tests passed** (5 warnings); TypeScript, Expo compatibility, and Web export succeeded; repository baseline #1067 passed. Latest source commit is `b6f896d` (progress-doc-only commit after it does not change code).
+- Upstream verification #177 is still running; isolated-runtime primitive tests and protocol/provenance/typecheck steps are green, Docker build and smoke are pending. Previous upstream verification #1014 is green.
+- Do not enable or deploy. The remaining blockers are live Staging runtime/provisioner validation, DB migrations under explicit approval, real cancellation/release and orphan recovery integration, frontend acceptance on Android/web, and any usage/credits accounting for coding-engine execution.
