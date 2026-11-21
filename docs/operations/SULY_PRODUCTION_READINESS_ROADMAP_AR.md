@@ -443,3 +443,11 @@ For every engine:
 - CI API tests على commit `5aa8266b`: **601 passed, 5 warnings**. Platform CI #1014: API tests passed؛ TypeScript/Web export قيد التنفيذ. Repository baseline #1032 نجح.
 - OpenCode verification #170: isolated runtime primitive tests نجحت؛ provenance/Bun install نجحا، upstream server typecheck كان قيد التنفيذ، Docker image build وsmoke test في الانتظار. لا تشغيل runtime أو agent حي خارج CI.
 - Latest HEAD: `5aa8266b2fc5a375be60b63b4a3e8a5811e58d15`.
+
+
+## OpenCode checkpoint — CI smoke closure and activation guard (2026-11-21)
+
+- CI OpenCode verification #1014 / run `44879150324` on commit `5aa8266b2fc5a375be60b63b4a3e8a5811e58d15` is confirmed green: runtime primitive tests; upstream provenance; bridge tests; frozen Bun install; upstream server typecheck; Docker build; authenticated server `/api/info` smoke.
+- Startup activation was tightened with `OPENCODE_ENABLED` default `false`. Runtime broker/provider are cleared and startup exits when disabled, even if provisioner URL/token/origins exist. Added a focused test; its CI is pending after this commit.
+- **OpenCode code integration remains incomplete for users.** The transport includes prompt submit and interrupt primitives, but a verified owner/task/run/lease-bound user prompt route and task-worker executor wiring are not yet integrated. Do not call this complete or enable it until those pieces, DB staging tests, and runtime isolation are implemented.
+- Do not deploy or apply migrations. No live runtime/worker/provider was activated.
