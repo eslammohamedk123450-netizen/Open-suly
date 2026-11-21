@@ -42,7 +42,7 @@ _SECRET_PATTERNS = (
 _REVISION_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
-def _contains_secret_material(content: str) -> bool:
+def contains_secret_material(content: str) -> bool:
     return any(pattern.search(content) for pattern in _SECRET_PATTERNS)
 
 
@@ -103,7 +103,7 @@ class ProjectWorkspaceStore:
             content = row.get("content")
             if not isinstance(content, str) or "\x00" in content:
                 raise ProjectWorkspaceError("workspace_binary_or_invalid_file")
-            if _contains_secret_material(content):
+            if contains_secret_material(content):
                 # Fail the entire snapshot rather than silently sending a
                 # partially redacted source file to an untrusted model runtime.
                 raise ProjectWorkspaceError("workspace_secret_material_detected")
