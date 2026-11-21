@@ -136,6 +136,8 @@ def list_available_tools(
                 available = ai_provider_available
             elif tool["name"] == "opencode.task.run":
                 available = opencode_available
+            elif tool["name"] == "engine.collaborate":
+                available = hermes_available and opencode_available
             else:
                 available = settings.worker_enabled
             items.append({
