@@ -120,6 +120,30 @@ def test_runtime_lease_secret_is_not_exposed_in_repr():
     assert lease.access_token not in repr(lease)
 
 
+def test_hermes_runtime_lease_requires_the_dedicated_isolation_profile():
+    lease = make_lease(engine_id="hermes-agent")
+    with pytest.raises(ValueError, match="profile_mismatch"):
+        lease.validate(
+            task_id=TASK_ID,
+            engine_run_id=RUN_ID,
+            engine_id="hermes-agent",
+            allowed_origins=ORIGINS,
+            now=time(),
+        )
+
+    profiled = make_lease(
+        engine_id="hermes-agent",
+        runtime_profile="suly-hermes-task-v1",
+    )
+    profiled.validate(
+        task_id=TASK_ID,
+        engine_run_id=RUN_ID,
+        engine_id="hermes-agent",
+        allowed_origins=ORIGINS,
+        now=time(),
+    )
+
+
 def test_runtime_lease_rejects_task_attempt_or_engine_mismatch():
     lease = make_lease()
     with pytest.raises(ValueError, match="mismatch"):
