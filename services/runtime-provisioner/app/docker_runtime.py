@@ -23,6 +23,32 @@ from docker.errors import APIError, NotFound
 _ENGINE = re.compile(r"^[a-z][a-z0-9-]{1,62}$")
 _PATH_PART = re.compile(r"^[A-Za-z0-9._/-]{1,240}$")
 _LABEL_PREFIX = "io.suly.runtime"
+_BLOCKED_PATH_PARTS = {
+    ".git", "node_modules", ".env", "secrets", ".ssh", ".aws",
+    ".azure", ".gcloud", ".docker", ".kube", ".gnupg",
+}
+_BLOCKED_FILE_NAMES = {
+    ".npmrc", ".pypirc", ".netrc", ".pgpass", "credentials",
+    "credentials.json", "id_rsa", "id_ed25519", "id_ecdsa",
+    "service-account.json", "dockerconfig.json",
+}
+_SECRET_PATTERNS = (
+    re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----", re.IGNORECASE),
+    re.compile(r"\\bAKIA[0-9A-Z]{16}\\b"),
+    re.compile(r"\\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})\\b"),
+    re.compile(r"\\bsk-[A-Za-z0-9]{20,}\\b"),
+    re.compile(r"\\bAIza[0-9A-Za-z_-]{30,}\\b"),
+    re.compile(r"\\bxox[baprs]-[A-Za-z0-9-]{10,}\\b"),
+    re.compile(r"\\b(?:sk|rk)_(?:live|test)_[0-9A-Za-z]{16,}\\b"),
+    re.compile(r"\\bsb_secret_[A-Za-z0-9_-]{20,}\\b"),
+    re.compile(
+        r"""(?im)\\b(?:api[_-]?key|access[_-]?token|client[_-]?secret|password|secret[_-]?key)\\s*[:=]\\s*["']?(?!\\$\\{|\\{\\{|YOUR_|CHANGEME|REPLACE_ME|example|placeholder)[A-Za-z0-9_./+=-]{24,}"""
+    ),
+)
+
+
+def _contains_secret_material(content: str) -> bool:
+    return any(pattern.search(content) for pattern in _SECRET_PATTERNS)
 
 
 class RuntimeErrorSafe(RuntimeError):
@@ -75,10 +101,17 @@ def _safe_workspace(files: list[dict[str, Any]], root: Path, max_bytes: int) -> 
         pure = PurePosixPath(rel)
         if pure.is_absolute() or any(p in {"", ".", ".."} for p in pure.parts):
             raise ValueError("runtime_workspace_path_invalid")
-        if pure.parts[0].lower() in {".git", "node_modules", ".env", "secrets"} or any(p.lower().startswith(".env") for p in pure.parts):
+        if any(
+            part.lower() in _BLOCKED_PATH_PARTS
+            or part.lower() in _BLOCKED_FILE_NAMES
+            or part.lower().startswith(".env")
+            for part in pure.parts
+        ):
             raise ValueError("runtime_workspace_path_reserved")
         if not isinstance(content, str):
             raise ValueError("runtime_workspace_content_invalid")
+        if _contains_secret_material(content):
+            raise ValueError("runtime_workspace_secret_material_detected")
         encoded = content.encode("utf-8")
         total += len(encoded)
         if len(encoded) > 256 * 1024 or total > max_bytes:
