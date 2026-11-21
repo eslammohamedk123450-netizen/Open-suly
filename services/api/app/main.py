@@ -12,6 +12,7 @@ from app.routers.tasks import router as tasks_router
 from app.routers.tool_approvals import router as tool_approvals_router
 from app.routers.opencode_sessions import router as opencode_sessions_router
 from app.routers.opencode_tasks import router as opencode_tasks_router
+from app.routers.engine_collaboration import router as engine_collaboration_router
 from app.services.runtime_broker_contract import TaskScopedRuntimeBroker
 from app.services.runtime_provisioner_http import HTTPSRuntimeLeaseProvider
 
@@ -33,6 +34,7 @@ app.include_router(project_files_router)
 app.include_router(tool_approvals_router)
 app.include_router(opencode_sessions_router)
 app.include_router(opencode_tasks_router)
+app.include_router(engine_collaboration_router)
 
 @app.on_event("startup")
 def configure_opencode_runtime() -> None:
