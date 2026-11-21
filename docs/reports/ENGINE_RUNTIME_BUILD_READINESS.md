@@ -29,7 +29,7 @@ git submodule update --init --recursive
 - Hermes uses its own upstream `Dockerfile` directly from `engines/hermes/upstream`; it is not copied into the SULY FastAPI environment.
 - The runtime provisioner has its own image from `services/runtime-provisioner/Dockerfile`.
 
-The new workflow `.github/workflows/engine-runtime-build.yml` performs a recursive source checkout, checks both exact source pins and license/build files, verifies OpenCode provenance, then builds both original engine images and the provisioner image. It records local image IDs in the CI job.
+The new workflow `.github/workflows/engine-runtime-build.yml` performs a recursive source checkout, checks both exact source pins and license/build files, runs the OpenCode and Hermes upstream provenance verifiers, then builds both original engine images and the provisioner image. The Hermes verifier also guards the upstream image contract (`HERMES_HOME`, upstream entrypoint dispatcher, and pinned Python runtime) against silent upstream drift. It records local image IDs in the CI job.
 
 The workflow intentionally does not push images to a registry, publish credentials, deploy a worker host, or change live SULY configuration. Those are external deployment steps and remain separate from source/build completion.
 
