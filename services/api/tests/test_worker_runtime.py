@@ -784,3 +784,40 @@ def test_runtime_does_not_log_exception_messages_or_tracebacks(caplog):
     assert "RuntimeError" in caplog.text
     assert secret_text not in caplog.text
 
+
+
+
+def test_opencode_worker_operation_is_registered_but_disabled_by_default(monkeypatch):
+    from types import SimpleNamespace
+    import app.core.config as config
+    from app.services.tool_registry import ToolExecutionContext
+    from app.worker_runtime import TOOL_REGISTRY, opencode_task_run
+
+    tool = TOOL_REGISTRY.get("opencode.task.run")
+    assert tool is not None
+    assert tool.requires_approval is True
+    assert tool.supports_cancellation is True
+    assert tool.permission_scope == "engine.opencode.run"
+
+    monkeypatch.setattr(config, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=False,
+        opencode_enabled=False,
+    ))
+    step = make_step({
+        "operation": "opencode.task.run",
+        "project_id": "00000000-0000-0000-0000-000000000099",
+        "prompt": "Create a feature",
+    })
+    fake_broker = SimpleNamespace(run_task=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        AssertionError("Disabled OpenCode must not contact runtime")
+    ))
+    fake_store = SimpleNamespace(start=lambda *_args: (_ for _ in ()).throw(
+        AssertionError("Disabled OpenCode must not create an engine run")
+    ))
+    with pytest.raises(RuntimeError, match="disabled_or_unavailable"):
+        opencode_task_run(step, ToolExecutionContext(
+            approved_scopes=frozenset({"engine.opencode.run"}),
+            cancel_event=Event(),
+            engine_run_store=fake_store,
+            runtime_broker=fake_broker,
+        ))
