@@ -623,6 +623,60 @@ def resolve_task_engine_approval(
         raise HTTPException(status_code=503, detail="Could not resolve the engine approval.") from exc
 
 
+@router.post("/{task_id}/opencode-plan", status_code=status.HTTP_202_ACCEPTED)
+def plan_opencode_task(
+    task_id: UUID,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Create a single approved OpenCode worker step for an owned project task."""
+    client = _admin_client()
+    try:
+        with client:
+            task = _owned_task(client, task_id, user.id)
+            if task.get("status") != "queued":
+                raise HTTPException(status_code=409, detail="Only queued, unplanned tasks can be sent to OpenCode.")
+            project_id = task.get("project_id")
+            prompt = str(task.get("request") or "").strip()
+            if not project_id:
+                raise HTTPException(status_code=422, detail="OpenCode requires a task linked to a project.")
+            if not prompt:
+                raise HTTPException(status_code=422, detail="Task prompt is empty.")
+            # يتم إنشاء خطوة واحدة فقط؛ صلاحية تشغيل OpenCode مطلوبة من Approval Store لاحقًا.
+            steps = [{
+                "step_key": "opencode_run",
+                "title": str(task.get("title") or "OpenCode coding task")[:120],
+                "description": "Execute the coding request in a separate OpenCode runtime and prepare changes for review.",
+                "depends_on": [],
+                "input": {
+                    "operation": "opencode.task.run",
+                    "project_id": str(project_id),
+                    "prompt": prompt,
+                    "title": str(task.get("title") or "SULY coding task")[:120],
+                },
+            }]
+            steps = validate_agent_plan(steps)
+            result = client.rpc(
+                "plan_task",
+                {"p_task_id": str(task_id), "p_user_id": user.id, "p_steps": steps},
+            ).execute().data
+        if isinstance(result, list) and result:
+            result = result[0]
+        if not isinstance(result, dict):
+            raise HTTPException(status_code=503, detail="The task planner returned an invalid result.")
+        return {**result, "planner": "opencode-direct-v1", "steps": steps}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        message = str(exc)
+        if "task_not_found" in message:
+            raise HTTPException(status_code=404, detail="Task not found.") from exc
+        if "task_already_planned" in message:
+            raise HTTPException(status_code=409, detail="Task has already been planned.") from exc
+        if "invalid_step_definition" in message or "unsupported_operation" in message:
+            raise HTTPException(status_code=422, detail="The OpenCode task plan is invalid.") from exc
+        raise HTTPException(status_code=503, detail="Could not plan the OpenCode task.") from exc
+
+
 @router.post("/{task_id}/retry")
 def retry_failed_task(
     task_id: UUID,
