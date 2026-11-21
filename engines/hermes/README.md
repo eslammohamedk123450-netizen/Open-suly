@@ -42,8 +42,26 @@ The FastAPI bridge uses these server-only environment variables:
 - `HERMES_AGENT_TIMEOUT_SECONDS=90`
 - `HERMES_AGENT_MAX_OUTPUT_CHARS=12000`
 
-The current bridge uses Hermes' native `/v1/runs` admission and status endpoints, a stable per-attempt `Idempotency-Key`, a lease-guarded persisted upstream run ID, and the upstream stop endpoint for cooperative cancellation. Status polling is bounded; SSE event forwarding is a later enhancement. Upstream errors are redacted. The isolation flag is only an operator assertion, not a sandbox implementation. The bridge does not pass SULY identity claims, approval scopes, database credentials, or provider secrets to Hermes.
+The task worker now acquires a distinct runtime lease for each SULY engine-run attempt through the HTTPS runtime provisioner. The provisioner is a separate trusted service; the public API process has no Docker socket and does not launch containers itself.
+
+The worker persists only the opaque runtime UUID in the SULY engine-run ledger. The short-lived runtime access token is never stored in Supabase. Hermes traffic is sent through the lease's exact runtime gateway path; approval detail, approval resolution, steering, and orphan cleanup recover a short-lived lease using the stored runtime/task/run identity. Outbound Hermes HTTP clients disable ambient proxy variables and redirects.
+
+The bridge uses Hermes' native `/v1/runs` admission and status endpoints, a stable per-attempt `Idempotency-Key`, lease-guarded upstream run ID persistence, bounded status polling, metadata-only SSE progress, and cooperative cancellation. Subagent lifecycle events are reduced to an allow-listed set of opaque identifiers and counters; goals, summaries, prompts, tool arguments, reasoning, and output text are not persisted as event metadata.
+
+### Required runtime provisioner settings
+
+- `RUNTIME_PROVISIONER_URL` — HTTPS origin of the trusted provisioner.
+- `RUNTIME_PROVISIONER_TOKEN` — server-only bearer credential for the provisioner.
+- `RUNTIME_PROVISIONER_ALLOWED_ORIGINS` — exact HTTPS origins permitted for per-runtime gateway leases.
+- `RUNTIME_PROVISIONER_TIMEOUT_SECONDS` — bounded provisioner request timeout.
+- `ENGINE_RECONCILER_ENABLED` — opt-in orphaned-run/runtime cleanup worker.
+
+The provisioner must create a unique whole-process runtime per task attempt, return a short-lived lease bound to the exact task ID, engine-run ID, and engine ID, enforce resource and storage quotas, restrict network egress, and provide authenticated recover/release semantics that revoke credentials and tear down the complete process tree. A gateway lease must route only to the matching runtime. The SULY API validates lease identity and allowed origin, but it cannot prove the provider's OS-level enforcement.
+
+`HERMES_AGENT_ISOLATION_CONFIRMED` remains an operator attestation gate; it is not proof of isolation. Keep `HERMES_AGENT_ENABLED=false` until the provisioner is deployed and its security controls are tested. Do not use the single-service Compose profile or its named volume as a multi-tenant runtime.
+
+The bridge does not pass SULY identity claims, approval grants, database credentials, or Supabase service keys to Hermes. Toolset discovery is descriptive only; SULY approvals remain authoritative. The current integration does not yet provide SULY-owned skill installation/update, persistent memory, session mapping, MCP credential brokering, or separately budgeted child-task orchestration.
 
 ## Verification boundary
 
-The bridge unit tests use a mocked HTTP endpoint. No live Hermes container, provider, model inference, tool execution, or end-to-end durable task has been verified yet. SULY's worker lease/checkpoint remains the only authority for task completion.
+The bridge and lease lifecycle are covered by mocked API/provider tests and repository CI. No live Hermes container, provisioner, provider, model inference, tool execution, PostgreSQL migration application, cross-tenant isolation, or end-to-end durable task has been verified. SULY's worker lease/checkpoint remains the only authority for task completion.
