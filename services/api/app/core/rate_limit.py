@@ -1,14 +1,15 @@
 """In-process, per-principal sliding-window rate limiting.
 
-This limiter is a defense-in-depth control inside each API process. It does not
-replace ingress-level limits, DDoS protection, or provider-side quotas. Limits
-are keyed by the authenticated user id and never by client-supplied data.
+This limiter is defense in depth for each API process. It does not replace
+ingress-level limits, DDoS protection, or provider-side quotas. Keys are
+authenticated principal IDs, not client-supplied values.
 """
 from __future__ import annotations
 
+import math
 import threading
 import time
-from collections import defaultdict, deque
+from collections import deque
 from collections.abc import Callable
 
 from fastapi import Depends, HTTPException, status
@@ -20,33 +21,101 @@ from app.core.config import get_settings
 class SlidingWindowLimiter:
     """Sliding window over monotonic timestamps, guarded by one lock."""
 
-    def __init__(self, limit: int, window_seconds: float = 60.0) -> None:
-        if limit < 0:
+    def __init__(
+        self,
+        limit: int,
+        window_seconds: float = 60.0,
+        *,
+        max_keys: int = 50_000,
+        prune_interval: float = 600.0,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 0:
             raise ValueError("rate_limit_invalid")
+        if (
+            not isinstance(window_seconds, (int, float))
+            or not math.isfinite(window_seconds)
+            or window_seconds <= 0
+        ):
+            raise ValueError("rate_limit_window_invalid")
+        if isinstance(max_keys, bool) or not isinstance(max_keys, int) or max_keys < 0:
+            raise ValueError("rate_limit_max_keys_invalid")
+        if (
+            not isinstance(prune_interval, (int, float))
+            or not math.isfinite(prune_interval)
+            or prune_interval <= 0
+        ):
+            raise ValueError("rate_limit_prune_interval_invalid")
+        if not callable(clock):
+            raise ValueError("rate_limit_clock_invalid")
         self._limit = limit
-        self._window_seconds = window_seconds
-        self._events: dict[str, deque[float]] = defaultdict(deque)
+        self._window_seconds = float(window_seconds)
+        self._max_keys = max_keys
+        self._prune_interval = float(prune_interval)
+        self._clock = clock
+        self._last_prune = float(clock())
+        self._events: dict[str, deque[float]] = {}
         self._lock = threading.Lock()
 
     @property
     def limit(self) -> int:
-        return self._limit
+        with self._lock:
+            return self._limit
+
+    def set_limit(self, limit: int) -> None:
+        """Apply a changed server-side limit without clearing existing windows."""
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 0:
+            raise ValueError("rate_limit_invalid")
+        with self._lock:
+            self._limit = limit
+
+    def _expire(self, events: deque[float], cutoff: float) -> None:
+        while events and events[0] <= cutoff:
+            events.popleft()
+
+    def _maybe_prune(self, now: float) -> None:
+        if now - self._last_prune < self._prune_interval:
+            return
+        cutoff = now - self._window_seconds
+        stale = []
+        for key, events in self._events.items():
+            self._expire(events, cutoff)
+            if not events:
+                stale.append(key)
+        for key in stale:
+            del self._events[key]
+        self._last_prune = max(self._last_prune, now)
 
     def allow(self, key: str, *, now: float | None = None) -> bool:
-        current = time.monotonic() if now is None else now
+        if not isinstance(key, str) or not key.strip() or len(key) > 512:
+            raise ValueError("rate_limit_key_invalid")
+        current = self._clock() if now is None else now
+        if not isinstance(current, (int, float)) or not math.isfinite(current):
+            raise ValueError("rate_limit_time_invalid")
+        current = float(current)
         with self._lock:
-            events = self._events[key]
+            self._maybe_prune(current)
+            if self._limit == 0:
+                return False
             cutoff = current - self._window_seconds
-            while events and events[0] <= cutoff:
-                events.popleft()
+            events = self._events.get(key)
+            if events is None:
+                if self._max_keys and len(self._events) >= self._max_keys:
+                    # Do not evict a live principal to admit another identity.
+                    return False
+                events = deque()
+                self._events[key] = events
+            else:
+                self._expire(events, cutoff)
             if len(events) >= self._limit:
                 return False
-            events.append(current)
+            events.append(max(events[-1], current) if events and current < events[-1] else current)
             return True
 
     def clear(self) -> None:
         with self._lock:
             self._events.clear()
+            self._last_prune = self._clock()
 
 
 _limiters: dict[str, SlidingWindowLimiter] = {}
@@ -54,13 +123,17 @@ _limiters_lock = threading.Lock()
 
 
 def get_limiter(scope: str, limit: int) -> SlidingWindowLimiter:
-    if limit <= 0:
+    if not isinstance(scope, str) or not scope.strip():
+        raise ValueError("rate_limit_scope_invalid")
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
         raise ValueError("rate_limit_disabled")
     with _limiters_lock:
         limiter = _limiters.get(scope)
         if limiter is None:
             limiter = SlidingWindowLimiter(limit)
             _limiters[scope] = limiter
+        elif limiter.limit != limit:
+            limiter.set_limit(limit)
         return limiter
 
 
