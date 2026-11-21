@@ -909,6 +909,7 @@ def make_hermes_runtime_lease():
         access_token="x" * 48,
         expires_at=time() + 1800,
         gateway_path=f"/v1/runtime-gateway/{runtime_id}",
+        runtime_profile="suly-hermes-task-v1",
     ), task_id, engine_run_id
 
 
