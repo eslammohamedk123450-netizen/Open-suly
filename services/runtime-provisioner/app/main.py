@@ -35,6 +35,7 @@ IMAGE = os.environ.get("OPENCODE_RUNTIME_IMAGE", "")
 WORKSPACE_ROOT = os.environ.get("RUNTIME_WORKSPACE_ROOT", "/var/lib/suly-runtime/workspaces")
 MAX_RESULT_BYTES = 8 * 1024 * 1024
 MAX_RESULT_FILES = 500
+MAX_RUNTIME_CREATE_BODY_BYTES = 6 * 1024 * 1024
 _ID = re.compile(r"^[0-9a-f-]{36}$")
 _ALLOWED_PROXY = {
     ("GET", "/api/event"), ("GET", "/api/info"), ("POST", "/api/session"),
@@ -60,12 +61,16 @@ _runtime_manager_lock = Lock()
 
 
 class FileSnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     path: str = Field(min_length=1, max_length=240)
     content: str = Field(max_length=262144)
     sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 class CreateRuntime(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     task_id: str
     engine_run_id: str
     engine_id: str = "opencode"
@@ -226,8 +231,13 @@ async def shutdown() -> None:
 
 
 @app.post("/v1/runtimes", status_code=201)
-def create_runtime(body: CreateRuntime, authorization: str | None = Header(default=None)):
+async def create_runtime(request: Request, authorization: str | None = Header(default=None)):
     _require_suly(authorization)
+    raw_body = await _read_bounded_request_body(request, limit=MAX_RUNTIME_CREATE_BODY_BYTES)
+    try:
+        body = CreateRuntime.model_validate(json.loads(raw_body))
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(422, "invalid_runtime_request") from exc
     task_id, run_id = _identity(body.task_id), _identity(body.engine_run_id)
     if body.engine_id != "opencode":
         raise HTTPException(422, "engine_not_allowed")
@@ -410,7 +420,7 @@ async def runtime_gateway(runtime_id: str, path: str, request: Request, authoriz
 
 async def _read_bounded_request_body(request: Request, *, limit: int) -> bytes:
     """Enforce request limits while streaming; never buffer an unbounded body."""
-    if not 1 <= limit <= 1024 * 1024:
+    if not 1 <= limit <= 8 * 1024 * 1024:
         raise ValueError("request_body_limit_invalid")
     declared = request.headers.get("content-length")
     if declared is not None:
