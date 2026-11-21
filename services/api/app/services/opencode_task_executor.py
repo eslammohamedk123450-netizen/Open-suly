@@ -78,6 +78,8 @@ class OpenCodeTaskExecutor:
                 if cancel_event.is_set():
                     try:
                         self._broker.release_attempt(task_id, engine_run_id, "opencode")
+                    except Exception:
+                        logger.warning("OpenCode cancellation cleanup failed for attempt %s", engine_run_id)
                     finally:
                         cancel_release_done.set()
                     return
@@ -167,6 +169,8 @@ class OpenCodeTaskExecutor:
                 on_lease_acquired=persist_runtime_lease,
                 on_session_created=persist_upstream_session,
             )
+            if cancel_event is not None and cancel_event.is_set():
+                raise RuntimeError("opencode_task_cancelled")
             execution = result.get("execution")
             results = result.get("results")
             if not isinstance(execution, dict) or not isinstance(execution.get("session_id"), str):
