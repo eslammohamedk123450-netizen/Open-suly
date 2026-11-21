@@ -150,7 +150,8 @@ begin
     from public.engine_collaboration_handoffs h
    where h.parent_run_id = p_parent_run_id
      and h.user_id = p_user_id
-     and h.status not in ('rejected','cancelled','failed');
+     and h.status <> 'rejected'
+     and (h.status <> 'cancelled' or h.child_task_id is not null);
   v_child_budget := coalesce(v_child_budget,p_max_child_tasks);
   v_parallel_budget := coalesce(v_parallel_budget,p_max_parallel_children);
   if p_max_child_tasks <> v_child_budget or p_max_parallel_children <> v_parallel_budget then
@@ -246,7 +247,8 @@ begin
     from public.engine_collaboration_handoffs h
    where h.parent_run_id = v_handoff.parent_run_id
      and h.user_id = p_user_id
-     and h.status not in ('rejected','cancelled','failed');
+     and h.status <> 'rejected'
+     and (h.status <> 'cancelled' or h.child_task_id is not null);
   v_child_budget := coalesce(v_child_budget,v_handoff.max_child_tasks);
   v_parallel_budget := coalesce(v_parallel_budget,v_handoff.max_parallel_children);
   if v_child_count > v_child_budget then
@@ -471,6 +473,14 @@ set search_path = ''
 as $$
 begin
   if old.cancel_requested_at is null and new.cancel_requested_at is not null then
+    -- Pending approvals have no child process to stop; close them immediately.
+    update public.engine_collaboration_handoffs
+       set status='cancelled', finished_at=now(), updated_at=now()
+     where parent_task_id=new.id
+       and user_id=new.user_id
+       and status='pending_approval';
+
+    -- Active handoffs are cancelled through the child task's normal lease protocol.
     update public.tasks child
        set status='cancel_requested',
            cancel_requested_at=coalesce(child.cancel_requested_at,now())
