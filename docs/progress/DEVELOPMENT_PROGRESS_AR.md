@@ -573,3 +573,14 @@ undefined
 - CI: Platform CI #1036 على commit `9ea8b25c` **success** (API tests + Client Typecheck/Web Export). أحدث CI #1037 على commit `bee29171` ما زال قيد التنفيذ وقت هذا التحديث؛ Repository baseline #1055 قيد التنفيذ؛ OpenCode upstream verification #176 pending. commits `bee29171` لا تزال تنتظر CI.
 - هذه wiring ليست تفعيل live execution: لا Worker بدأ، لا Runtime provisioner اتصل، لا Hermes/OpenCode agent live، لا DB migrations/deploy. الإطلاق الحقيقي يحتاج isolated staging، تطبيق migrations يدويًا بعد موافقة، ومراجعة عملية runtime release/interrupt وworker cancellation/recovery.
 - **المرحلة الحالية:** الكود أصبح يربط task plan -> worker operation -> OpenCode executor -> runtime lease -> lifecycle/session -> reviewable change set. باقي إغلاق الاعتمادية/المراجعة/التطبيق على Staging وواجهة العميل End-to-End والتحقق من نتائج CI الأخيرة، وليس فقط إنشاء wiring.
+
+
+## جلسة متابعة — 2026-11-21 (UI task submission, event timeline and review/apply)
+
+- ربطنا واجهة الوكيل بوضع OpenCode: اختيار engine، موافقة `engine.opencode.run`، يتحقق من project context قبل إنشاء task، ويستخدم endpoint `opencode-plan` الخاص.
+- Task detail يعرض change-set المقدم، preview لكل ملف diff (بحد 8KB للعرض لكل ملف)، ويتيح رفض أو تطبيق التغييرات عبر endpoint owner-protected مع CAS workspace revision.
+- أضفنا عرض الأحداث sanitized الخاصة بـOpenCode من `opencode_task_events` وتحديثها كل 2.5 ثانية أثناء المهمة، باستخدام run ID محفوظ في output step.
+- أضفنا اختبار handler happy-path لربط engine run، OpenCode executor، summary output، وfinish RPC، واختبار cancel event لإثبات محاولة release runtime. تم اختبارها في Platform CI.
+- **CI verified على main HEAD `b6f896dff319ad184eb36c020cb567e7b81b2aa1`: Platform CI #1049 نجح — API tests **608 passed, 5 warnings**، Client typecheck + Expo compatibility + Web export نجح. Repository baseline #1067 نجح. `OPENCODE_ENABLED` و`WORKER_ENABLED` افتراضيًا false.
+- OpenCode upstream verification #177: runtime primitive tests نجحت؛ bridge/protocol tests وupstream provenance وBun frozen install وserver typecheck نجحت؛ Docker image build وsmoke test ما زالا قيد التنفيذ وقت هذا التوثيق. Verification #1014 السابقة مكتملة بنجاح، لكن #177 أحدث run يحتاج إغلاق.
+- لا Live runtime، لا worker، لا migration/deploy. لم يتم اختبار integration end-to-end مع provisioner أو قاعدة Staging؛ هذا يظل شرطًا مهمًا قبل إعلان التكامل closed.
