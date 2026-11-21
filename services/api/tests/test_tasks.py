@@ -919,3 +919,23 @@ def test_opencode_plan_enqueues_registered_worker_step(monkeypatch):
     assert plan[0]["input"]["operation"] == "opencode.task.run"
     assert plan[0]["input"]["project_id"] == "00000000-0000-0000-0000-000000000099"
     assert plan[0]["input"]["prompt"] == "Create a small feature"
+
+
+
+def test_opencode_plan_rejects_disabled_runtime_before_database(monkeypatch):
+    monkeypatch.setattr(tasks_module, "get_settings", lambda: type("DisabledSettings", (), {
+        "worker_enabled": False, "opencode_enabled": False,
+        "runtime_provisioner_url": None, "runtime_provisioner_token": None,
+        "runtime_provisioner_allowed_origins": [],
+    })())
+    monkeypatch.setattr(
+        tasks_module, "get_supabase_admin_client",
+        lambda: (_ for _ in ()).throw(AssertionError("Disabled engine must not access task database")),
+    )
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    try:
+        response = client.post("/v1/tasks/00000000-0000-0000-0000-000000000001/opencode-plan")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 503
+    assert "not configured or enabled" in response.json()["detail"]
