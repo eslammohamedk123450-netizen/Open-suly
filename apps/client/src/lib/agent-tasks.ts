@@ -143,6 +143,7 @@ export async function createAgentTask(
 ): Promise<AgentTask> {
   const cleanPrompt = prompt.trim();
   if (!cleanPrompt) throw new Error("اكتب وصف المهمة أولًا.");
+  if (operation === "opencode.task.run" && !projectId) throw new Error("اربط المهمة بمشروع قبل إرسالها إلى OpenCode.");
   if (cleanPrompt.length > 20000) throw new Error("المهمة تتجاوز الحد المسموح وهو 20 ألف حرف.");
   const task = await request<AgentTask>("/v1/tasks", {
     method: "POST",
@@ -154,7 +155,6 @@ export async function createAgentTask(
     }),
   });
   if (operation === "opencode.task.run") {
-    if (!projectId) throw new Error("اربط المهمة بمشروع قبل إرسالها إلى OpenCode.");
     await request("/v1/tasks/" + encodeURIComponent(task.id) + "/opencode-plan", {
       method: "POST",
       body: "{}",
