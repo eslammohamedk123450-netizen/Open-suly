@@ -321,3 +321,37 @@ def test_executor_rejects_secret_material_in_generated_changeset():
             engine_run_id=run_id, prompt="Add configuration",
         )
     assert not any(call[0] == "change_set" for call in lifecycle.calls)
+
+
+def test_executor_forwards_runtime_identity_to_durable_engine_run_ledger():
+    from types import SimpleNamespace
+
+    user_id, project_id, task_id, run_id = (str(uuid4()) for _ in range(4))
+    runtime_id = str(uuid4())
+    observed = []
+
+    class CallbackBroker(Broker):
+        def run_task(self, task_id, run_id, engine_id, *, files, prompt, title,
+                     timeout_seconds=900, on_lease_acquired=None, on_session_created=None):
+            assert callable(on_lease_acquired)
+            lease = SimpleNamespace(runtime_id=runtime_id)
+            on_lease_acquired(lease)
+            if on_session_created:
+                on_session_created(lease, "sesABC123")
+            return {
+                "execution": {"runtime_id": runtime_id, "session_id": "sesABC123"},
+                "results": {"changed_files": [], "deleted_paths": [], "changed_count": 0},
+            }
+
+    executor = OpenCodeTaskExecutor(
+        workspace_store=Workspace(), session_store=Sessions(),
+        runtime_broker=CallbackBroker(),
+    )
+    result = executor.execute(
+        user_id=user_id, project_id=project_id, task_id=task_id,
+        engine_run_id=run_id, prompt="Recover me after worker restart",
+        on_runtime_acquired=lambda lease: observed.append(lease.runtime_id) or True,
+    )
+
+    assert observed == [runtime_id]
+    assert result["execution"]["runtime_id"] == runtime_id
