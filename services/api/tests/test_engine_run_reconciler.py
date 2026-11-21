@@ -126,3 +126,48 @@ def test_reconciler_logs_count_of_runs_missing_upstream_identity(caplog):
     assert reconciler.run_once() == 0
     assert "stop_pending without an upstream identity: 2" in caplog.text
     assert len([record for record in caplog.records if "without an upstream identity" in record.message]) == 1
+
+
+
+def test_reconciler_uses_task_runtime_claim_handler_when_upstream_run_id_is_missing():
+    item = EngineStopClaim(
+        run_id=UUID("00000000-0000-0000-0000-000000000099"),
+        engine_id="hermes-agent",
+        upstream_run_id=None,
+        reconcile_token=UUID("00000000-0000-0000-0000-000000000088"),
+        attempt_count=1,
+        task_id=UUID("00000000-0000-0000-0000-000000000001"),
+        runtime_id=UUID("00000000-0000-0000-0000-000000000055"),
+    )
+    store = FakeStore([item])
+    seen = []
+    reconciler = EngineRunReconciler(
+        store,
+        claim_handlers={"hermes-agent": lambda claim: seen.append(claim) or True},
+    )
+    assert reconciler.run_once() == 1
+    assert seen == [item]
+    assert store.finished == [(item, True)]
+
+
+def test_reconciler_prefers_runtime_claim_handler_over_legacy_run_id_handler():
+    item = EngineStopClaim(
+        run_id=UUID("00000000-0000-0000-0000-000000000099"),
+        engine_id="hermes-agent",
+        upstream_run_id="run_orphan_123",
+        reconcile_token=UUID("00000000-0000-0000-0000-000000000088"),
+        attempt_count=1,
+        task_id=UUID("00000000-0000-0000-0000-000000000001"),
+        runtime_id=UUID("00000000-0000-0000-0000-000000000055"),
+    )
+    store = FakeStore([item])
+    observed = []
+    reconciler = EngineRunReconciler(
+        store,
+        stop_handlers={"hermes-agent": lambda _run_id: (_ for _ in ()).throw(
+            AssertionError("Legacy stop handler must not be used when a claim handler exists")
+        )},
+        claim_handlers={"hermes-agent": lambda claim: observed.append(claim.runtime_id) or True},
+    )
+    assert reconciler.run_once() == 1
+    assert observed == [item.runtime_id]
