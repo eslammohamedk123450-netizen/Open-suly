@@ -82,7 +82,7 @@ def _raise_collaboration_error(exc: Exception) -> None:
         raise HTTPException(status_code=404, detail="Task or handoff not found.") from exc
     if any(code in message for code in (
         "not_running", "not_pending", "budget_exceeded", "parallel_limit",
-        "idempotency_conflict", "not_cancellable",
+        "idempotency_conflict", "budget_mismatch", "not_cancellable", "engine_pair_invalid",
     )):
         raise HTTPException(status_code=409, detail="The collaboration state no longer permits this action.") from exc
     if any(code in message for code in (
@@ -120,6 +120,7 @@ def create_engine_handoff(
                 {
                     "p_parent_task_id": str(task_id),
                     "p_parent_run_id": str(run_id),
+                    "p_user_id": user.id,
                     "p_target_engine": request.target_engine,
                     "p_capability": request.capability,
                     "p_idempotency_key": request.idempotency_key,
@@ -167,7 +168,7 @@ def list_task_collaboration(
                 .select(
                     "id,parent_task_id,child_task_id,parent_run_id,source_engine,target_engine,"
                     "capability,status,depth,max_child_tasks,max_parallel_children,"
-                    "max_runtime_seconds,max_input_bytes,input_payload,approved_at,started_at,"
+                    "max_runtime_seconds,max_input_bytes,approved_at,started_at,"
                     "finished_at,error_code,created_at,updated_at"
                 )
                 .eq("parent_task_id", str(task_id))
