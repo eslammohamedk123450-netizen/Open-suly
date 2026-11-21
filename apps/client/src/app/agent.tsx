@@ -18,6 +18,8 @@ import {
   getAgentTask,
   getAgentToolCatalog,
   getAgentCatalog,
+  getHermesSkillCatalog,
+  getHermesToolsetCatalog,
   grantAIApproval,
   grantHermesApproval,
   grantOpenCodeApproval,
@@ -25,6 +27,8 @@ import {
   type AgentOperation,
   type AgentTaskSnapshot,
   type AgentProfile,
+  type HermesSkill,
+  type HermesToolset,
 } from "@/lib/agent-tasks";
 
 const terminalStatuses = new Set(["completed", "failed", "cancelled"]);
@@ -65,6 +69,8 @@ export default function AgentScreen() {
   const [opencodeApproved, setOpencodeApproved] = useState(false);
   const [taskEngineAvailable, setTaskEngineAvailable] = useState(false);
   const [agentProfiles, setAgentProfiles] = useState<AgentProfile[]>([]);
+  const [hermesSkills, setHermesSkills] = useState<HermesSkill[]>([]);
+  const [hermesToolsets, setHermesToolsets] = useState<HermesToolset[]>([]);
   const [busy, setBusy] = useState(false);
   const [approving, setApproving] = useState(false);
   const [notice, setNotice] = useState("");
@@ -89,6 +95,12 @@ export default function AgentScreen() {
       } catch {
         setAgentProfiles([]);
       }
+      const [skillsResult, toolsetsResult] = await Promise.allSettled([
+        getHermesSkillCatalog(),
+        getHermesToolsetCatalog(),
+      ]);
+      setHermesSkills(skillsResult.status === "fulfilled" ? skillsResult.value : []);
+      setHermesToolsets(toolsetsResult.status === "fulfilled" ? toolsetsResult.value : []);
       setNotice("");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "تعذر تحميل أدوات الوكيل.");
@@ -274,6 +286,40 @@ export default function AgentScreen() {
                   {!!agent.engines.length && <Text style={styles.modeHint}>المحرك: {agent.engines.join("، ")}</Text>}
                 </View>
               ))}
+            </View>
+          )}
+
+          {(hermesSkills.length > 0 || hermesToolsets.length > 0) && (
+            <View style={styles.card}>
+              <Text style={styles.label}>قدرات Hermes المكتشفة</Text>
+              <Text style={styles.modeHint}>
+                قائمة وصفية للمهارات ومجموعات الأدوات من مصدر Hermes. لا تعني أن الأدوات مفعّلة داخل Runtime المهمة، ولا توفر تثبيتًا أو تنفيذًا من هذه الشاشة.
+              </Text>
+              {hermesSkills.slice(0, 20).map((skill) => (
+                <View key={skill.name} style={styles.agentProfile}>
+                  <Text style={styles.stepTitle}>{skill.name}</Text>
+                  {!!skill.category && <Text style={styles.modeHint}>{skill.category}</Text>}
+                  {!!skill.description && <Text style={styles.modeHint}>{skill.description}</Text>}
+                </View>
+              ))}
+              {hermesSkills.length > 20 && (
+                <Text style={styles.modeHint}>تم عرض 20 من {hermesSkills.length} مهارة.</Text>
+              )}
+              {hermesToolsets.slice(0, 20).map((toolset) => (
+                <View key={toolset.name} style={styles.agentProfile}>
+                  <View style={styles.taskHeader}>
+                    <Text style={styles.stepTitle}>{toolset.label || toolset.name}</Text>
+                    <Text style={[styles.approvalState, toolset.enabled ? styles.good : styles.warn]}>
+                      {toolset.enabled ? "مفعّلة في مصدر الكتالوج" : "غير مفعّلة"}
+                    </Text>
+                  </View>
+                  {!!toolset.description && <Text style={styles.modeHint}>{toolset.description}</Text>}
+                  <Text style={styles.modeHint}>{toolset.tools.slice(0, 12).join(" · ")}</Text>
+                </View>
+              ))}
+              {hermesToolsets.length > 20 && (
+                <Text style={styles.modeHint}>تم عرض 20 من {hermesToolsets.length} مجموعة أدوات.</Text>
+              )}
             </View>
           )}
 
