@@ -23,7 +23,6 @@ import {
   grantAIApproval,
   grantHermesApproval,
   grantOpenCodeApproval,
-  grantCollaborationApproval,
   revokeToolApproval,
   type AgentOperation,
   type AgentTaskSnapshot,
@@ -68,8 +67,6 @@ export default function AgentScreen() {
   const [hermesAvailable, setHermesAvailable] = useState(false);
   const [opencodeAvailable, setOpencodeAvailable] = useState(false);
   const [opencodeApproved, setOpencodeApproved] = useState(false);
-  const [collaborationApproved, setCollaborationApproved] = useState(false);
-  const [teamAvailable, setTeamAvailable] = useState(false);
   const [taskEngineAvailable, setTaskEngineAvailable] = useState(false);
   const [agentProfiles, setAgentProfiles] = useState<AgentProfile[]>([]);
   const [hermesSkills, setHermesSkills] = useState<HermesSkill[]>([]);
@@ -85,7 +82,6 @@ export default function AgentScreen() {
       const taskEngine = items.find((item) => item.name === "text.analyze");
       const hermes = items.find((item) => item.name === "hermes.agent.turn");
       const opencode = items.find((item) => item.name === "opencode.task.run");
-      const collaboration = items.find((item) => item.name === "engine.collaborate");
       setTaskEngineAvailable(Boolean(taskEngine?.available));
       const ai = items.find((item) => item.name === "ai.respond");
       setApproved(Boolean(hermes?.approved));
@@ -94,8 +90,6 @@ export default function AgentScreen() {
       setAiAvailable(Boolean(ai?.available));
       setOpencodeApproved(Boolean(opencode?.approved));
       setOpencodeAvailable(Boolean(opencode?.available));
-      setCollaborationApproved(Boolean(collaboration?.approved));
-      setTeamAvailable(Boolean(collaboration?.available));
       try {
         setAgentProfiles(await getAgentCatalog());
       } catch {
@@ -150,14 +144,6 @@ export default function AgentScreen() {
         await grantHermesApproval();
         setApproved(true);
         setNotice("تم حفظ موافقتك على نطاق تشغيل Hermes. يمكنك إلغاء هذه الموافقة من إعدادات الصلاحيات لاحقًا.");
-      } else if (operation === "engine.team.run") {
-        await grantHermesApproval();
-        await grantOpenCodeApproval();
-        await grantCollaborationApproval();
-        setApproved(true);
-        setOpencodeApproved(true);
-        setCollaborationApproved(true);
-        setNotice("تم حفظ الموافقات الثلاث المنفصلة: تشغيل Hermes، وتشغيل OpenCode، والتفويض بين المحركات.");
       } else {
         await grantOpenCodeApproval();
         setOpencodeApproved(true);
@@ -174,20 +160,11 @@ export default function AgentScreen() {
     setApproving(true);
     setNotice("");
     try {
-      if (operation === "engine.team.run") {
-        await revokeToolApproval("agent.hermes.run");
-        await revokeToolApproval("engine.opencode.run");
-        await revokeToolApproval("engine.delegate");
-        setApproved(false);
-        setOpencodeApproved(false);
-        setCollaborationApproved(false);
-      } else {
-        const scope = operation === "ai.respond" ? "ai.provider.run" : operation === "hermes.agent.turn" ? "agent.hermes.run" : "engine.opencode.run";
-        await revokeToolApproval(scope);
-        if (operation === "ai.respond") setAiApproved(false);
-        else if (operation === "hermes.agent.turn") setApproved(false);
-        else setOpencodeApproved(false);
-      }
+      const scope = operation === "ai.respond" ? "ai.provider.run" : operation === "hermes.agent.turn" ? "agent.hermes.run" : "engine.opencode.run";
+      await revokeToolApproval(scope);
+      if (operation === "ai.respond") setAiApproved(false);
+      else if (operation === "hermes.agent.turn") setApproved(false);
+      else setOpencodeApproved(false);
       setNotice("تم إلغاء الموافقة. لن يستطيع العامل استخدام هذه الأداة في المحاولات التالية.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "تعذر إلغاء الموافقة.");
@@ -229,18 +206,6 @@ export default function AgentScreen() {
     }
     if (operation === "opencode.task.run" && !opencodeApproved) {
       setNotice("يجب منح موافقة صريحة على تشغيل OpenCode أولًا.");
-      return;
-    }
-    if (operation === "engine.team.run" && !projectId) {
-      setNotice("افتح الوكيل من داخل مشروع SULY قبل تشغيل فريق المحركات.");
-      return;
-    }
-    if (operation === "engine.team.run" && !teamAvailable) {
-      setNotice("فريق المحركات غير متاح على الخادم حاليًا؛ لم يتم وضع المهمة في قائمة الانتظار.");
-      return;
-    }
-    if (operation === "engine.team.run" && !(approved && opencodeApproved && collaborationApproved)) {
-      setNotice("يجب اعتماد نطاقات Hermes وOpenCode والتفويض بين المحركات كلٌّ على حدة.");
       return;
     }
     setBusy(true);
@@ -377,10 +342,6 @@ export default function AgentScreen() {
                 <Text style={[styles.modeTitle, operation === "opencode.task.run" && styles.gold]}>OpenCode</Text>
                 <Text style={styles.modeHint}>وكيل البرمجة • مشروع + Runtime معزول</Text>
               </Pressable>
-              <Pressable style={[styles.mode, operation === "engine.team.run" && styles.modeActive]} onPress={() => setOperation("engine.team.run")}>
-                <Text style={[styles.modeTitle, operation === "engine.team.run" && styles.gold]}>فريق المحركات</Text>
-                <Text style={styles.modeHint}>Hermes يخطط، وOpenCode ينفذ عبر تسليم آمن</Text>
-              </Pressable>
             </View>
 
             {operation === "ai.respond" && (
@@ -413,25 +374,6 @@ export default function AgentScreen() {
               </View>
             )}
 
-            {operation === "engine.team.run" && (
-              <View style={styles.approvalBox}>
-                <View style={styles.approvalHeader}>
-                  <Text style={styles.label}>فريق Hermes + OpenCode</Text>
-                  <Text style={[styles.approvalState, teamAvailable ? styles.good : styles.warn]}>{teamAvailable ? "المحركان مهيآن" : "غير متاح حاليًا"}</Text>
-                </View>
-                <Text style={styles.modeHint}>يعمل المحركان في Runtime منفصل. لا تنتقل الجلسات أو الذاكرة أو الأسرار بينهما؛ ينتقل ملخص المهمة فقط عبر سجل تسليم SULY. يلزم ربط مشروع وموافقة مستقلة لكل نطاق.</Text>
-                <Text style={[styles.modeHint, (approved && opencodeApproved && collaborationApproved) ? styles.good : styles.warn]}>
-                  Hermes: {approved ? "موافَق" : "بحاجة موافقة"} · OpenCode: {opencodeApproved ? "موافَق" : "بحاجة موافقة"} · التفويض: {collaborationApproved ? "موافَق" : "بحاجة موافقة"}
-                </Text>
-                <Text style={[styles.modeHint, teamAvailable ? styles.good : styles.warn]}>
-                  {teamAvailable ? "إعدادات المحركين على الخادم موجودة (لم يُختبر اتصال النموذج المباشر)." : "العامل أو أحد المحركين أو موفر Runtime غير متاح على الخادم."}
-                </Text>
-                <Pressable style={styles.secondaryButton} onPress={(approved && opencodeApproved && collaborationApproved) ? revokeSelectedApproval : enableSelectedApproval} disabled={approving || loadingCatalog || !teamAvailable}>
-                  {approving ? <ActivityIndicator color={colors.gold} /> : <Text style={styles.secondaryText}>{(approved && opencodeApproved && collaborationApproved) ? "إلغاء موافقات الفريق الثلاث" : "الموافقة على نطاقات الفريق الثلاثة"}</Text>}
-                </Pressable>
-              </View>
-            )}
-
             {operation === "opencode.task.run" && (
               <View style={styles.approvalBox}>
                 <View style={styles.approvalHeader}>
@@ -452,7 +394,7 @@ export default function AgentScreen() {
             <TextInput
               value={prompt}
               onChangeText={setPrompt}
-              placeholder={operation === "text.analyze" ? "اكتب نصًا لاختبار التحليل..." : operation === "ai.respond" ? "اكتب ما تريد من SULY إنجازه..." : operation === "opencode.task.run" ? "اكتب مهمة البرمجة التي تريد من OpenCode تنفيذها..." : operation === "engine.team.run" ? "اكتب المهمة التي تريد من Hermes وOpenCode التعاون عليها..." : "اكتب ما تريد من Hermes إنجازه..."}
+              placeholder={operation === "text.analyze" ? "اكتب نصًا لاختبار التحليل..." : operation === "ai.respond" ? "اكتب ما تريد من SULY إنجازه..." : operation === "opencode.task.run" ? "اكتب مهمة البرمجة التي تريد من OpenCode تنفيذها..." : "اكتب ما تريد من Hermes إنجازه..."}
               placeholderTextColor={colors.faint}
               multiline
               textAlign="right"
@@ -461,7 +403,7 @@ export default function AgentScreen() {
               maxLength={20000}
             />
             <Text style={styles.counter}>{prompt.length.toLocaleString("en-US")} / 20,000</Text>
-            <Pressable style={[styles.primaryButton, (!prompt.trim() || busy || (operation === "text.analyze" && !taskEngineAvailable) || (operation === "hermes.agent.turn" && (!hermesAvailable || !approved)) || (operation === "ai.respond" && (!aiAvailable || !aiApproved)) || (operation === "opencode.task.run" && (!projectId || !opencodeAvailable || !opencodeApproved)) || (operation === "engine.team.run" && (!projectId || !teamAvailable || !approved || !opencodeApproved || !collaborationApproved))) && styles.disabled]} onPress={submit} disabled={!prompt.trim() || busy || (operation === "text.analyze" && !taskEngineAvailable) || (operation === "hermes.agent.turn" && (!hermesAvailable || !approved)) || (operation === "ai.respond" && (!aiAvailable || !aiApproved)) || (operation === "opencode.task.run" && (!projectId || !opencodeAvailable || !opencodeApproved)) || (operation === "engine.team.run" && (!projectId || !teamAvailable || !approved || !opencodeApproved || !collaborationApproved))}>
+            <Pressable style={[styles.primaryButton, (!prompt.trim() || busy || (operation === "text.analyze" && !taskEngineAvailable) || (operation === "hermes.agent.turn" && (!hermesAvailable || !approved)) || (operation === "ai.respond" && (!aiAvailable || !aiApproved)) || (operation === "opencode.task.run" && (!projectId || !opencodeAvailable || !opencodeApproved))) && styles.disabled]} onPress={submit} disabled={!prompt.trim() || busy || (operation === "text.analyze" && !taskEngineAvailable) || (operation === "hermes.agent.turn" && (!hermesAvailable || !approved)) || (operation === "ai.respond" && (!aiAvailable || !aiApproved)) || (operation === "opencode.task.run" && (!projectId || !opencodeAvailable || !opencodeApproved))}>
               {busy ? <ActivityIndicator color={colors.background} /> : <Text style={styles.primaryText}>إنشاء المهمة وتشغيلها</Text>}
             </Pressable>
           </View>
