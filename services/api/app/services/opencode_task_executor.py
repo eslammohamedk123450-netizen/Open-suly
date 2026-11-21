@@ -12,7 +12,7 @@ from difflib import unified_diff
 import hashlib
 
 from app.services.opencode_session_store import OpenCodeSessionStore
-from app.services.project_workspace_store import ProjectWorkspaceStore
+from app.services.project_workspace_store import ProjectWorkspaceStore, contains_secret_material
 from app.services.runtime_broker_contract import TaskScopedRuntimeBroker
 from app.services.opencode_lifecycle_store import OpenCodeLifecycleStore
 from app.services.opencode_event_consumer import OpenCodeEventConsumer
@@ -246,6 +246,8 @@ class OpenCodeTaskExecutor:
                     new_content = item.get("content")
                     if not isinstance(new_content, str) or len(new_content.encode("utf-8")) > 256 * 1024:
                         raise ValueError("opencode_result_content_invalid")
+                    if contains_secret_material(new_content):
+                        raise ValueError("opencode_result_secret_material_detected")
                     if path in seen_paths:
                         raise ValueError("opencode_result_duplicate_path")
                     seen_paths.add(path)
