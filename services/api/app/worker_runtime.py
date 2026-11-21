@@ -397,6 +397,7 @@ class WorkerRuntime:
         cancel_aware_handler: Callable[[ClaimedStep, Event], dict[str, Any]] | None = None,
         reconciler: EngineRunReconciler | None = None,
         reconcile_interval_seconds: int = 30,
+        runtime_broker: TaskScopedRuntimeBroker | None = None,
     ) -> None:
         if not 0.1 <= poll_interval_seconds <= 60:
             raise ValueError("poll interval must be between 0.1 and 60 seconds")
@@ -411,6 +412,7 @@ class WorkerRuntime:
             raise ValueError("reconcile interval must be between 10 and 600 seconds")
         self.reconciler = reconciler
         self.reconcile_interval_seconds = reconcile_interval_seconds
+        self.runtime_broker = runtime_broker
 
     def run(self, stop: Event) -> None:
         idle_delay = self.poll_interval_seconds
@@ -476,16 +478,39 @@ def main() -> None:
             EngineRunStore(client),
             stop_handlers={"hermes-agent": stop_agent_run},
         )
+    runtime_broker = None
+    runtime_provider = None
+    if settings.opencode_enabled:
+        configured = (
+            settings.runtime_provisioner_url,
+            settings.runtime_provisioner_token,
+            settings.runtime_provisioner_allowed_origins,
+        )
+        if not all(configured):
+            raise SystemExit("OpenCode runtime configuration is incomplete.")
+        allowed_origins = frozenset(settings.runtime_provisioner_allowed_origins)
+        runtime_provider = HTTPSRuntimeLeaseProvider(
+            base_url=settings.runtime_provisioner_url,
+            bearer_token=settings.runtime_provisioner_token.get_secret_value(),
+            allowed_origins=allowed_origins,
+            timeout_seconds=settings.runtime_provisioner_timeout_seconds,
+        )
+        runtime_broker = TaskScopedRuntimeBroker(
+            runtime_provider, allowed_origins=allowed_origins
+        )
     WorkerRuntime(
         worker,
         poll_interval_seconds=settings.worker_poll_interval_seconds,
         handler=lambda step: dispatch(step, approval_store),
         cancel_aware_handler=lambda step, cancel_event: dispatch_cancel_aware(
-            step, cancel_event, approval_store
+            step, cancel_event, approval_store, runtime_broker
         ),
         reconciler=reconciler,
         reconcile_interval_seconds=settings.engine_reconciler_interval_seconds,
+        runtime_broker=runtime_broker,
     ).run(stop)
+    if runtime_provider is not None:
+        runtime_provider.close()
     logger.info("Worker stopped")
 
 
