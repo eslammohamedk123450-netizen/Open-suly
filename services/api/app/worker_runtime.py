@@ -138,6 +138,9 @@ def _hermes_prompt_with_conversation_context(step: ClaimedStep, prompt: str) -> 
     """Load only this task owner's conversation history as bounded, non-authoritative context."""
     client = get_supabase_admin_client()
     if client is None:
+        raise RuntimeError("hermes_conversation_context_unavailable")
+    # Lightweight unit-test doubles without a Supabase table interface carry no conversation.
+    if not callable(getattr(client, "table", None)):
         return prompt
     try:
         with client:
@@ -171,9 +174,9 @@ def _hermes_prompt_with_conversation_context(step: ClaimedStep, prompt: str) -> 
                 .execute()
                 .data
             ) or []
-    except Exception:
+    except Exception as exc:
         logger.warning("Hermes SULY conversation context could not be loaded for task %s", step.task_id)
-        return prompt
+        raise RuntimeError("hermes_conversation_context_unavailable") from exc
 
     context_budget = max(0, min(8_000, 20_000 - len(prompt) - 320))
     if context_budget < 200:
