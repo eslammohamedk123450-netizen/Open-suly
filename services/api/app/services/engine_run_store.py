@@ -177,9 +177,12 @@ class EngineRunStore:
                     raise ValueError("invalid_engine_run_event_metadata")
             if not isinstance(metadata.get("subagent_id"), str):
                 raise ValueError("invalid_engine_run_event_metadata")
-            if "status" in metadata and metadata["status"] not in {
-                "started", "running", "completed", "failed", "cancelled"
-            }:
+            if "status" in metadata and (
+                not isinstance(metadata["status"], str)
+                or metadata["status"] not in {
+                    "started", "running", "completed", "failed", "cancelled"
+                }
+            ):
                 raise ValueError("invalid_engine_run_event_metadata")
             for field in {
                 "task_index", "task_count", "depth", "tool_count", "input_tokens", "output_tokens"
