@@ -87,7 +87,6 @@ def test_chat_write_routes_enforce_independent_scopes(monkeypatch, route, body, 
     rate_limit_module.reset_limiters()
     limits = {"respond": 10, "conversations": 1, "messages": 1}
     limits[scope] = 1
-    _override_settings(monkeypatch, **limits) if False else None
     monkeypatch.setattr(
         rate_limit_module,
         "get_settings",
