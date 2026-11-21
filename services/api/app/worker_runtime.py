@@ -32,7 +32,7 @@ from app.services.opencode_task_executor import OpenCodeTaskExecutor
 from app.services.opencode_lifecycle_store import OpenCodeLifecycleStore
 from app.services.opencode_session_store import OpenCodeSessionStore
 from app.services.project_workspace_store import ProjectWorkspaceStore
-from app.services.runtime_broker_contract import TaskScopedRuntimeBroker
+from app.services.runtime_broker_contract import RuntimeLease, TaskScopedRuntimeBroker
 from app.services.runtime_provisioner_http import HTTPSRuntimeLeaseProvider
 
 logger = logging.getLogger("suly.worker")
@@ -70,12 +70,14 @@ class HermesAgentAdapter:
         idempotency_key: str,
         on_run_started: Callable[[str], bool],
         on_event: Callable[[dict[str, str | int | float]], bool | None] | None = None,
+        runtime_lease: RuntimeLease | None = None,
     ) -> None:
         # نمرر إشارة الإلغاء وهوية المحاولة وقناة أحداث لا تقبل إلا metadata.
         self.cancel_event = cancel_event
         self.idempotency_key = idempotency_key
         self.on_run_started = on_run_started
         self.on_event = on_event
+        self.runtime_lease = runtime_lease
 
     def execute(self, request: EngineRequest) -> EngineResult:
         prompt = request.input_payload.get("prompt")
@@ -88,6 +90,9 @@ class HermesAgentAdapter:
             idempotency_key=self.idempotency_key,
             on_run_started=self.on_run_started,
             on_event=self.on_event,
+            runtime_lease=self.runtime_lease,
+            task_id=request.task_id,
+            engine_run_id=self.runtime_lease.engine_run_id if self.runtime_lease is not None else None,
         )
         if not isinstance(result, dict) or not isinstance(result.get("content"), str):
             raise ValueError("hermes_adapter_invalid_response")
@@ -103,21 +108,21 @@ def build_engine_registry(
     idempotency_key: str,
     on_run_started: Callable[[str], bool],
     on_event: Callable[[dict[str, str | int | float]], bool] | None = None,
+    runtime_lease: RuntimeLease | None = None,
 ) -> EngineRegistry:
     """Build the full pinned engine catalogue with only configured Hermes enabled."""
     settings = get_settings()
     hermes_enabled = bool(
         settings.worker_enabled
         and settings.hermes_agent_enabled
-        and settings.hermes_agent_isolation_confirmed
-        and settings.hermes_agent_base_url
-        and settings.hermes_agent_api_key is not None
+        and runtime_lease is not None
     )
     hermes_adapter = HermesAgentAdapter(
         cancel_event,
         idempotency_key=idempotency_key,
         on_run_started=on_run_started,
         on_event=on_event,
+        runtime_lease=runtime_lease,
     )
     return build_pinned_engine_registry({
         "hermes-agent": (hermes_enabled, hermes_adapter),
@@ -135,14 +140,13 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
     if not isinstance(prompt, str):
         raise ValueError("hermes.agent.turn requires a string input.prompt")
     settings = get_settings()
+    runtime_broker = context.runtime_broker if context is not None else None
     if (
         not settings.worker_enabled
         or not settings.hermes_agent_enabled
-        or not settings.hermes_agent_isolation_confirmed
-        or not settings.hermes_agent_base_url
-        or settings.hermes_agent_api_key is None
+        or runtime_broker is None
     ):
-        raise RuntimeError("engine_disabled_or_unisolated")
+        raise RuntimeError("hermes_task_runtime_unavailable")
 
     # نجهز طلب المحرك بحد أقصى زمني معروف من إعدادات الخادم.
     request = EngineRequest(
@@ -180,39 +184,55 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
             )
         return persisted
 
-    registry = build_engine_registry(
-        cancel_event,
-        idempotency_key=f"suly-{run_id}",
-        on_run_started=lambda upstream_id: run_store.attach_upstream_run_id(
-            run_id, step, upstream_id
-        ),
-        on_event=persist_engine_event,
-    )
-    manager = build_agent_manager(registry)
     try:
-        # يختار مدير الوكلاء المحرك المؤهل؛ لا يشغّل دورًا أو محركًا معطلاً.
-        route = manager.route("general-agent", "agent.general")
-        selected_engine = route.engines[0]
-    except (ValueError, RuntimeError):
-        run_store.finish(run_id, step, "failed", "agent_route_unavailable")
-        raise
+        runtime_lease = runtime_broker.acquire(
+            str(step.task_id), str(run_id), "hermes-agent"
+        )
+    except Exception as exc:
+        run_store.finish(run_id, step, "failed", "hermes_runtime_acquire_failed")
+        raise RuntimeError("hermes_task_runtime_acquire_failed") from exc
 
     try:
-        # لا نعتبر بدء Hermes ناجحًا حتى نحفظ معرفه الخارجي تحت lease الحالي.
-        result = registry.execute(selected_engine.engine_id, request)
-    except HermesAgentCancelled:
-        run_store.finish(run_id, step, "cancelled")
-        raise
-    except Exception:
-        run_store.finish(run_id, step, "failed", "engine_execution_failed")
-        raise
-    if not run_store.finish(run_id, step, "succeeded"):
-        raise RuntimeError("engine_run_lease_lost")
-    return {
-        "operation": "hermes.agent.turn",
-        "engine": result.output["engine"],
-        "content": result.output["content"],
-    }
+        registry = build_engine_registry(
+            cancel_event,
+            idempotency_key=f"suly-{run_id}",
+            on_run_started=lambda upstream_id: run_store.attach_upstream_run_id(
+                run_id, step, upstream_id
+            ),
+            on_event=persist_engine_event,
+            runtime_lease=runtime_lease,
+        )
+        manager = build_agent_manager(registry)
+        try:
+            route = manager.route("general-agent", "agent.general")
+            selected_engine = route.engines[0]
+        except (ValueError, RuntimeError):
+            run_store.finish(run_id, step, "failed", "agent_route_unavailable")
+            raise
+
+        try:
+            result = registry.execute(selected_engine.engine_id, request)
+        except HermesAgentCancelled:
+            run_store.finish(run_id, step, "cancelled")
+            raise
+        except Exception:
+            run_store.finish(run_id, step, "failed", "engine_execution_failed")
+            raise
+        if not run_store.finish(run_id, step, "succeeded"):
+            raise RuntimeError("engine_run_lease_lost")
+        return {
+            "operation": "hermes.agent.turn",
+            "engine": result.output["engine"],
+            "content": result.output["content"],
+        }
+    finally:
+        try:
+            released = runtime_broker.release(runtime_lease)
+            if not released:
+                logger.warning("Hermes task runtime release was not confirmed for attempt %s", run_id)
+        except Exception:
+            logger.warning("Hermes task runtime cleanup failed for attempt %s", run_id)
+
 
 def dispatch_cancel_aware(
     step: ClaimedStep,
