@@ -446,3 +446,27 @@ def test_hermes_execute_endpoint_rejects_non_native_execution_path(monkeypatch):
         ))
     assert error.value.status_code == 404
     assert error.value.detail == "route_not_allowed"
+
+
+def test_hermes_runtime_cannot_use_opencode_workspace_result_export(monkeypatch):
+    import pytest
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(
+        runtime_api, "_runtime",
+        lambda runtime_id, token: {
+            "host_port": 8642, "engine_id": "hermes-agent",
+            "container_id": "hermes-container",
+        },
+    )
+    monkeypatch.setattr(
+        runtime_api, "_get_manager",
+        lambda *_args: pytest.fail("Hermes must not use the OpenCode workspace exporter"),
+    )
+    with pytest.raises(HTTPException) as error:
+        runtime_api.runtime_results(
+            "00000000-0000-4000-8000-000000000001",
+            authorization="Bearer " + "x" * 48,
+        )
+    assert error.value.status_code == 404
+    assert error.value.detail == "route_not_allowed"
