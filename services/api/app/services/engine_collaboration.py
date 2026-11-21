@@ -8,6 +8,7 @@ lifecycle events, and bounded result envelopes.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import re
 from typing import Any
 from uuid import UUID
@@ -227,6 +228,10 @@ def render_collaboration_prompt(
         raise ValueError("collaboration_source_output_invalid")
 
     if source_engine == "hermes-agent":
+        if set(source_output) - {"operation", "engine", "content"}:
+            raise ValueError("collaboration_source_output_invalid")
+        if source_output.get("operation") != "hermes.agent.turn":
+            raise ValueError("collaboration_source_output_invalid")
         content = source_output.get("content")
         if not isinstance(content, str) or not content.strip() or len(content) > 12_000:
             raise ValueError("collaboration_source_output_invalid")
@@ -241,7 +246,7 @@ def render_collaboration_prompt(
             raise ValueError("collaboration_source_output_invalid")
         if source_output.get("operation") != "opencode.task.run":
             raise ValueError("collaboration_source_output_invalid")
-        source_payload = __import__("json").dumps(
+        source_payload = json.dumps(
             {key: source_output[key] for key in sorted(allowed) if key in source_output},
             ensure_ascii=False,
             separators=(",", ":"),
