@@ -30,7 +30,7 @@ def test_catalog_lists_registered_tools_and_user_approval(monkeypatch):
     assert response.status_code == 200
     items = response.json()["items"]
     by_name = {item["name"]: item for item in items}
-    assert set(by_name) == {"text.analyze", "hermes.agent.turn", "ai.respond"}
+    assert set(by_name) == {"text.analyze", "hermes.agent.turn", "ai.respond", "opencode.task.run"}
     assert by_name["text.analyze"]["approved"] is True
     assert by_name["ai.respond"]["approved"] is False
     assert by_name["ai.respond"]["available"] is False
@@ -44,6 +44,10 @@ def test_catalog_lists_registered_tools_and_user_approval(monkeypatch):
     assert by_name["hermes.agent.turn"]["required_input_fields"] == ["prompt"]
     assert by_name["hermes.agent.turn"]["max_input_bytes"] == 20_100
     assert by_name["hermes.agent.turn"]["max_output_bytes"] == 52_000
+    assert by_name["opencode.task.run"]["approved"] is False
+    assert by_name["opencode.task.run"]["available"] is False
+    assert by_name["opencode.task.run"]["permission_scope"] == "engine.opencode.run"
+    assert by_name["opencode.task.run"]["supports_cancellation"] is True
 
 
 def test_catalog_marks_hermes_unapproved_for_user(monkeypatch):
