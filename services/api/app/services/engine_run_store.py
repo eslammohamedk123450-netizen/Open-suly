@@ -15,9 +15,11 @@ class EngineStopClaim:
 
     run_id: UUID
     engine_id: str
-    upstream_run_id: str
+    upstream_run_id: str | None
     reconcile_token: UUID
     attempt_count: int
+    task_id: UUID | None = None
+    runtime_id: UUID | None = None
 
 
 class EngineRunStore:
@@ -244,12 +246,23 @@ class EngineRunStore:
                     raise ValueError("invalid_row")
                 engine_id = row.get("engine_id")
                 upstream_run_id = row.get("upstream_run_id")
+                runtime_id = row.get("runtime_id")
                 attempt_count = row.get("reconcile_attempt_count")
                 if (
                     not isinstance(engine_id, str)
                     or not 2 <= len(engine_id) <= 63
-                    or not isinstance(upstream_run_id, str)
-                    or not 1 <= len(upstream_run_id) <= 128
+                    or (
+                        upstream_run_id is not None
+                        and (
+                            not isinstance(upstream_run_id, str)
+                            or not 1 <= len(upstream_run_id) <= 128
+                        )
+                    )
+                    or (
+                        runtime_id is not None
+                        and not isinstance(runtime_id, str)
+                    )
+                    or (upstream_run_id is None and runtime_id is None)
                     or isinstance(attempt_count, bool)
                     or not isinstance(attempt_count, int)
                     or attempt_count < 1
@@ -261,6 +274,8 @@ class EngineRunStore:
                     upstream_run_id=upstream_run_id,
                     reconcile_token=UUID(str(row["reconcile_token"])),
                     attempt_count=attempt_count,
+                    task_id=UUID(str(row["task_id"])),
+                    runtime_id=UUID(str(runtime_id)) if runtime_id is not None else None,
                 ))
         except (KeyError, TypeError, ValueError) as exc:
             raise RuntimeError("engine_stop_claim_invalid_response") from exc
