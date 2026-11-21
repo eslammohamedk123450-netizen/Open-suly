@@ -77,11 +77,13 @@ class OpenCodeTaskExecutor:
             while not cancel_watch_stop.wait(0.1):
                 if cancel_event.is_set():
                     try:
-                        self._broker.release_attempt(task_id, engine_run_id, "opencode")
+                        released = self._broker.release_attempt(task_id, engine_run_id, "opencode")
+                        if released:
+                            cancel_release_done.set()
+                        else:
+                            logger.warning("OpenCode cancellation cleanup was not confirmed for attempt %s", engine_run_id)
                     except Exception:
                         logger.warning("OpenCode cancellation cleanup failed for attempt %s", engine_run_id)
-                    finally:
-                        cancel_release_done.set()
                     return
 
         def stop_cancel_watch() -> None:
