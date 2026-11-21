@@ -223,9 +223,12 @@ class HTTPSRuntimeLeaseProvider:
         *,
         prompt: str,
         title: str = "SULY task",
+        timeout_seconds: int = 900,
         on_session_created: Any | None = None,
     ) -> dict[str, Any]:
         """Execute a bounded prompt in the leased OpenCode runtime and collect its diff snapshot."""
+        if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= 1800:
+            raise ValueError("runtime_execution_timeout_invalid")
         if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 32_000:
             raise ValueError("runtime_prompt_invalid")
         if not isinstance(title, str) or not title.strip() or len(title) > 120:
@@ -266,9 +269,12 @@ class HTTPSRuntimeLeaseProvider:
         try:
             with self._client.stream(
                 "POST", route,
-                json={"prompt": prompt.strip(), "title": title.strip(), "session_id": session_id},
+                json={
+                    "prompt": prompt.strip(), "title": title.strip(),
+                    "session_id": session_id, "timeout_seconds": timeout_seconds,
+                },
                 headers={"Authorization": f"Bearer {lease.access_token}"},
-                timeout=httpx.Timeout(900, connect=5),
+                timeout=httpx.Timeout(timeout_seconds + 15, connect=5),
             ) as response:
                 if response.status_code != 200 or response.headers.get("content-type", "").split(";", 1)[0].lower() != "application/json":
                     raise RuntimeProvisionerError("runtime_execution_failed")
