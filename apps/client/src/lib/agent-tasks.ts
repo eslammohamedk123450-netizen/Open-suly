@@ -192,6 +192,39 @@ export async function getAgentTask(taskId: string): Promise<AgentTaskSnapshot> {
   return request<AgentTaskSnapshot>("/v1/tasks/" + encodeURIComponent(taskId));
 }
 
+export type OpenCodeChange = {
+  action: "create" | "update" | "delete";
+  path: string;
+  content?: string;
+  sha256?: string;
+  diff: string;
+};
+
+export type OpenCodeChangeSet = {
+  id: string;
+  run_id: string;
+  project_id: string;
+  base_revision: string;
+  status: string;
+  changes: OpenCodeChange[];
+  created_at?: string;
+  decided_at?: string | null;
+};
+
+export async function getOpenCodeChangeSet(changeSetId: string): Promise<OpenCodeChangeSet> {
+  return request<OpenCodeChangeSet>("/v1/opencode/change-sets/" + encodeURIComponent(changeSetId));
+}
+
+export async function decideOpenCodeChangeSet(
+  changeSetId: string,
+  decision: "apply" | "reject",
+): Promise<{ applied: boolean; rejected?: boolean; change_set_id?: string }> {
+  return request("/v1/opencode/change-sets/" + encodeURIComponent(changeSetId) + "/decision", {
+    method: "POST",
+    body: JSON.stringify({ decision }),
+  });
+}
+
 export type AgentApprovalDetails = {
   task_id: string;
   engine_run_id: string;
