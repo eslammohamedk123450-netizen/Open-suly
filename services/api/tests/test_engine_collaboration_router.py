@@ -219,3 +219,23 @@ def test_list_handoffs_groups_metadata_events_by_handoff(monkeypatch):
 def test_handoff_request_rejects_unexpected_client_fields():
     with pytest.raises(ValueError):
         request(source_engine="hermes-agent", provider_api_key="should-never-be-accepted")
+
+
+def test_create_handoff_rejects_hermes_runtime_budget_above_300_seconds(monkeypatch):
+    client = FakeClient()
+    monkeypatch.setattr(collaboration, "_admin_client", lambda: client)
+
+    with pytest.raises(HTTPException) as error:
+        collaboration.create_engine_handoff(
+            TASK_ID, RUN_ID,
+            request(
+                target_engine="hermes-agent",
+                capability="agent.general",
+                max_runtime_seconds=301,
+            ),
+            auth_user(),
+        )
+
+    assert error.value.status_code == 422
+    assert client.rpc_calls == []
+    assert client.table_calls == []
