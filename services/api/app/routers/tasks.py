@@ -374,6 +374,12 @@ def steer_task_engine_run(
             )
             if not steps or steps[0].get("status") != "running" or not steps[0].get("lease_token"):
                 raise HTTPException(status_code=409, detail="The task worker no longer owns this run.")
+            runtime_id = engine_run.get("runtime_id")
+            if not isinstance(runtime_id, str):
+                raise HTTPException(status_code=409, detail="The isolated runtime identity is unavailable.")
+            runtime_lease = _recover_hermes_runtime(
+                http_request, task_id=task_id, engine_run_id=run_id, runtime_id=runtime_id
+            )
             try:
                 steer_agent_run(
                     upstream_run_id, request.input, runtime_lease=runtime_lease,
@@ -585,13 +591,6 @@ def resolve_task_engine_approval(
             settings = get_settings()
             if not settings.worker_enabled or not settings.hermes_agent_enabled:
                 raise HTTPException(status_code=503, detail="Hermes approvals are not available.")
-            runtime_id = engine_run.get("runtime_id")
-            if not isinstance(runtime_id, str):
-                raise HTTPException(status_code=409, detail="The isolated runtime identity is unavailable.")
-            runtime_lease = _recover_hermes_runtime(
-                http_request, task_id=task_id, engine_run_id=run_id, runtime_id=runtime_id
-            )
-
             steps = (
                 client.table("task_steps")
                 .select("id,lease_token,status,lease_expires_at")
