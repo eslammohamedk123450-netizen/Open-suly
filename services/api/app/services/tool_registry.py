@@ -17,6 +17,7 @@ class ToolExecutionContext:
     approved_scopes: frozenset[str] = field(default_factory=frozenset)
     cancel_event: Event | None = field(default=None, repr=False, compare=False)
     engine_run_store: Any = field(default=None, repr=False, compare=False)
+    runtime_broker: Any = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True)
