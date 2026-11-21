@@ -470,15 +470,31 @@ returns trigger
 language plpgsql
 security invoker
 set search_path = ''
-as $$
+as $
+declare
+  v_pending record;
+  v_seq bigint;
 begin
   if old.cancel_requested_at is null and new.cancel_requested_at is not null then
-    -- Pending approvals have no child process to stop; close them immediately.
-    update public.engine_collaboration_handoffs
-       set status='cancelled', finished_at=now(), updated_at=now()
-     where parent_task_id=new.id
-       and user_id=new.user_id
-       and status='pending_approval';
+    -- Pending approvals have no child process to stop; close them and record the event.
+    for v_pending in
+      update public.engine_collaboration_handoffs
+         set status='cancelled', finished_at=now(), updated_at=now()
+       where parent_task_id=new.id
+         and user_id=new.user_id
+         and status='pending_approval'
+       returning id,user_id
+    loop
+      select coalesce(max(sequence),0)+1 into v_seq
+        from public.engine_collaboration_events
+       where handoff_id=v_pending.id;
+      insert into public.engine_collaboration_events (
+        handoff_id,user_id,sequence,event_type,status,metadata
+      ) values (
+        v_pending.id,v_pending.user_id,v_seq,'handoff.cancelled','cancelled',
+        jsonb_build_object('reason','parent_task_cancelled')
+      );
+    end loop;
 
     -- Active handoffs are cancelled through the child task's normal lease protocol.
     update public.tasks child
@@ -497,7 +513,7 @@ begin
   end if;
   return new;
 end;
-$$;
+$;
 
 drop trigger if exists tasks_cancel_engine_collaboration_children on public.tasks;
 create trigger tasks_cancel_engine_collaboration_children
