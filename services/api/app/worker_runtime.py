@@ -457,19 +457,19 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
             if not isinstance(upstream_id, str) or not isinstance(request_id, str):
                 return False
             if isinstance(tool_id, str):
-                def approve_once(_: dict[str, Any]) -> bool:
-                    return respond_run_approval(
-                        runtime_lease=runtime_lease, task_id=str(step.task_id),
-                        engine_run_id=str(run_id), run_id=upstream_id,
-                        request_id=request_id, choice="once",
-                    )
                 try:
-                    return bool(tool_gateway.invoke(
+                    authorized = tool_gateway.authorize_upstream_tool_approval(
                         user_id=str(step.user_id), task_id=str(step.task_id),
                         step_id=str(step.step_id), lease_token=str(step.lease_token),
-                        tool_id=tool_id, arguments={"request_id": request_id},
-                        executor=approve_once,
-                    ))
+                        tool_id=tool_id, request_id=request_id,
+                    )
+                    if authorized:
+                        return respond_run_approval(
+                            runtime_lease=runtime_lease, task_id=str(step.task_id),
+                            engine_run_id=str(run_id), run_id=upstream_id,
+                            request_id=request_id, choice="once",
+                        )
+                    return False
                 except PermissionError:
                     # Exact tool has no active SULY approval: deny the same upstream request.
                     try:
