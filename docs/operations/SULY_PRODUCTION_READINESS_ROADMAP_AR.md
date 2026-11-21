@@ -503,3 +503,15 @@ For every engine:
 - The CI evidence above predates the fixes. New CI must complete successfully before this checkpoint is treated as verified; no local pytest execution is claimed.
 - Safety unchanged: no migration applied, no deployment, no live worker/agent/Hermes/OpenCode/provider, no paid service, no new secret.
 - Next: verify all CI runs on the new HEAD, repair regressions, then implement the usage/credits gate for task execution without activating workers or engines.
+
+
+## Session checkpoint — 2026-11-21 (Credit ledger idempotency NULL-safety)
+
+- تم التحقق من `main` HEAD `3837c066878036283a96e394a02c0091370d1a0c` قبل التعديل ومراجعة roadmap وسجل التطوير وتعليمات المستودع وملفات الرصيد والاختبارات وCI.
+- اكتشفنا مقارنة SQL غير آمنة في `release_engine_credits`: استخدام `metadata ->> 'reason' <> p_reason` لا يكتشف دائمًا القيمة المفقودة بسبب دلالات `NULL`. استُبدلت بـ`IS DISTINCT FROM`، وأضيف اختبار static يمنع رجوع المقارنات غير الآمنة.
+- تم تحديث دليل دفتر الرصيد وسجل التقدم. لم نغيّر أي upstream source أو revision أو license.
+- CI على HEAD السابق: Platform CI run `44930108723` وRepository baseline run `44930108558` نجحا؛ Engine runtime build run `44930107052` فشل، لكن GitHub connector لم يعرض jobs/logs لتحديد السبب. ظهر أيضًا فشل check خارجي `strong-gentleness - suly-api`; لم ننفذ deploy.
+- لا pytest محلي في هذه الجلسة، ولا migration apply أو deploy أو تشغيل worker/agent/engine/provider. نتائج CI الجديدة مطلوبة بعد هذا commit.
+- لم تتغير عناصر checklist: **51/120 (43%)**. تقدير Controlled Beta/Production Readiness يظل **نحو 20%** بطريقة milestone-weighted؛ وجود ledger code لا يعني billing integration أو staging validation.
+- التالي: التحقق من CI الجديد، ثم اختبارات PostgreSQL disposable، وبعدها ربط cost/usage ledger بالـworker خلف gates مغلقة وبعد تحديد سياسة التكلفة.
+

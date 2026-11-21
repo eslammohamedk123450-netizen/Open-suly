@@ -58,3 +58,15 @@ def test_expired_credit_holds_are_not_released_while_engine_run_is_running():
     assert "er.status = 'running'" in expiry_function
     assert "for update skip locked" in expiry_function
     assert "limit p_batch_size" in expiry_function
+
+
+
+def test_engine_credit_idempotency_metadata_comparisons_are_null_safe():
+    """تمنع NULL في JSON metadata من تجاوز فحص إعادة استخدام مفتاح الرصيد."""
+    source = (MIGRATIONS / "20261121250000_credit_ledger_foundation.sql").read_text(encoding="utf-8")
+    assert "v_existing.metadata ->> 'reason' is distinct from p_reason" in source
+    assert "v_existing.metadata ->> 'actual_credits' is distinct from p_actual_credits::text" in source
+    assert not re.search(
+        r"v_existing\.metadata\s*->>\s*'[^']+'\s*(?:<>|!=)\s*",
+        source,
+    )

@@ -652,3 +652,41 @@ undefined
 1. افحص أحدث main HEAD وكل CI runs المرتبطة به؛ تأكد من نجاح compile وAPI tests وprovisioner tests وOpenCode upstream build/smoke وclient web export.
 2. أصلح أي regression جديد بأصغر تغيير آمن، ثم حدّث هذا السجل بنتائج CI الفعلية.
 3. بعد CI أخضر، ابدأ تصميم/اختبارات usage وcredits للمهام، مع منع أي تشغيل عند غياب grant/رصيد صالح، دون تشغيل worker أو engine حي.
+
+
+## جلسة متابعة — 2026-11-21 (إغلاق ثغرة NULL في idempotency لدفتر الرصيد)
+
+### مراجعة البداية
+- تم جلب مرجع `main` مباشرة قبل التعديل؛ HEAD عند البداية: `3837c066878036283a96e394a02c0091370d1a0c`، وتأكدنا أن مرجع الفرع يشير إلى commit نفسه.
+- راجعنا `AGENTS.md`، والـroadmap، وسجل التطوير، ودليل دفتر الرصيد، وملفات migration/adapter/tests، وآخر commits وحالة Actions.
+- لقطة roadmap الحالية: **51/120** بند checklist مكتمل (43%)؛ هذه نسبة عدّ عناصر وليست نسبة جاهزية المنتج.
+- على HEAD السابق: Platform CI run `44930108723` نجح، وRepository baseline run `44930108558` نجح. Engine runtime image build run `44930107052` فشل؛ واجهة GitHub أعادت صفر jobs ولم توفر logs عبر الاتصال الحالي، لذلك لم ننسب سببًا تخمينيًا للفشل. كما أظهر combined status فشل check خارجي باسم `strong-gentleness - suly-api`؛ لم نبدأ deploy أو نتصل ببنية Railway.
+
+### المشكلة والإصلاح
+- أثناء مراجعة `release_engine_credits` وجدنا أن فحص إعادة استخدام idempotency key كان يقارن `metadata ->> 'reason'` باستخدام `<>`.
+- إذا كانت قيمة `reason` في سجل قديم مفقودة، تعيد المقارنة SQL قيمة `NULL`، وشرط `IF` لا يدخل فرع التعارض؛ بذلك يمكن قبول إعادة طلب غير مطابقة بدل رفضها.
+- استبدلنا المقارنة بـ`IS DISTINCT FROM`، لتتعامل مع `NULL` كاختلاف صريح، وبذلك تتسق مع فحوص grant وsettle التي شُددت في commit السابق.
+- أضفنا اختبار migration static يمنع عودة مقارنات metadata غير الآمنة، وحدّثنا دليل الرصيد بشرح السلوك.
+
+### الملفات
+- `supabase/migrations/20261121250000_credit_ledger_foundation.sql`
+- `services/api/tests/test_sql_migration_static.py`
+- `docs/operations/ENGINE_CREDITS_LEDGER_AR.md`
+- `docs/progress/DEVELOPMENT_PROGRESS_AR.md`
+- `docs/operations/SULY_PRODUCTION_READINESS_ROADMAP_AR.md`
+
+### التحقق والحدود
+- لم نشغّل pytest محليًا في هذه الجلسة؛ لا ندّعي نتيجة اختبار محلي.
+- نجاح Platform CI وRepository baseline المذكور أعلاه يخص HEAD السابق فقط. يجب فحص runs الجديدة الناتجة عن هذا commit قبل اعتماد الإصلاح.
+- فشل Engine runtime build السابق لم يُشخّص؛ سبب الفشل غير متاح من jobs/logs في الاتصال الحالي.
+- لم تُطبق أي migration على Supabase، ولم يتم نشر أو تشغيل worker أو agent أو Hermes أو OpenCode أو أي provider، ولم تُفعّل خدمة مدفوعة أو secret.
+
+### الحالة والقرار المؤجل
+- دفتر الرصيد أصبح يملك أساسًا خادميًا موحدًا للمنح والحجز والتسوية والتحرير وانتهاء الحجز، مع RLS وRPC مقيدة؛ لكنه **غير مربوط بعد** بمسارات تشغيل OpenCode/Hermes، ولا توجد سياسة أسعار أو تحويل usage إلى credits أو واجهة رصيد.
+- تبقى المراحل A/B/C/D غير مثبتة على Staging، وتبقى E/F (التكلفة والاعتمادية والتوسع والتغليف والنشر) مفتوحة. لا نرفع تقدير Controlled Beta/Production Readiness عن **نحو 20%**؛ النسبة milestone-weighted محافظة، بينما 51/120 هي نسبة checkbox منفصلة.
+- لا نعتبر هذه الدفعة إغلاقًا للفوترة أو جاهزية لتفعيل أي محرك.
+
+### نقطة متابعة الجلسة القادمة
+1. افحص Platform CI وRepository baseline وEngine runtime build على HEAD الجديد؛ شخّص فشل image-build فقط من logs فعلية، ولا تخمّن السبب.
+2. وسّع اختبارات دفتر الرصيد، ثم أضف اختبار PostgreSQL disposable للتنافسية وNULL/idempotency إن كانت بيئة CI المتاحة تسمح، دون الاتصال بقاعدة المستخدم.
+3. بعد ذلك صمّم ربط reserve/settle/release بمسار المحرك مع cost policy خادمية صريحة؛ لا تخترع أسعارًا ولا تفعّل worker/engine قبل اعتماد سياسة التكلفة واكتمال اختبارات العزل.

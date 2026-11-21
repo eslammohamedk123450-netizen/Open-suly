@@ -349,7 +349,7 @@ begin
   if found then
     if v_existing.transaction_type <> 'release'
        or v_existing.reservation_id <> p_reservation_id
-       or v_existing.metadata ->> 'reason' <> p_reason then
+       or v_existing.metadata ->> 'reason' is distinct from p_reason then
       raise exception 'engine_credit_idempotency_conflict';
     end if;
     return true;
