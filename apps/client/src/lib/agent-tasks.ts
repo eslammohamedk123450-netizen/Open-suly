@@ -192,6 +192,20 @@ export async function getAgentTask(taskId: string): Promise<AgentTaskSnapshot> {
   return request<AgentTaskSnapshot>("/v1/tasks/" + encodeURIComponent(taskId));
 }
 
+export type OpenCodeTaskEvent = {
+  sequence: number;
+  event_type: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
+export async function getOpenCodeRunEvents(runId: string, limit = 200): Promise<OpenCodeTaskEvent[]> {
+  const payload = await request<{ items: OpenCodeTaskEvent[] }>(
+    "/v1/opencode/runs/" + encodeURIComponent(runId) + "/events?limit=" + String(Math.max(1, Math.min(500, limit))),
+  );
+  return payload.items ?? [];
+}
+
 export type OpenCodeChange = {
   action: "create" | "update" | "delete";
   path: string;
