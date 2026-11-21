@@ -242,36 +242,19 @@ def auto_plan_task(
                 planned = plan_request(str(task.get("request") or ""))
             except UnsupportedTaskRequest as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
-            planned_steps = planned.steps
-            if planned.planner == "engine-team-v1":
-                project_id = task.get("project_id")
-                if not isinstance(project_id, str) or not project_id:
-                    raise HTTPException(
-                        status_code=422,
-                        detail="اربط المهمة بمشروع SULY قبل تشغيل فريق Hermes وOpenCode.",
-                    )
-                planned_steps = [
-                    {**item, "input": dict(item["input"])}
-                    for item in planned.steps
-                ]
-                planned_steps[1]["input"]["project_id"] = project_id
-                try:
-                    planned_steps = validate_agent_plan(planned_steps)
-                except UnsupportedTaskRequest as exc:
-                    raise HTTPException(status_code=422, detail=str(exc)) from exc
             result = client.rpc(
                 "plan_task",
                 {
                     "p_task_id": str(task_id),
                     "p_user_id": user.id,
-                    "p_steps": planned_steps,
+                    "p_steps": planned.steps,
                 },
             ).execute().data
         if isinstance(result, list) and result:
             result = result[0]
         if not isinstance(result, dict):
             raise HTTPException(status_code=503, detail="The task planner returned an invalid result.")
-        return {**result, "planner": planned.planner, "steps": planned_steps}
+        return {**result, "planner": planned.planner, "steps": planned.steps}
     except HTTPException:
         raise
     except Exception as exc:
@@ -329,16 +312,6 @@ def get_task(
                 .execute()
                 .data
             )
-            engine_handoffs = (
-                client.table("engine_handoffs")
-                .select("id,task_id,source_step_id,target_step_id,target_attempt_count,source_run_id,target_run_id,source_engine_id,target_engine_id,capability,depth,status,input_sha256,input_bytes,output_sha256,output_bytes,error_code,created_at,completed_at")
-                .eq("task_id", str(task_id))
-                .eq("user_id", user.id)
-                .order("created_at")
-                .limit(50)
-                .execute()
-                .data
-            )
             engine_events = (
                 client.table("engine_run_events")
                 .select("id,engine_run_id,task_id,event_name,event_seq,event_timestamp,approval_request_id,approval_choice,metadata,received_at")
@@ -355,7 +328,6 @@ def get_task(
             "steps": steps or [],
             "engine_runs": engine_runs or [],
             "engine_events": engine_events or [],
-            "engine_handoffs": engine_handoffs or [],
         }
     except HTTPException:
         raise
