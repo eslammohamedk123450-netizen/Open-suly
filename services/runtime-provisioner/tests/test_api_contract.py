@@ -228,25 +228,32 @@ def test_execution_uses_upstream_default_basic_auth_username(monkeypatch):
 
     captured = {}
 
-    class FakeResponse:
+    class FakeStreamResponse:
         def __init__(self, payload):
             self.payload = payload
-        def raise_for_status(self):
-            return None
-        def json(self):
-            return self.payload
-
-    class FakeClient:
-        def __init__(self, *, base_url, auth, **kwargs):
-            captured["auth"] = auth
+            self.status_code = 200
+            self.headers = {"content-type": "application/json"}
         async def __aenter__(self):
             return self
         async def __aexit__(self, *args):
             return None
-        async def post(self, path, json):
+        async def aiter_bytes(self):
+            import json
+            yield json.dumps(self.payload).encode("utf-8")
+
+    class FakeClient:
+        def __init__(self, *, base_url, auth, **kwargs):
+            captured["auth"] = auth
+            captured["base_url"] = base_url
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            return None
+        def stream(self, method, path, json):
+            captured.setdefault("requests", []).append((method, path, json))
             if path == "/api/session":
-                return FakeResponse({"data": {"id": "sesABC123"}})
-            return FakeResponse({"data": {"ok": True}})
+                return FakeStreamResponse({"data": {"id": "sesABC123"}})
+            return FakeStreamResponse({"data": {"ok": True}})
 
     monkeypatch.setattr(runtime_api, "_runtime", lambda runtime_id, token: {"host_port": 4096})
     monkeypatch.setattr(runtime_api.httpx, "AsyncClient", FakeClient)
