@@ -126,7 +126,7 @@ def test_event_gateway_forwards_sse_without_buffering(monkeypatch):
         headers = {"content-type": "text/event-stream", "cache-control": "no-cache"}
 
         async def aiter_bytes(self):
-            yield b"data: {\\"event\\":\\"session.execution.started\\"}\\n\\n"
+            yield b'data: {"event":"session.execution.started"}\\n\\n'
 
         async def aclose(self):
             self.closed = True
