@@ -79,6 +79,36 @@ class HermesToolGateway:
         if not step_rows:
             raise PermissionError("hermes_tool_step_lease_invalid")
 
+    def authorize_upstream_tool_approval(
+        self, *, user_id: str, task_id: str, step_id: str, lease_token: str,
+        tool_id: str, request_id: str,
+    ) -> bool:
+        """Authorize a one-shot Hermes callback; this method does not execute tools."""
+        owner = _owner(user_id)
+        if tool_id != "terminal":
+            raise PermissionError("hermes_upstream_tool_approval_not_supported")
+        if not isinstance(request_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{8,128}", request_id):
+            raise ValueError("hermes_approval_request_id_invalid")
+        self._assert_live_step(owner=owner, task_id=task_id, step_id=step_id, lease_token=lease_token)
+        scope = self.permission_scope(tool_id)
+        rows = self._client.table("tool_approvals").select("id").eq(
+            "user_id", owner
+        ).eq("permission_scope", scope).is_("revoked_at", "null").limit(1).execute().data or []
+        if not rows:
+            raise PermissionError("hermes_tool_approval_required")
+        self._assert_live_step(owner=owner, task_id=task_id, step_id=step_id, lease_token=lease_token)
+        self._client.table("tool_approval_events").insert({
+            "user_id": owner, "approval_id": rows[0]["id"],
+            "permission_scope": scope, "event_type": "tool_invocation_authorized",
+            "actor_user_id": owner,
+            "metadata": {
+                "action": "upstream_tool_approval_once", "engine_id": "hermes-agent",
+                "tool_id": tool_id, "task_id": task_id,
+                "approval_request_sha256": hashlib.sha256(request_id.encode("utf-8")).hexdigest(),
+            },
+        }).execute()
+        return True
+
     def invoke(
         self, *, user_id: str, task_id: str, step_id: str, lease_token: str,
         tool_id: str, arguments: dict[str, Any],
