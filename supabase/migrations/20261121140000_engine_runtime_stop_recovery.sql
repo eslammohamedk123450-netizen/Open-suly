@@ -116,7 +116,9 @@ begin
 end;
 $$;
 
-create or replace function public.claim_engine_runs_for_stop(
+drop function if exists public.claim_engine_runs_for_stop(integer,integer);
+
+create function public.claim_engine_runs_for_stop(
   p_batch_size integer default 10,
   p_lease_seconds integer default 60
 )
