@@ -30,7 +30,7 @@ def test_catalog_lists_registered_tools_and_user_approval(monkeypatch):
     assert response.status_code == 200
     items = response.json()["items"]
     by_name = {item["name"]: item for item in items}
-    assert set(by_name) == {"text.analyze", "hermes.agent.turn", "ai.respond", "opencode.task.run", "engine.collaborate"}
+    assert set(by_name) == {"text.analyze", "hermes.agent.turn", "ai.respond", "opencode.task.run"}
     assert by_name["text.analyze"]["approved"] is True
     assert by_name["ai.respond"]["approved"] is False
     assert by_name["ai.respond"]["available"] is False
@@ -48,9 +48,6 @@ def test_catalog_lists_registered_tools_and_user_approval(monkeypatch):
     assert by_name["opencode.task.run"]["available"] is False
     assert by_name["opencode.task.run"]["permission_scope"] == "engine.opencode.run"
     assert by_name["opencode.task.run"]["supports_cancellation"] is True
-    assert by_name["engine.collaborate"]["permission_scope"] == "engine.delegate"
-    assert by_name["engine.collaborate"]["approved"] is True
-    assert by_name["engine.collaborate"]["available"] is False
 
 
 def test_catalog_marks_hermes_unapproved_for_user(monkeypatch):
@@ -107,8 +104,6 @@ def test_catalog_reports_hermes_available_only_when_runtime_is_configured(monkey
     assert by_name["hermes.agent.turn"]["available"] is True
     assert by_name["hermes.agent.turn"]["approved"] is False
     assert by_name["opencode.task.run"]["available"] is True
-    assert by_name["engine.collaborate"]["available"] is True
-    assert by_name["engine.collaborate"]["approved"] is False
 
 
 def test_catalog_reports_ai_provider_available_only_when_fully_configured(monkeypatch):
