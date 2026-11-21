@@ -388,7 +388,7 @@ This is **subagent lifecycle visibility**, not yet a SULY-owned child-task/deleg
 
 - Platform CI API tests at commit `7c01b0cc3818ea6d3fc1a9ba75766ad9de2d1b4a`: **661 passed, 5 warnings**.
 - Repository baseline checks for that commit: **passed**.
-- Client typecheck/web export was still running when this checkpoint was recorded.
+- Client typecheck/web export for that commit: **passed**.
 - No live Hermes runtime or actual subagent was executed.
 
 ## 16. Execution checkpoint 07 — stop-reconciler diagnostic RPC
