@@ -323,6 +323,49 @@ def test_append_engine_run_event_rejects_invalid_approval_metadata(event):
     assert client.calls == []
 
 
+def test_append_engine_run_event_persists_bounded_subagent_metadata():
+    client = FakeRpc(True)
+    event = {
+        "event": "subagent.complete",
+        "seq": 12,
+        "timestamp": 1_800_000_000.5,
+        "metadata": {
+            "subagent_id": "child_01",
+            "delegation_id": "delegation_01",
+            "parent_id": "parent_01",
+            "child_session_id": "session_01",
+            "status": "completed",
+            "task_index": 1,
+            "task_count": 2,
+            "depth": 1,
+            "tool_count": 3,
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "duration_seconds": 2.5,
+        },
+    }
+    assert EngineRunStore(client).append_event(RUN_ID, step(), event) is True
+    assert client.calls[0][0] == "append_engine_run_event"
+    assert client.calls[0][1]["p_metadata"] == event["metadata"]
+
+
+@pytest.mark.parametrize("event", [
+    {"event": "tool.started", "metadata": {"subagent_id": "child_01"}},
+    {"event": "subagent.start", "metadata": {}},
+    {"event": "subagent.start", "metadata": {"subagent_id": "../escape"}},
+    {"event": "subagent.start", "metadata": {"subagent_id": "child_01", "status": []}},
+    {"event": "subagent.start", "metadata": {"subagent_id": "child_01", "depth": True}},
+    {"event": "subagent.start", "metadata": {"subagent_id": "child_01", "depth": 1_000_000_001}},
+    {"event": "subagent.start", "metadata": {"subagent_id": "child_01", "duration_seconds": -1}},
+    {"event": "subagent.start", "metadata": {"subagent_id": "child_01", "goal": "private prompt"}},
+])
+def test_append_engine_run_event_rejects_invalid_subagent_metadata(event):
+    client = FakeRpc(True)
+    with pytest.raises((ValueError, TypeError), match="metadata"):
+        EngineRunStore(client).append_event(RUN_ID, step(), event)
+    assert client.calls == []
+
+
 def test_append_engine_run_event_reports_lease_loss():
     client = FakeRpc(False)
     assert EngineRunStore(client).append_event(
