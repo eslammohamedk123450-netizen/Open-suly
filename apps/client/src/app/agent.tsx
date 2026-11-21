@@ -48,10 +48,13 @@ function statusLabel(status: string): string {
 
 export default function AgentScreen() {
   const { user } = useAuth();
-  const params = useLocalSearchParams<{ prompt?: string | string[]; projectId?: string | string[] }>();
+  const params = useLocalSearchParams<{ prompt?: string | string[]; projectId?: string | string[]; conversationId?: string | string[] }>();
   const initialPrompt = typeof params.prompt === "string" ? params.prompt : "";
   const projectId = typeof params.projectId === "string" ? params.projectId : undefined;
-  const [operation, setOperation] = useState<AgentOperation>(initialPrompt ? "ai.respond" : "text.analyze");
+  const conversationId = typeof params.conversationId === "string" ? params.conversationId : undefined;
+  const [operation, setOperation] = useState<AgentOperation>(
+    conversationId ? "hermes.agent.turn" : initialPrompt ? "ai.respond" : "text.analyze",
+  );
   const [prompt, setPrompt] = useState(initialPrompt);
   const [snapshot, setSnapshot] = useState<AgentTaskSnapshot | null>(null);
   const [approved, setApproved] = useState(false);
@@ -197,7 +200,7 @@ export default function AgentScreen() {
     setNotice("");
     setSnapshot(null);
     try {
-      const created = await createAgentTask(operation, prompt, projectId);
+      const created = await createAgentTask(operation, prompt, projectId, conversationId);
       setPrompt("");
       const current = await getAgentTask(created.id);
       setSnapshot(current);
@@ -249,7 +252,11 @@ export default function AgentScreen() {
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.intro}>
             <Text style={styles.introTitle}>حوّل طلبك إلى مهمة</Text>
-            <Text style={styles.muted}>اختبر محرك المهام، أو استخدم SULY AI بعد إعداد المزود والموافقة، أو جهّز Hermes Agent في بيئته المعزولة.</Text>
+            <Text style={styles.muted}>
+              {conversationId
+                ? "سيستخدم Hermes سياق هذه المحادثة المملوكة لحسابك مع تشغيل جديد داخل Runtime مستقل."
+                : "اختبر محرك المهام، أو استخدم SULY AI بعد إعداد المزود والموافقة، أو جهّز Hermes Agent في بيئته المعزولة."}
+            </Text>
           </View>
 
           {agentProfiles.length > 0 && (
