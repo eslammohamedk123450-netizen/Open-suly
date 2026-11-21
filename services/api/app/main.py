@@ -38,13 +38,16 @@ app.include_router(opencode_tasks_router)
 def configure_opencode_runtime() -> None:
     """Enable the isolated runtime broker only with a complete explicit configuration."""
     current = get_settings()
+    app.state.runtime_broker = None
+    app.state.runtime_provider = None
+    # لا يكفي وجود credentials؛ تفعيل OpenCode يحتاج قرارًا صريحًا مستقلًا.
+    if not current.opencode_enabled:
+        return
     configured = (
         current.runtime_provisioner_url,
         current.runtime_provisioner_token,
         current.runtime_provisioner_allowed_origins,
     )
-    app.state.runtime_broker = None
-    app.state.runtime_provider = None
     if not any(configured):
         return
     if not all(configured):
