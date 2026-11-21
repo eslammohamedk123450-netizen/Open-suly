@@ -427,3 +427,15 @@ def test_runtime_broker_recovers_lease_after_process_restart():
     assert recovered is lease
     assert broker.active_count == 1
     assert broker.lease_for_attempt(TASK_ID, RUN_ID, ENGINE_ID) is lease
+
+
+def test_runtime_broker_rejects_unbounded_execution_timeout_before_acquire():
+    provider = FakeProvider([])
+    broker = TaskScopedRuntimeBroker(provider, allowed_origins=ORIGINS)
+    with pytest.raises(ValueError, match="runtime_execution_timeout_invalid"):
+        broker.run_task(
+            TASK_ID, RUN_ID, ENGINE_ID, files=[], prompt="bounded",
+            timeout_seconds=1801,
+        )
+    assert broker.active_count == 0
+    assert provider.released == []
