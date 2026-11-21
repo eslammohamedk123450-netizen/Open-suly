@@ -10,7 +10,7 @@ REVISION = "a" * 40
 
 
 def test_skill_package_is_pinned_bounded_and_digest_verified():
-    raw = b"name: helper\\n"
+    raw = b"name: helper\n"
     result = validate_skill_package(
         name="helper", content=raw, source_revision=REVISION, license_id="MIT"
     )
@@ -25,7 +25,7 @@ def test_skill_package_is_pinned_bounded_and_digest_verified():
     ({"name": "../escape"}, "name_invalid"),
     ({"source_revision": "main"}, "revision_invalid"),
     ({"license_id": "UNKNOWN"}, "license_not_approved"),
-    ({"content": b"\\xff"}, "must_be_utf8"),
+    ({"content": b"\xff"}, "must_be_utf8"),
     ({"content": b""}, "size_invalid"),
 ])
 def test_skill_package_rejects_untrusted_metadata(kwargs, error):
