@@ -20,6 +20,7 @@ from app.core.supabase import get_supabase_admin_client
 from app.services.ai_gateway import generate_reply
 from app.services.engine_contract import EngineRequest, EngineResult
 from app.services.engine_registry import EngineRegistry
+from app.services.engine_dispatcher import EngineDispatcher
 from app.services.agent_manager import AgentManager
 from app.services.engine_catalog import build_engine_registry as build_pinned_engine_registry
 from app.services.agent_catalog import build_agent_manager as build_catalog_agent_manager
@@ -561,9 +562,16 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
             runtime_lease=runtime_lease,
         )
         manager = build_agent_manager(registry)
-        route = manager.route("general-agent", "agent.general")
-        selected_engine = route.engines[0]
-        result = registry.execute(selected_engine.engine_id, request)
+        route = manager.route("general-agent", request.capability)
+        preferred_engine_ids = tuple(
+            item.engine_id for item in route.engines
+            if isinstance(getattr(item, "engine_id", None), str)
+        )
+        # The planner expresses preferences; the dispatcher intersects them with
+        # the registry's enabled capability set before any adapter is invoked.
+        result = EngineDispatcher(registry).execute(
+            request, preferred_engine_ids=preferred_engine_ids,
+        )
     except HermesAgentCancelled:
         if release_runtime():
             run_store.finish(run_id, step, "cancelled")
