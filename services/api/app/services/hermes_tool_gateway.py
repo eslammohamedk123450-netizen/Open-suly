@@ -58,9 +58,17 @@ class HermesToolGateway:
     ) -> Any:
         owner = _owner(user_id)
         _owner(task_id)
-        if tool_id in _BLOCKED_TOOLS:
+        if tool_id in _BLOCKED_TOOLS or tool_id.startswith((
+            "shell.", "terminal.", "browser.", "computer.", "mcp.",
+            "process.", "filesystem.write", "docker.",
+        )):
             raise PermissionError("hermes_tool_requires_dedicated_sandbox_bridge")
         scope = self.permission_scope(tool_id)
+        task_rows = self._client.table("tasks").select("id").eq(
+            "id", task_id
+        ).eq("user_id", owner).limit(1).execute().data
+        if not task_rows:
+            raise PermissionError("hermes_tool_task_owner_mismatch")
         if not callable(executor):
             raise ValueError("hermes_tool_executor_invalid")
         try:
