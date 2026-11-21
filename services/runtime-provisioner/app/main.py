@@ -616,6 +616,11 @@ async def execute(runtime_id: str, body: ExecuteRequest, authorization: str | No
 @app.get("/v1/runtimes/{runtime_id}/results")
 def runtime_results(runtime_id: str, authorization: str | None = Header(default=None)):
     row = _runtime(runtime_id, _runtime_token_from_request(authorization))
+    # This endpoint exports OpenCode's reviewable workspace changeset only.
+    # Hermes results are accepted through its lease-bound SULY Runs/task result
+    # path, never through the OpenCode file-export shortcut.
+    if row["engine_id"] != "opencode":
+        raise HTTPException(404, "route_not_allowed")
     try:
         # Select the daemon manager for the recorded engine identity. The
         # managers may share a Docker daemon, but the engine identity is still
