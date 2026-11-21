@@ -470,3 +470,15 @@ def test_hermes_runtime_cannot_use_opencode_workspace_result_export(monkeypatch)
         )
     assert error.value.status_code == 404
     assert error.value.detail == "route_not_allowed"
+
+
+def test_execute_request_accepts_only_bounded_timeout_values():
+    import pytest
+    from pydantic import ValidationError
+    from app.main import ExecuteRequest
+
+    assert ExecuteRequest(prompt="bounded", timeout_seconds=123).timeout_seconds == 123
+    with pytest.raises(ValidationError):
+        ExecuteRequest(prompt="too long", timeout_seconds=1801)
+    with pytest.raises(ValidationError):
+        ExecuteRequest(prompt="invalid", timeout_seconds=0)
