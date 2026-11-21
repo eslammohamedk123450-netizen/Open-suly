@@ -121,8 +121,10 @@ class HermesStateStore:
             _uuid(project_id, "hermes_memory_project_invalid")
         if conversation_id is not None:
             _uuid(conversation_id, "hermes_memory_conversation_invalid")
-        if source not in {"suly", "user_approved_import", "agent_proposal"}:
-            raise ValueError("hermes_memory_source_invalid")
+        # Agent proposals must go through an explicit user-approval workflow;
+        # this write API stores only user-authored or already-approved memory.
+        if source not in {"suly", "user_approved_import"}:
+            raise ValueError("hermes_memory_source_requires_user_approval")
         if project_id is not None:
             self._assert_owned(
                 table="projects", record_id=project_id, owner=owner,
