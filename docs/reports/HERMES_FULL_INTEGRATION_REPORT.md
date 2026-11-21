@@ -352,3 +352,75 @@ The overall integration remains **IN PROGRESS**. Hermes user task execution rema
 | Production isolation | Not verified; do not enable user task execution until provisioner/runtime tests pass |
 
 The overall integration remains **IN PROGRESS**. A green API test suite is not evidence of deployed container isolation.
+
+
+## 14. Execution checkpoint 05 — outbound runtime transport hardening
+
+### Implemented
+
+- All Hermes Runs API, stop, steer, approval, and approval-detail HTTP clients now set `trust_env=False`; environment-provided HTTP(S) proxy variables cannot silently redirect runtime traffic.
+- All those clients set `follow_redirects=False`; runtime credentials are not forwarded through an upstream redirect.
+- The fixed metadata catalog transport already used the same proxy-free and redirect-free policy.
+- Added a regression assertion for the main Hermes Runs API client configuration.
+
+### Verification
+
+- The Platform CI API job at commit `b3fdc7b6b02b3809b5ea35e15be3a2c147688466` passed after the transport hardening: **646 passed, 5 warnings**.
+- Repository baseline checks for that commit passed.
+- Later commits extend the event schema and are tracked in checkpoint 06 below.
+
+## 15. Execution checkpoint 06 — bounded subagent lifecycle metadata
+
+### Implemented
+
+- The Hermes SSE reducer now projects only a strict metadata allow-list for `subagent.start` and `subagent.complete`.
+- Accepted fields are opaque child/delegation/parent/session identifiers, bounded lifecycle status, bounded counters, and bounded duration.
+- Child goals, summaries, prompts, tool arguments, reasoning, and output text remain excluded.
+- `EngineRunStore.append_event` validates the metadata again at the persistence boundary and sends it through the service-role RPC as `p_metadata`.
+- The existing migration `20261121150000_engine_run_subagent_metadata.sql` constrains persisted JSON keys, shapes, sizes, and event types.
+- Added tests for safe projection, malformed identifiers, status/counter/duration validation, and exact metadata persistence.
+
+### Scope boundary
+
+This is **subagent lifecycle visibility**, not yet a SULY-owned child-task/delegation scheduler. Hermes upstream may execute its own delegated children inside the isolated parent runtime, but SULY still does not create separately budgeted child task rows, enforce a SULY child concurrency/depth budget, or independently cancel/reconcile each child. Those remain required before describing delegation as fully integrated.
+
+### Verification
+
+- Platform CI API tests at commit `7c01b0cc3818ea6d3fc1a9ba75766ad9de2d1b4a`: **661 passed, 5 warnings**.
+- Repository baseline checks for that commit: **passed**.
+- Client typecheck/web export was still running when this checkpoint was recorded.
+- No live Hermes runtime or actual subagent was executed.
+
+## 16. Execution checkpoint 07 — stop-reconciler diagnostic RPC
+
+A source audit found that `EngineRunStore.count_missing_upstream_identity()` called `count_engine_runs_missing_upstream_identity`, but no migration in the repository defined that RPC. Since `EngineRunReconciler.run_once()` calls the diagnostic before claiming stop work, this missing database function could prevent the reconciler loop from reaching its actual cleanup work after deployment.
+
+### Implemented
+
+- Added the missing function to `20261121140000_engine_runtime_stop_recovery.sql`.
+- It accepts only a bounded age from 1 to 3600 seconds.
+- It counts only stale `stop_pending` rows with neither an upstream run ID nor an opaque runtime ID; a valid task-scoped runtime identity is not misreported as missing.
+- Execution is revoked from public/anon/authenticated and granted only to `service_role`.
+
+### Verification and deployment boundary
+
+- The API unit test for the RPC adapter is present and passed as part of the **661 passed** Platform CI run above.
+- This verifies the Python adapter contract, not the SQL function against PostgreSQL.
+- The migration remains committed but unapplied to the live Supabase project. A disposable/staging database migration and RPC execution test is still required.
+
+### Updated capability state
+
+| Capability | Updated status |
+|---|---|
+| Hermes outbound transport proxy/redirect hardening | Code + regression assertion; CI passed |
+| Subagent event visibility | Code + tests + existing SQL allow-list migration; CI passed |
+| SULY-owned child task/delegation orchestration | Not implemented |
+| Missing-identity diagnostic RPC | Additive migration committed; PostgreSQL execution pending |
+| Stop reconciler end-to-end | Code path implemented; DB apply and live provisioner verification pending |
+| Hermes sessions and persistent memory bridge | Not implemented |
+| MCP broker and per-tenant MCP credentials | Not implemented |
+| Skills source review/install/update/execution bridge | Not implemented; discovery only |
+| Provider gateway integration | Not implemented |
+| Runtime provisioner implementation/deployment | External dependency; not available in this repository's current verified state |
+
+The overall integration remains **IN PROGRESS**. The 661 passing API tests do not establish production isolation or completion of Hermes feature parity.
