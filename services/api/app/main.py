@@ -40,18 +40,17 @@ def configure_opencode_runtime() -> None:
     current = get_settings()
     app.state.runtime_broker = None
     app.state.runtime_provider = None
-    # لا يكفي وجود credentials؛ تفعيل OpenCode يحتاج قرارًا صريحًا مستقلًا.
-    if not current.opencode_enabled:
+    # Both engines use the same trusted provisioner contract, but receive
+    # distinct engine IDs and fresh task-attempt runtimes.
+    if not current.opencode_enabled and not current.hermes_agent_enabled:
         return
     configured = (
         current.runtime_provisioner_url,
         current.runtime_provisioner_token,
         current.runtime_provisioner_allowed_origins,
     )
-    if not any(configured):
-        return
     if not all(configured):
-        raise RuntimeError("OpenCode runtime provider configuration is incomplete")
+        raise RuntimeError("Isolated engine runtime provider configuration is incomplete")
     allowed = frozenset(current.runtime_provisioner_allowed_origins)
     provider = HTTPSRuntimeLeaseProvider(
         base_url=current.runtime_provisioner_url,
