@@ -43,6 +43,81 @@ def test_task_request_rejects_blank_content() -> None:
     assert response.status_code == 422
 
 
+class _CreateTaskQuery:
+    def __init__(self, admin, table):
+        self.admin = admin
+        self.table_name = table
+        self.filters = {}
+        self.insert_payload = None
+    def select(self, *_args): return self
+    def eq(self, key, value):
+        self.filters[key] = value
+        return self
+    def limit(self, *_args): return self
+    def insert(self, payload):
+        self.insert_payload = payload
+        return self
+    def execute(self):
+        if self.insert_payload is not None:
+            self.admin.inserted = self.insert_payload
+            return SimpleNamespace(data=[{
+                **self.insert_payload,
+                "id": "00000000-0000-0000-0000-000000000099",
+                "status": "queued",
+            }])
+        if self.table_name == "tasks":
+            return SimpleNamespace(data=[])
+        if self.table_name == "conversations":
+            owned = (
+                self.filters.get("id") == self.admin.conversation_id
+                and self.filters.get("user_id") == "test-user"
+            )
+            return SimpleNamespace(data=[{"id": self.admin.conversation_id}] if owned else [])
+        raise AssertionError("unexpected table")
+
+
+class _CreateTaskAdmin:
+    def __init__(self, conversation_id):
+        self.conversation_id = conversation_id
+        self.inserted = None
+    def __enter__(self): return self
+    def __exit__(self, *_args): return False
+    def table(self, name): return _CreateTaskQuery(self, name)
+
+
+def test_task_creation_persists_only_owner_matched_conversation_id(monkeypatch):
+    conversation_id = "00000000-0000-0000-0000-000000000055"
+    admin = _CreateTaskAdmin(conversation_id)
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    try:
+        response = client.post("/v1/tasks", json={
+            "request": "agent: continue this conversation",
+            "idempotency_key": "conversation-task-01",
+            "conversation_id": conversation_id,
+        })
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 202
+    assert admin.inserted["conversation_id"] == conversation_id
+
+
+def test_task_creation_rejects_conversation_owned_by_another_user(monkeypatch):
+    admin = _CreateTaskAdmin("another-conversation")
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    try:
+        response = client.post("/v1/tasks", json={
+            "request": "agent: private task",
+            "idempotency_key": "conversation-task-02",
+            "conversation_id": "00000000-0000-0000-0000-000000000055",
+        })
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 404
+    assert admin.inserted is None
+
+
 def test_task_planning_requires_authentication() -> None:
     response = client.post(
         "/v1/tasks/00000000-0000-0000-0000-000000000001/plan",
