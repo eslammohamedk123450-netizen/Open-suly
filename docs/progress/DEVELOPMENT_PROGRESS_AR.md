@@ -493,3 +493,39 @@ undefined
 - ظهرت محاولات CI سابقة فاشلة على commits وسيطة أثناء تعديل نص الاختبارات؛ تم تصحيح الاختبارات، والمرجع النهائي المعتمد هنا هو نجاح CI على db9e5ba.
 - التحذيران في API tests ما زالا متعلقين بواجهات Starlette deprecated، ولا يمثلان فشلًا. يلزم تنظيفهما في دفعة مستقلة مع الحفاظ على توافق الإصدارات.
 - هذا التعديل لا يضيف OpenCode runtime ولا يفعّله؛ يظل المحرك disabled حتى اكتمال provisioner والعزل واختبارات الاتصال الفعلية.
+
+
+## جلسة استكمال — 2026-11-21 (Rate limits + CI repairs + worker safety)
+
+### مراجعة البداية
+- HEAD الذي بدأنا منه: `8f53808a9c98955455da19cb39dc40f44091d306`.
+- Repository baseline كان ناجحًا، لكن Platform CI وOpenCode runtime verification كانا يفشلان.
+- فحصنا logs الفشل بدل تكرار تطوير جديد: ظهرت syntax corruption في rate limiter، اختبارين في RuntimeBroker لم يواكبا callback جديدًا، وfixture SSE/streaming كانت تحتوي escaping غير صالح/واجهة FakeClient قديمة.
+
+### ما تم تعديله
+- استعدنا `services/api/app/core/ratelimit.py` كتطبيق TokenBucket صحيح: حدود capacity/refill/time، حساب انتظار، pruning فعلي، وقفل آمن مع fail-closed key cap.
+- صححنا tests القديمة التي كانت تتوقع السماح بعد استنفاد burst، وصححنا concurrency test ليستهلك السعة كاملة، وأضفنا حالات key-cap pruning، policies غير الصالحة، والساعة التي ترجع للخلف.
+- ربطنا `services/api/app/routers/chat.py` بمحددات المعدل الفعلية على POST chat respond / conversation creation / message creation؛ قبل ذلك كانت dependency موجودة لكن غير مستخدمة في router.
+- أضفنا اختبارات تثبت أن POST الكتابة في نطاق conversations/messages تُرفض بـ429 عند استنفاد حد المستخدم، مع scope isolation.
+- أصلحنا `SlidingWindowLimiter` لحدود عدد principal keys، pruning للـidle keys، fail-closed عند امتلاء السعة، وتهيئة limit جديدة دون مسح أحداث النافذة. أضفنا tests لهذه الحدود.
+- حدّثنا fixtures لـRuntimeBroker لتقبل `on_session_created` وتتحقق من تمرير callback، وأصلحنا SSE test bytes string، وأضفنا fake streamed JSON response إلى اختبار provisioner الذي كان يستخدم واجهة HTTP قديمة.
+- أوقفنا schedule الـFree Test Worker كل 5 دقائق؛ أصبح workflow يدويًا فقط مع boolean opt-in default=false. لم يتم تشغيل worker ولا معالجة مهام حية.
+
+### التحقق
+- Platform CI #1005 على commit `38fdd4025b9c483bfbf97825d526b7811134d9d`: **601 API tests passed, 5 warnings**؛ TypeScript typecheck، Expo dependency compatibility، Web export: نجاح كامل.
+- Repository baseline #1023 على نفس commit: نجاح.
+- Platform CI #1003 على `d901c6f407eb45deddc244376c93f6ac41b61de6`: نجاح كامل.
+- OpenCode runtime primitive tests على verification run #166 (commit `d901c6f4`): نجاح. Upstream provenance check وBun install وserver typecheck نجحت؛ Docker build + smoke-test كانا قيد التنفيذ عند آخر فحص.
+- Repository baseline #1024 على commit `e0d9741d` (worker workflow safety change): نجاح. Platform CI #1006 قيد التنفيذ.
+- لا يوجد live deployment، لا migrations مطبقة، لا API/worker/engine مفعّل، ولا provider/model configuration.
+
+### القدرات بعد هذه الجلسة
+- Rate limit scopes الثلاثة لكتابة المحادثات أصبحت enforced في API dependency؛ الواجهة تبقى 429 عند الاستنفاد.
+- الـlimiters المحلية ترفض fail-closed عند key capacity بدل السماح بتوسع memory غير محدود.
+- Free worker لا يعمل تلقائيًا؛ يحتاج manual workflow dispatch وتفعيل opt-in صريح.
+
+### ما لم يكتمل / التالي
+- انتظر Platform CI #1006 على HEAD `e0d9741d`، واستكمل OpenCode upstream Docker build/smoke run #166 إن انتهى.
+- Rate limiting لا يزال per-process وليس distributed، ولا توجد ingress-level IP/global throttling.
+- متابعة worker/RLS/engine idempotency وruntime recovery/teardown، egress isolation، disposable DB integration tests، privacy/scale/production packaging.
+- تقدير المشروع لا يتغير من checkpoint السابق: **~20% من Controlled Beta readiness (مؤقت)**؛ هذا تقدير milestone-weighted محافظ، وليس نسبة من عدد الملفات. هذه الدفعة تقوي API safety/tests، ولا تغلق staging/runtime/production milestones.
