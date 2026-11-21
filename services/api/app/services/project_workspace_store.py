@@ -30,7 +30,7 @@ class ProjectWorkspaceStore:
 
     @staticmethod
     def _path(value: object) -> str:
-        if not isinstance(value, str) or not value or len(value) > 512:
+        if not isinstance(value, str) or not value or len(value) > 240:
             raise ValueError("workspace_path_invalid")
         if "\x00" in value or "\\" in value or any(ord(c) < 32 for c in value):
             raise ValueError("workspace_path_invalid")
