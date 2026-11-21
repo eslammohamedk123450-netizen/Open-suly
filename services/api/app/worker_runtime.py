@@ -217,6 +217,7 @@ def dispatch_cancel_aware(
     step: ClaimedStep,
     cancel_event: Event,
     approval_store: ToolApprovalStore | None = None,
+    runtime_broker: TaskScopedRuntimeBroker | None = None,
 ) -> dict[str, Any]:
     """Refuse to start an operation after the worker loses its lease or is cancelled.
 
@@ -225,7 +226,7 @@ def dispatch_cancel_aware(
     """
     if cancel_event.is_set():
         raise RuntimeError("task_execution_cancelled")
-    return dispatch(step, approval_store, cancel_event=cancel_event)
+    return dispatch(step, approval_store, cancel_event=cancel_event, runtime_broker=runtime_broker)
 
 
 def opencode_task_run(step: ClaimedStep, context: ToolExecutionContext | None = None) -> dict[str, Any]:
@@ -360,6 +361,7 @@ def dispatch(
     approval_store: ToolApprovalStore | None = None,
     *,
     cancel_event: Event | None = None,
+    runtime_broker: TaskScopedRuntimeBroker | None = None,
 ) -> dict[str, Any]:
     # Fetch persisted consent immediately before execution so revocation takes
     # effect on the next attempt; never derive grants from task payloads.
@@ -368,7 +370,7 @@ def dispatch(
     if tool is not None and tool.requires_approval and tool.permission_scope not in scopes:
         raise PermissionError(f"tool_approval_required:{tool.permission_scope}")
     run_store = None
-    if step.input.get("operation") == "hermes.agent.turn":
+    if step.input.get("operation") in {"hermes.agent.turn", "opencode.task.run"}:
         client = get_supabase_admin_client()
         if client is None:
             raise RuntimeError("engine_run_store_unavailable")
@@ -379,6 +381,7 @@ def dispatch(
             approved_scopes=scopes,
             cancel_event=cancel_event,
             engine_run_store=run_store,
+            runtime_broker=runtime_broker,
         ),
     )
 
