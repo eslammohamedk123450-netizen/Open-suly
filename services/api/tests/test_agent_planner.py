@@ -176,3 +176,41 @@ def test_agent_plan_validator_accepts_the_new_opencode_worker_operation():
     }])
     assert planned[0]["input"]["operation"] == "opencode.task.run"
     assert planned[0]["input"]["project_id"] == project_id
+
+def test_plan_request_builds_sequential_hermes_to_opencode_team_dag(monkeypatch):
+    import app.core.config as config_module
+    from app.services.agent_planner import plan_request
+
+    class Settings:
+        worker_enabled = True
+        hermes_agent_enabled = True
+        opencode_enabled = True
+        runtime_provisioner_url = "https://runtime.example.test"
+        runtime_provisioner_token = object()
+        runtime_provisioner_allowed_origins = ["https://runtime.example.test"]
+
+    monkeypatch.setattr(config_module, "get_settings", lambda: Settings())
+    planned = plan_request("team: implement a secure project export flow")
+    assert planned.planner == "engine-team-v1"
+    assert len(planned.steps) == 2
+    assert planned.steps[0]["input"]["operation"] == "hermes.agent.turn"
+    assert planned.steps[1]["input"]["operation"] == "engine.collaborate"
+    assert planned.steps[1]["depends_on"] == ["hermes_prepare"]
+    assert planned.steps[1]["input"]["target_engine"] == "opencode"
+
+
+def test_plan_request_rejects_team_if_either_engine_is_disabled(monkeypatch):
+    import app.core.config as config_module
+    from app.services.agent_planner import UnsupportedTaskRequest, plan_request
+
+    class Settings:
+        worker_enabled = True
+        hermes_agent_enabled = True
+        opencode_enabled = False
+        runtime_provisioner_url = "https://runtime.example.test"
+        runtime_provisioner_token = object()
+        runtime_provisioner_allowed_origins = ["https://runtime.example.test"]
+
+    monkeypatch.setattr(config_module, "get_settings", lambda: Settings())
+    with pytest.raises(UnsupportedTaskRequest, match="two-engine team"):
+        plan_request("team: make a feature")

@@ -498,6 +498,28 @@ export default function TaskDetailsScreen() {
                 </>
               )}
 
+              {(snapshot.engine_handoffs?.length ?? 0) > 0 && (
+                <>
+                  <Text style={styles.sectionHeading}>تعاون المحركات ({snapshot.engine_handoffs.length})</Text>
+                  {snapshot.engine_handoffs.map((handoff) => (
+                    <View key={handoff.id} style={styles.card}>
+                      <View style={styles.stepHeader}>
+                        <Text style={styles.status}>
+                          {handoff.status === "completed" ? "اكتمل التسليم" : handoff.status === "failed" ? "فشل التسليم" : handoff.status === "cancelled" ? "أُلغي التسليم" : "التسليم قيد التنفيذ"}
+                        </Text>
+                        <Text style={styles.stepTitle}>{handoff.source_engine_id} → {handoff.target_engine_id}</Text>
+                      </View>
+                      <Text style={styles.muted}>القدرة: {handoff.capability} · المحاولة: {handoff.target_attempt_count}</Text>
+                      <Text style={styles.muted}>حجم سياق التسليم: {handoff.input_bytes.toLocaleString("en-US")} بايت · العمق: {handoff.depth}</Text>
+                      <Text style={styles.muted}>بصمة السياق: {handoff.input_sha256.slice(0, 16)}…</Text>
+                      {!!handoff.output_sha256 && <Text style={styles.muted}>بصمة النتيجة: {handoff.output_sha256.slice(0, 16)}… ({handoff.output_bytes ?? 0} بايت)</Text>}
+                      <Text style={styles.muted}>بدأ: {formatDate(handoff.created_at)}{handoff.completed_at ? " · انتهى: " + formatDate(handoff.completed_at) : ""}</Text>
+                      {!!handoff.error_code && <Text style={styles.error}>رمز الحالة: {handoff.error_code}</Text>}
+                    </View>
+                  ))}
+                </>
+              )}
+
               {pendingApprovals.length > 0 && (
                 <>
                   <Text style={styles.sectionHeading}>موافقات مطلوبة ({pendingApprovals.length})</Text>

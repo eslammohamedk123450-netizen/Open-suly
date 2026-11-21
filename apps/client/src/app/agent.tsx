@@ -231,6 +231,18 @@ export default function AgentScreen() {
       setNotice("يجب منح موافقة صريحة على تشغيل OpenCode أولًا.");
       return;
     }
+    if (operation === "engine.team.run" && !projectId) {
+      setNotice("افتح الوكيل من داخل مشروع SULY قبل تشغيل فريق المحركات.");
+      return;
+    }
+    if (operation === "engine.team.run" && !teamAvailable) {
+      setNotice("فريق المحركات غير متاح على الخادم حاليًا؛ لم يتم وضع المهمة في قائمة الانتظار.");
+      return;
+    }
+    if (operation === "engine.team.run" && !(approved && opencodeApproved && collaborationApproved)) {
+      setNotice("يجب اعتماد نطاقات Hermes وOpenCode والتفويض بين المحركات كلٌّ على حدة.");
+      return;
+    }
     setBusy(true);
     setNotice("");
     setSnapshot(null);

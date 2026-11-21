@@ -827,7 +827,7 @@ def build_tool_registry() -> ToolRegistry:
         permission_scope="engine.delegate",
         allowed_input_fields=frozenset({"target_engine", "source_step_key", "capability", "prompt", "project_id", "title"}),
         required_input_fields=frozenset({"target_engine", "source_step_key", "capability", "prompt"}),
-        max_input_bytes=16_000,
+        max_input_bytes=32_000,
         handler=engine_collaborate,
         requires_approval=True,
         max_output_bytes=64_000,
