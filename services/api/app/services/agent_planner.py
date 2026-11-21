@@ -104,7 +104,7 @@ _PREFIXES = ("analyze:", "analyse:", "حلل:", "حلّل:")
 _AGENT_PREFIXES = ("agent:", "وكيل:")
 
 
-def plan_request(request: str) -> PlannedTask:
+def plan_request(request: str, *, project_id: str | None = None) -> PlannedTask:
     if not isinstance(request, str) or not request.strip():
         raise UnsupportedTaskRequest("Task request is empty.")
     normalized = request.strip()
@@ -139,6 +139,50 @@ def plan_request(request: str) -> PlannedTask:
             "depends_on": [],
             "input": {"operation": "hermes.agent.turn", "prompt": prompt},
         }]), planner="agent-routing-v1")
+
+    code_prefixes = ("code:", "coding:", "برمج:", "كود:")
+    code_prefix = next((item for item in code_prefixes if lowered.startswith(item)), None)
+    if code_prefix is not None:
+        prompt = normalized[len(code_prefix):].strip()
+        if not prompt:
+            raise UnsupportedTaskRequest("Provide the coding task after the code: prefix.")
+        if len(prompt) > 20_000:
+            raise UnsupportedTaskRequest("Coding task input exceeds 20,000 characters.")
+        if project_id is None:
+            raise UnsupportedTaskRequest("A project_id is required for an OpenCode coding task.")
+        try:
+            from uuid import UUID
+            if str(UUID(project_id)) != project_id:
+                raise ValueError
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise UnsupportedTaskRequest("The coding task project_id is invalid.") from exc
+        from app.core.config import get_settings
+        from app.worker_runtime import TOOL_REGISTRY
+        settings = get_settings()
+        if (
+            not settings.worker_enabled
+            or not settings.opencode_enabled
+            or not settings.runtime_provisioner_url
+            or not settings.runtime_provisioner_token
+            or not settings.runtime_provisioner_allowed_origins
+        ):
+            raise UnsupportedTaskRequest(
+                "OpenCode coding is unavailable until its isolated task runtime is explicitly enabled."
+            )
+        if TOOL_REGISTRY.get("opencode.task.run") is None:
+            raise UnsupportedTaskRequest("OpenCode coding is not registered in the worker runtime.")
+        return PlannedTask(steps=validate_agent_plan([{
+            "step_key": "opencode_coding",
+            "title": "Execute isolated coding task",
+            "description": "Run the original OpenCode engine in a task-scoped runtime and produce a reviewable change set.",
+            "depends_on": [],
+            "input": {
+                "operation": "opencode.task.run",
+                "project_id": project_id,
+                "prompt": prompt,
+                "title": "SULY coding task",
+            },
+        }]), planner="opencode-routing-v1")
 
     prefix = next((item for item in _PREFIXES if lowered.startswith(item)), None)
     if prefix is None:
