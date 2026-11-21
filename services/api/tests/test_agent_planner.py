@@ -47,6 +47,9 @@ def test_planner_creates_general_agent_step_only_when_isolated_runtime_is_enable
         hermes_agent_isolation_confirmed=True,
         hermes_agent_base_url="http://hermes:8642",
         hermes_agent_api_key=object(),
+        runtime_provisioner_url="https://runtime-provisioner.internal",
+        runtime_provisioner_token=object(),
+        runtime_provisioner_allowed_origins=("https://hermes-runtime.internal:8443",),
     ))
     planned = plan_request("agent: Review this task and explain the safe next steps")
     assert planned.planner == "agent-routing-v1"
