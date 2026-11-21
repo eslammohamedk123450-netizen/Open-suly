@@ -119,11 +119,19 @@ export default function ConversationScreen() {
       return;
     }
     if (isNew) {
+      // A new chat must persist both the conversation and the first message
+      // before navigating; otherwise the user's text is silently lost.
+      setSending(true);
+      setError("");
       try {
         const conversation = await createConversation(content.slice(0, 40));
+        await sendUserMessage(conversation.id, content);
+        setDraft("");
         router.replace({ pathname: "/conversation/[id]", params: { id: conversation.id } });
       } catch (e) {
         setError(e instanceof Error ? e.message : "تعذر إنشاء المحادثة.");
+      } finally {
+        setSending(false);
       }
       return;
     }
