@@ -187,6 +187,7 @@ def test_recover_supports_hermes_task_runtime_identity():
             "task_id": task,
             "engine_run_id": run,
             "engine_id": "hermes-agent",
+            "runtime_profile": "suly-hermes-task-v1",
             "base_url": ORIGIN,
             "gateway_path": f"/v1/runtime-gateway/{runtime}",
             "access_token": "h" * 48,
@@ -200,4 +201,6 @@ def test_recover_supports_hermes_task_runtime_identity():
         client.close()
 
     assert lease.engine_id == "hermes-agent"
+    assert lease.runtime_profile == "suly-hermes-task-v1"
     assert '"engine_id":"hermes-agent"' in seen["body"]
+    assert '"runtime_profile":"suly-hermes-task-v1"' in seen["body"]
