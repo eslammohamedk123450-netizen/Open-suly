@@ -9,7 +9,7 @@ import hashlib
 import json
 import re
 from time import time
-from typing import Any
+from typing import Any, Mapping
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -36,6 +36,8 @@ class HTTPSRuntimeLeaseProvider:
         allowed_origins: frozenset[str],
         timeout_seconds: float = 10.0,
         transport: httpx.BaseTransport | None = None,
+        allowed_engine_ids: frozenset[str] = frozenset({"opencode", "hermes-agent"}),
+        engine_profiles: Mapping[str, str] | None = None,
     ) -> None:
         parsed = urlsplit(base_url)
         origin = f"{parsed.scheme}://{parsed.hostname}" + (
@@ -56,6 +58,21 @@ class HTTPSRuntimeLeaseProvider:
             raise ValueError("runtime_provisioner_credential_invalid")
         if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)) or not 1 <= timeout_seconds <= 30:
             raise ValueError("runtime_provisioner_timeout_invalid")
+        if (
+            not isinstance(allowed_engine_ids, frozenset)
+            or not allowed_engine_ids
+            or any(not isinstance(item, str) or not _ENGINE.fullmatch(item) for item in allowed_engine_ids)
+        ):
+            raise ValueError("runtime_engine_allowlist_invalid")
+        profiles = dict(engine_profiles or {"hermes-agent": "suly-hermes-task-v1"})
+        if set(profiles) - set(allowed_engine_ids) or any(
+            not isinstance(key, str) or not _ENGINE.fullmatch(key)
+            or not isinstance(value, str) or not re.fullmatch(r"[a-z][a-z0-9-]{1,63}", value)
+            for key, value in profiles.items()
+        ):
+            raise ValueError("runtime_engine_profiles_invalid")
+        self._allowed_engine_ids = allowed_engine_ids
+        self._engine_profiles = profiles
         self._origin = origin
         self._client = httpx.Client(
             base_url=origin,
@@ -106,11 +123,15 @@ class HTTPSRuntimeLeaseProvider:
             task, run = UUID(task_id), UUID(engine_run_id)
         except (TypeError, ValueError, AttributeError) as exc:
             raise ValueError("runtime_attempt_identity_invalid") from exc
-        if str(task) != task_id or str(run) != engine_run_id or not isinstance(engine_id, str) or not _ENGINE.fullmatch(engine_id):
+        if (
+            str(task) != task_id or str(run) != engine_run_id
+            or not isinstance(engine_id, str) or not _ENGINE.fullmatch(engine_id)
+            or engine_id not in self._allowed_engine_ids
+        ):
             raise ValueError("runtime_attempt_identity_invalid")
         payload: dict[str, Any] = {"task_id": task_id, "engine_run_id": engine_run_id, "engine_id": engine_id}
-        if engine_id == "hermes-agent":
-            payload["runtime_profile"] = "suly-hermes-task-v1"
+        if engine_id in self._engine_profiles:
+            payload["runtime_profile"] = self._engine_profiles[engine_id]
         if files is not None:
             if not isinstance(files, list) or len(files) > 200:
                 raise ValueError("runtime_workspace_snapshot_invalid")
@@ -176,12 +197,14 @@ class HTTPSRuntimeLeaseProvider:
             str(runtime) != runtime_id
             or str(task) != task_id
             or str(run) != engine_run_id
-            or engine_id not in {"opencode", "hermes-agent"}
+            or not isinstance(engine_id, str)
+            or not _ENGINE.fullmatch(engine_id)
+            or engine_id not in self._allowed_engine_ids
         ):
             raise ValueError("runtime_recovery_identity_invalid")
         recovery_payload = {"task_id": task_id, "engine_run_id": engine_run_id, "engine_id": engine_id}
-        if engine_id == "hermes-agent":
-            recovery_payload["runtime_profile"] = "suly-hermes-task-v1"
+        if engine_id in self._engine_profiles:
+            recovery_payload["runtime_profile"] = self._engine_profiles[engine_id]
         try:
             with self._client.stream(
                 "POST",
