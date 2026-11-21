@@ -144,6 +144,7 @@ def test_create_handoff_uses_parent_run_and_only_prompt_title_payload(monkeypatc
     assert name == "create_engine_collaboration_handoff"
     assert params["p_parent_task_id"] == str(TASK_ID)
     assert params["p_parent_run_id"] == str(RUN_ID)
+    assert params["p_user_id"] == USER_ID
     assert params["p_target_engine"] == "opencode"
     assert params["p_input_payload"] == {
         "prompt": "Review the current project changes.",
