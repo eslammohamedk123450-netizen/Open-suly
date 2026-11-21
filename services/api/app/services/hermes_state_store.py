@@ -44,6 +44,13 @@ class HermesStateStore:
     def __init__(self, client: Client) -> None:
         self._client = client
 
+    def _assert_owned(self, *, table: str, record_id: str, owner: str, code: str) -> None:
+        rows = self._client.table(table).select("id").eq(
+            "id", record_id
+        ).eq("user_id", owner).limit(1).execute().data or []
+        if not rows:
+            raise PermissionError(code)
+
     def register_session(
         self, *, user_id: str, engine_session_id: str,
         project_id: str | None = None, conversation_id: str | None = None,
@@ -59,6 +66,21 @@ class HermesStateStore:
                 _uuid(value, code)
         if not isinstance(engine_session_id, str) or not 1 <= len(engine_session_id) <= 180:
             raise ValueError("hermes_engine_session_id_invalid")
+        if project_id is not None:
+            self._assert_owned(
+                table="projects", record_id=project_id, owner=owner,
+                code="hermes_session_project_owner_mismatch",
+            )
+        if conversation_id is not None:
+            self._assert_owned(
+                table="conversations", record_id=conversation_id, owner=owner,
+                code="hermes_session_conversation_owner_mismatch",
+            )
+        if task_id is not None:
+            self._assert_owned(
+                table="tasks", record_id=task_id, owner=owner,
+                code="hermes_session_task_owner_mismatch",
+            )
         safe_metadata = _json_value(metadata or {}, max_bytes=8192)
         row = self._client.table("hermes_sessions").insert({
             "user_id": owner, "engine_session_id": engine_session_id,
@@ -101,6 +123,16 @@ class HermesStateStore:
             _uuid(conversation_id, "hermes_memory_conversation_invalid")
         if source not in {"suly", "user_approved_import", "agent_proposal"}:
             raise ValueError("hermes_memory_source_invalid")
+        if project_id is not None:
+            self._assert_owned(
+                table="projects", record_id=project_id, owner=owner,
+                code="hermes_memory_project_owner_mismatch",
+            )
+        if conversation_id is not None:
+            self._assert_owned(
+                table="conversations", record_id=conversation_id, owner=owner,
+                code="hermes_memory_conversation_owner_mismatch",
+            )
         safe_content = _json_value(content)
         rows = self._client.table("hermes_memory_entries").upsert({
             "user_id": owner, "scope": scope, "project_id": project_id,
@@ -121,6 +153,20 @@ class HermesStateStore:
             raise ValueError("hermes_memory_scope_invalid")
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= _MAX_MEMORY_ITEMS:
             raise ValueError("hermes_memory_limit_invalid")
+        if scope == "project":
+            self._assert_owned(
+                table="projects",
+                record_id=_uuid(project_id or "", "hermes_memory_project_invalid"),
+                owner=owner,
+                code="hermes_memory_project_owner_mismatch",
+            )
+        elif scope == "conversation":
+            self._assert_owned(
+                table="conversations",
+                record_id=_uuid(conversation_id or "", "hermes_memory_conversation_invalid"),
+                owner=owner,
+                code="hermes_memory_conversation_owner_mismatch",
+            )
         query = self._client.table("hermes_memory_entries").select(
             "id,user_id,scope,project_id,conversation_id,memory_key,content,source,status,revision,updated_at"
         ).eq("user_id", owner).eq("scope", scope).eq("status", "active")
