@@ -265,6 +265,7 @@ def test_append_engine_run_event_persists_only_allowlisted_metadata():
             "p_event_timestamp": 1_800_000_000.5,
             "p_approval_request_id": None,
             "p_approval_choice": None,
+            "p_metadata": {},
         },
     )]
 
