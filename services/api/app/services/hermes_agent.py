@@ -381,12 +381,18 @@ def stop_agent_run(
     ):
         raise ValueError("Hermes stop timeout is outside the allowed range.")
 
-    base_url, token = _runtime_credentials(
-        settings,
-        runtime_lease=runtime_lease,
-        task_id=task_id,
-        engine_run_id=engine_run_id,
-    )
+    if runtime_lease is None:
+        # Cleanup of an already-known legacy run remains available after the
+        # feature flag is disabled; this path cannot create a new agent run.
+        base_url = _validate_base_url(settings.hermes_agent_base_url)
+        token = settings.hermes_agent_api_key.get_secret_value()
+    else:
+        base_url, token = _runtime_credentials(
+            settings,
+            runtime_lease=runtime_lease,
+            task_id=task_id,
+            engine_run_id=engine_run_id,
+        )
 
     async def stop_and_confirm() -> bool:
         deadline = asyncio.get_running_loop().time() + timeout_seconds
