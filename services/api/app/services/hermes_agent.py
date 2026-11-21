@@ -141,6 +141,8 @@ def run_agent_turn(
     on_run_started: Callable[[str], bool] | None = None,
     on_event: Callable[[dict[str, str | int | float]], bool | None] | None = None,
     runtime_lease: RuntimeLease | None = None,
+    task_id: str | None = None,
+    engine_run_id: str | None = None,
 ) -> dict[str, str]:
     """Create and poll one durable Hermes run; stop it when SULY signals cancellation.
 
@@ -162,9 +164,11 @@ def run_agent_turn(
         # Preferred path: one lease, one engine, one task attempt, one isolated process.
         allowed_origins = frozenset(settings.runtime_provisioner_allowed_origins)
         try:
+            if not isinstance(task_id, str) or not isinstance(engine_run_id, str):
+                raise ValueError("runtime_attempt_identity_required")
             runtime_lease.validate(
-                task_id=runtime_lease.task_id,
-                engine_run_id=runtime_lease.engine_run_id,
+                task_id=task_id,
+                engine_run_id=engine_run_id,
                 engine_id="hermes-agent",
                 allowed_origins=allowed_origins,
             )
