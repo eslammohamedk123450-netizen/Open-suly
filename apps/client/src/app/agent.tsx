@@ -329,7 +329,7 @@ export default function AgentScreen() {
                 </View>
                 <Text style={styles.modeHint}>تسمح هذه الموافقة بإنشاء مهام برمجية عبر OpenCode فقط. التنفيذ يظل متوقفًا ما لم يكن Worker وRuntime معزولًا ومفعّلين صراحة على الخادم.</Text>
                 <Text style={[styles.modeHint, opencodeAvailable ? styles.good : styles.warn]}>
-                  {opencodeAvailable ? "الخادم أعلن جاهزية OpenCode." : "OpenCode غير متاح على الخادم حاليًا."}
+                  {opencodeAvailable ? "إعدادات Runtime مكتملة (لم يُختبر الاتصال المباشر)." : "OpenCode غير متاح على الخادم حاليًا."}
                 </Text>
                 <Pressable style={styles.secondaryButton} onPress={opencodeApproved ? revokeSelectedApproval : enableSelectedApproval} disabled={approving || loadingCatalog}>
                   {approving ? <ActivityIndicator color={colors.gold} /> : <Text style={styles.secondaryText}>{opencodeApproved ? "إلغاء موافقة OpenCode" : "أوافق على تشغيل OpenCode"}</Text>}
