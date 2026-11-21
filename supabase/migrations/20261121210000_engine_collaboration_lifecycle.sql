@@ -121,7 +121,7 @@ begin
        v_source_step.output->>'operation' <> 'hermes.agent.turn'
        or v_source_step.output->>'engine' <> 'hermes-agent'
        or jsonb_typeof(v_source_step.output->'content') <> 'string'
-       or char_length(v_source_step.output->>'content') not between 1 and 12000
+       or char_length(v_source_step.output->>'content') not between 1 and 52000
      ) then
     raise exception 'collaboration_source_output_invalid' using errcode = '55000';
   elsif v_run.engine_id = 'opencode'
