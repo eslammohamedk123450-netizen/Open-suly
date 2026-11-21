@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -12,7 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { colors } from "@/theme/tokens";
 import { useAuth } from "@/providers/AuthProvider";
-import { cancelAgentTask, getAgentApprovalDetails, getAgentTask, resolveAgentApproval, retryAgentTask, steerAgentRun, type AgentApprovalDetails, type AgentTaskSnapshot } from "@/lib/agent-tasks";
+import { cancelAgentTask, decideOpenCodeChangeSet, getAgentApprovalDetails, getAgentTask, getOpenCodeChangeSet, resolveAgentApproval, retryAgentTask, steerAgentRun, type AgentApprovalDetails, type AgentTaskSnapshot, type OpenCodeChangeSet } from "@/lib/agent-tasks";
 
 const terminalStatuses = new Set(["completed", "failed", "cancelled"]);
 
@@ -84,6 +84,9 @@ export default function TaskDetailsScreen() {
   const [approvalBusyId, setApprovalBusyId] = useState<string | null>(null);
   const [approvalDetailsLoadingId, setApprovalDetailsLoadingId] = useState<string | null>(null);
   const [approvalDetails, setApprovalDetails] = useState<Record<string, AgentApprovalDetails>>({});
+  const [changeSets, setChangeSets] = useState<Record<string, { item?: OpenCodeChangeSet; loading?: boolean; error?: string }>>({});
+  const [changeSetBusyId, setChangeSetBusyId] = useState<string | null>(null);
+  const loadingChangeSets = useRef(new Set<string>());
 
   const load = useCallback(async () => {
     if (!id || !user) return;
