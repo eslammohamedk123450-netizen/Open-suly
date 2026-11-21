@@ -205,3 +205,100 @@ def test_hermes_skill_catalog_endpoint_requires_authentication():
 
     response = TestClient(app).get("/v1/agents/hermes/skills")
     assert response.status_code == 401
+
+
+
+def test_toolset_catalog_returns_only_bounded_safe_metadata():
+    result = hermes_catalog._normalize_toolset_catalog({
+        "object": "list",
+        "platform": "api_server",
+        "data": [
+            {
+                "name": "terminal",
+                "label": "Terminal",
+                "description": "Command execution",
+                "enabled": True,
+                "configured": True,
+                "tools": ["terminal", "process.list", "Bad Tool", "../escape", "terminal"],
+                "api_key": "must-not-leak",
+            },
+            {
+                "name": "memory",
+                "label": "Memory",
+                "description": "Memory access",
+                "enabled": False,
+                "configured": False,
+                "tools": ["memory_search"],
+            },
+        ],
+    })
+    assert result == {
+        "source": "hermes-upstream",
+        "count": 2,
+        "items": [
+            {
+                "name": "terminal",
+                "label": "Terminal",
+                "description": "Command execution",
+                "enabled": True,
+                "tools": ["process.list", "terminal"],
+            },
+            {
+                "name": "memory",
+                "label": "Memory",
+                "description": "Memory access",
+                "enabled": False,
+                "tools": ["memory_search"],
+            },
+        ],
+    }
+    assert "configured" not in str(result)
+    assert "api_key" not in str(result)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"object": "list", "platform": "other", "data": []},
+        {"object": "list", "platform": "api_server", "data": "not-a-list"},
+        {"object": "list", "platform": "api_server", "data": [{}] * 101},
+    ],
+)
+def test_toolset_catalog_rejects_invalid_or_oversized_shapes(payload):
+    with pytest.raises(hermes_catalog.HermesCatalogError):
+        hermes_catalog._normalize_toolset_catalog(payload)
+
+
+@pytest.mark.asyncio
+async def test_toolset_catalog_uses_fixed_route(monkeypatch):
+    client = _Client(_StreamResponse({
+        "object": "list",
+        "platform": "api_server",
+        "data": [{
+            "name": "skills",
+            "label": "Skills",
+            "description": "Skill tools",
+            "enabled": True,
+            "configured": True,
+            "tools": ["skills_list", "skill_view"],
+        }],
+    }))
+    monkeypatch.setattr(hermes_catalog, "get_settings", lambda: _settings())
+    monkeypatch.setattr(
+        hermes_catalog.httpx,
+        "AsyncClient",
+        lambda **kwargs: _capture_client(client, kwargs),
+    )
+    result = await hermes_catalog.get_hermes_toolset_catalog()
+    assert result["count"] == 1
+    assert client.request[0] == "GET"
+    assert client.request[1] == "http://hermes:8642/v1/toolsets"
+    assert "configured" not in str(result)
+
+
+def test_hermes_toolset_catalog_endpoint_requires_authentication():
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    response = TestClient(app).get("/v1/agents/hermes/toolsets")
+    assert response.status_code == 401
