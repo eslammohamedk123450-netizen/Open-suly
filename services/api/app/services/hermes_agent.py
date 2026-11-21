@@ -229,7 +229,7 @@ def run_agent_turn(
         run_id: str | None = None
         event_task: asyncio.Task | None = None
 
-        async with httpx.AsyncClient(timeout=per_request_timeout) as client:
+        async with httpx.AsyncClient(timeout=per_request_timeout, trust_env=False, follow_redirects=False) as client:
             try:
                 # نطلب من Hermes إنشاء تشغيل دائم بمفتاح idempotency ثابت للمحاولة.
                 response = await client.post(
@@ -397,7 +397,7 @@ def stop_agent_run(
     async def stop_and_confirm() -> bool:
         deadline = asyncio.get_running_loop().time() + timeout_seconds
         headers = {"Authorization": f"Bearer {token}"}
-        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, connect=5.0), trust_env=False, follow_redirects=False) as client:
             try:
                 response = await client.post(
                     f"{base_url}/v1/runs/{upstream_run_id}/stop",
@@ -462,7 +462,9 @@ def steer_agent_run(
 
     async def send_steer() -> bool:
         async with httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout_seconds, connect=5.0)
+            timeout=httpx.Timeout(timeout_seconds, connect=5.0),
+            trust_env=False,
+            follow_redirects=False,
         ) as client:
             try:
                 response = await client.post(
@@ -529,7 +531,7 @@ def resolve_agent_approval(
     )
 
     async def resolve() -> bool:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds, connect=5.0)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds, connect=5.0), trust_env=False, follow_redirects=False) as client:
             try:
                 response = await client.post(
                     f"{base_url}/v1/runs/{upstream_run_id}/approval",
@@ -593,7 +595,7 @@ def get_agent_approval_details(
     )
 
     async def fetch_details() -> dict[str, str]:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds, connect=5.0)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds, connect=5.0), trust_env=False, follow_redirects=False) as client:
             try:
                 response = await client.get(
                     f"{base_url}/v1/runs/{upstream_run_id}",
