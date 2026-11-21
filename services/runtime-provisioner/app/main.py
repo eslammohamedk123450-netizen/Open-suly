@@ -193,7 +193,7 @@ def _get_manager(engine_id: str = "opencode") -> DockerTaskRuntimeManager:
     with _runtime_manager_lock:
         manager = _runtime_managers.get(engine_id)
         if manager is None:
-            manager = DockerTaskRuntimeManager(image=image, workspace_root=WORKSPACE_ROOT)
+            manager = DockerTaskRuntimeManager(image=image, workspace_root=WORKSPACE_ROOT, engine_id=engine_id)
             _runtime_managers[engine_id] = manager
         return manager
 
