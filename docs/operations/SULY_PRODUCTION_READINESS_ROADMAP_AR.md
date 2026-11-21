@@ -412,3 +412,15 @@ For every engine:
 - أضيف تشديد OpenCode ضد محارف control/format/bidi في permission metadata واختباراته.
 - لم يتم إنشاء provider أو proxy حقيقي، ولم يتم تشغيل محركات أو تطبيق migrations أو نشر خدمات. لا تتوفر في هذه الجلسة بيئة staging/OCI فعلية تثبت هذه الخصائص؛ إبقاء المحركات disabled هو القرار الآمن.
 - لا يجوز إعلان 100% أو Beta/Production readiness حتى تُغلق جميع مربعات التحقق أعلاه مع أدلة تشغيلية على commit محدد.
+
+
+## Session checkpoint — 2026-11-21 (Chat rate limits and worker safety)
+
+- استعدنا TokenBucket implementation بعد أن كشف CI عن syntax corruption، وأصلحنا tests غير الصحيحة للسعة/الـburst، وأضفنا validation وpruning.
+- تم تفعيل dependency rate limiting على chat write endpoints: `chat_respond`, `chat_conversations`, `chat_messages`; أضفنا integration tests للتحقق من 429 بعد limit وscope separation.
+- SlidingWindowLimiter أصبح bounded من ناحية principal key count مع periodic idle pruning، fail-closed عند key-cap، ويدعم تحديث limits دون تصفير النافذة.
+- أصلحنا OpenCode/runtime provisioner test fixtures التي لم تتوافق مع streamed JSON API وsession callback؛ runtime primitive CI نجح.
+- أوقفنا schedule الـfree test worker (كل 5 دقائق). التشغيل أصبح workflow_dispatch فقط مع `enable_worker=false` افتراضيًا؛ لم يتم تشغيل worker.
+- Platform CI #1005 على commit `38fdd402` اكتمل: **601 API tests passed, 5 warnings**؛ TypeScript typecheck، Expo compatibility، Web export نجحت. Repository baseline #1023 نجح.
+- Repository baseline #1024 على commit `e0d9741d` نجح؛ Platform CI #1006 pending وقت checkpoint. OpenCode verification #166: runtime primitive tests نجحت؛ upstream Docker build/smoke pending.
+- Rate limits المحلية لا تزال process-local؛ لا تُحسب IP/global limits أو distributed quota كمنجزة. المحركات/worker/deploy والمigrations ما زالت off/untouched.
