@@ -1216,3 +1216,72 @@ def test_hermes_rejects_runtime_budget_above_native_runs_limit(monkeypatch):
                 cancel_event=None,
             ),
         )
+
+
+def test_hermes_terminal_approval_callback_uses_suly_gateway(monkeypatch):
+    import app.worker_runtime as runtime_module
+    stub_hermes_context(monkeypatch)
+    from types import SimpleNamespace
+    from app.services.engine_contract import EngineResult
+    from app.services.tool_registry import ToolExecutionContext
+
+    store = FakeEngineRunStore()
+    callbacks = {}
+    gateway_calls = []
+    approval_responses = []
+
+    class Gateway:
+        def __init__(self, _client):
+            pass
+
+        def authorize_upstream_tool_approval(self, **kwargs):
+            gateway_calls.append(kwargs)
+            return True
+
+    class Registry:
+        def execute(self, _engine_id, _request):
+            callbacks["event"]({
+                "event": "approval.request",
+                "approval_request_id": "approval_req_123456",
+                "tool_id": "terminal",
+            })
+            return EngineResult(engine_id="hermes-agent", output={
+                "engine": "hermes-agent", "content": "completed after approved tool",
+            })
+
+    class Manager:
+        def route(self, *_args):
+            return SimpleNamespace(engines=[SimpleNamespace(engine_id="hermes-agent")])
+
+    def registry_factory(*_args, **kwargs):
+        callbacks["event"] = kwargs["on_event"]
+        return Registry()
+
+    monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True, hermes_agent_enabled=True, agent_memory_enabled=False,
+        hermes_agent_timeout_seconds=90.0,
+    ))
+    monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: object())
+    monkeypatch.setattr(runtime_module, "_hermes_project_workspace_files", lambda _step: None)
+    monkeypatch.setattr(runtime_module, "HermesToolGateway", Gateway)
+    monkeypatch.setattr(runtime_module, "build_engine_registry", registry_factory)
+    monkeypatch.setattr(runtime_module, "build_agent_manager", lambda _registry: Manager())
+    monkeypatch.setattr(runtime_module, "respond_run_approval", lambda **kwargs: approval_responses.append(kwargs) or True)
+
+    result = runtime_module.hermes_agent_turn(
+        make_step({"operation": "hermes.agent.turn", "prompt": "safe prompt"}),
+        ToolExecutionContext(engine_run_store=store, runtime_broker=FakeRuntimeBroker()),
+    )
+
+    assert result["content"] == "completed after approved tool"
+    assert gateway_calls == [{
+        "user_id": str(make_step({}).user_id),
+        "task_id": str(make_step({}).task_id),
+        "step_id": str(make_step({}).step_id),
+        "lease_token": str(make_step({}).lease_token),
+        "tool_id": "terminal",
+        "request_id": "approval_req_123456",
+    }]
+    assert len(approval_responses) == 1
+    assert approval_responses[0]["choice"] == "once"
+    assert approval_responses[0]["request_id"] == "approval_req_123456"
