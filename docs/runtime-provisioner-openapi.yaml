@@ -81,6 +81,250 @@ paths:
                     type: boolean
         '404':
           description: Runtime already absent; provider should treat idempotent teardown as confirmed
+  /v1/runtime-gateway/{runtime_id}/execute:
+    post:
+      operationId: executeOpenCodeTask
+      summary: Execute one OpenCode prompt under a bounded per-task timeout
+      description: OpenCode-only compatibility route. Hermes runtimes are rejected and must use the native Runs API.
+      security:
+        - runtimeLeaseBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RuntimeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [prompt]
+              properties:
+                prompt: { type: string, minLength: 1, maxLength: 32000 }
+                title: { type: string, minLength: 1, maxLength: 120, default: SULY task }
+                session_id: { type: string, pattern: '^ses[A-Za-z0-9_-]{1,128}    get:
+      operationId: getRuntimeResults
+      summary: Return bounded task workspace changes (used by coding runtimes)
+      security:
+        - runtimeLeaseBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RuntimeId'
+      responses:
+        '200':
+          description: Bounded changed/deleted file snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [changed_files, deleted_paths]
+                properties:
+                  changed_files:
+                    type: array
+                    maxItems: 500
+                    items:
+                      type: object
+                      required: [path, content]
+                      properties:
+                        path: { type: string, maxLength: 240 }
+                        content: { type: string, maxLength: 262144 }
+                        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+                  deleted_paths:
+                    type: array
+                    maxItems: 500
+                    items: { type: string, maxLength: 240 }
+        '401':
+          description: Invalid, expired, or revoked runtime lease
+  /v1/runtime-gateway/{runtime_id}/v1/runs:
+    post:
+      operationId: hermesCreateRun
+      summary: Proxy Hermes Runs API admission to exactly one runtime
+      security:
+        - runtimeLeaseBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RuntimeId'
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 255 }
+      responses:
+        '200':
+          description: Hermes run admission response
+        '401':
+          description: Invalid runtime lease
+        '404':
+          description: Runtime not found
+  /v1/runtime-gateway/{runtime_id}/v1/runs/{upstream_run_id}:
+    get:
+      operationId: hermesGetRun
+      summary: Proxy run status for this runtime only
+      security:
+        - runtimeLeaseBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RuntimeId'
+        - $ref: '#/components/parameters/UpstreamRunId'
+      responses:
+        '200': { description: Hermes run status }
+        '401': { description: Invalid runtime lease }
+  /v1/runtime-gateway/{runtime_id}/v1/runs/{upstream_run_id}/events:
+    get:
+      operationId: hermesRunEvents
+      summary: Stream bounded Hermes SSE events from this runtime only
+      security:
+        - runtimeLeaseBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RuntimeId'
+        - $ref: '#/components/parameters/UpstreamRunId'
+      responses:
+        '200':
+          description: text/event-stream from the matching task runtime
+          content:
+            text/event-stream: {}
+        '401': { description: Invalid runtime lease }
+  /v1/runtime-gateway/{runtime_id}/v1/runs/{upstream_run_id}/stop:
+    post:
+      operationId: hermesStopRun
+      summary: Stop a run inside this exact runtime
+      security:
+        - runtimeLeaseBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RuntimeId'
+        - $ref: '#/components/parameters/UpstreamRunId'
+      responses:
+        '200': { description: Hermes stop result }
+        '401': { description: Invalid runtime lease }
+  /v1/runtime-gateway/{runtime_id}/v1/runs/{upstream_run_id}/steer:
+    post:
+      operationId: hermesSteerRun
+      summary: Steer a run inside this exact runtime
+      security:
+        - runtimeLeaseBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RuntimeId'
+        - $ref: '#/components/parameters/UpstreamRunId'
+      responses:
+        '200': { description: Hermes steer result }
+        '401': { description: Invalid runtime lease }
+  /v1/runtime-gateway/{runtime_id}/v1/runs/{upstream_run_id}/approvals/{approval_id}:
+    get:
+      operationId: hermesApprovalDetails
+      summary: Read approval details from this exact runtime
+      security:
+        - runtimeLeaseBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RuntimeId'
+        - $ref: '#/components/parameters/UpstreamRunId'
+        - in: path
+          name: approval_id
+          required: true
+          schema: { type: string, maxLength: 128 }
+      responses:
+        '200': { description: Hermes approval detail }
+        '401': { description: Invalid runtime lease }
+  /v1/runtime-gateway/{runtime_id}/v1/runs/{upstream_run_id}/approvals/{approval_id}/resolve:
+    post:
+      operationId: hermesResolveApproval
+      summary: Resolve an approval in this exact runtime
+      security:
+        - runtimeLeaseBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RuntimeId'
+        - $ref: '#/components/parameters/UpstreamRunId'
+        - in: path
+          name: approval_id
+          required: true
+          schema: { type: string, maxLength: 128 }
+      responses:
+        '200': { description: Hermes approval resolution result }
+        '401': { description: Invalid runtime lease }
+components:
+  securitySchemes:
+    provisionerBearer:
+      type: http
+      scheme: bearer
+      description: Server-only RUNTIME_PROVISIONER_TOKEN; never exposed to the client or task runtime.
+    runtimeLeaseBearer:
+      type: http
+      scheme: bearer
+      description: Short-lived per-runtime token; scoped to one runtime/task/run and revoked at teardown.
+  parameters:
+    RuntimeId:
+      in: path
+      name: runtime_id
+      required: true
+      schema:
+        type: string
+        format: uuid
+    UpstreamRunId:
+      in: path
+      name: upstream_run_id
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+  schemas:
+    AcquireRuntimeRequest:
+      type: object
+      additionalProperties: false
+      required: [task_id, engine_run_id, engine_id]
+      properties:
+        task_id: { type: string, format: uuid }
+        engine_run_id: { type: string, format: uuid }
+        engine_id: { type: string, enum: [hermes-agent, opencode] }
+        runtime_profile:
+          type: string
+          enum: [suly-hermes-task-v1]
+          description: Required for hermes-agent; provider must enforce the named profile.
+        files:
+          type: array
+          maxItems: 200
+          items:
+            type: object
+            additionalProperties: false
+            required: [path, content, sha256]
+            properties:
+              path: { type: string, minLength: 1, maxLength: 240 }
+              content: { type: string, maxLength: 262144 }
+              sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+    RecoverRuntimeRequest:
+      type: object
+      additionalProperties: false
+      required: [task_id, engine_run_id, engine_id]
+      properties:
+        task_id: { type: string, format: uuid }
+        engine_run_id: { type: string, format: uuid }
+        engine_id: { type: string, enum: [hermes-agent, opencode] }
+        runtime_profile: { type: string, enum: [suly-hermes-task-v1] }
+    ReleaseRuntimeRequest:
+      type: object
+      additionalProperties: false
+      required: [task_id, engine_run_id]
+      properties:
+        task_id: { type: string, format: uuid }
+        engine_run_id: { type: string, format: uuid }
+    RuntimeLease:
+      type: object
+      additionalProperties: false
+      required: [runtime_id, task_id, engine_run_id, engine_id, base_url, gateway_path, access_token, expires_at]
+      properties:
+        runtime_id: { type: string, format: uuid }
+        task_id: { type: string, format: uuid }
+        engine_run_id: { type: string, format: uuid }
+        engine_id: { type: string, enum: [hermes-agent, opencode] }
+        runtime_profile:
+          type: string
+          enum: [suly-hermes-task-v1]
+          description: Required and exact for Hermes leases.
+        base_url: { type: string, format: uri }
+        gateway_path: { type: string, pattern: '^/v1/runtime-gateway/[0-9a-f-]{36}$' }
+        access_token: { type: string, minLength: 32, maxLength: 4096 }
+        expires_at: { type: number, description: Unix timestamp; maximum lease lifetime is 3600 seconds. }
+ }
+                timeout_seconds: { type: integer, minimum: 1, maximum: 1800, default: 900 }
+      responses:
+        '200': { description: OpenCode execution result }
+        '401': { description: Invalid runtime lease }
+        '404': { description: Runtime is not OpenCode or route is not allowed }
+        '422': { description: Invalid execution request or timeout budget }
   /v1/runtimes/{runtime_id}/results:
     get:
       operationId: getRuntimeResults
