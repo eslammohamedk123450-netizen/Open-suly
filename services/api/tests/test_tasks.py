@@ -878,6 +878,12 @@ def test_opencode_plan_requires_task_linked_project_before_rpc(monkeypatch):
         "project_id": None, "request": "Build an app", "title": "Build",
     })
     monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    monkeypatch.setattr(tasks_module, "get_settings", lambda: type("EnabledSettings", (), {
+        "worker_enabled": True, "opencode_enabled": True,
+        "runtime_provisioner_url": "https://runtime.example.test",
+        "runtime_provisioner_token": object(),
+        "runtime_provisioner_allowed_origins": ["https://runtime.example.test"],
+    })())
     app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
     try:
         response = client.post("/v1/tasks/00000000-0000-0000-0000-000000000001/opencode-plan")
@@ -895,6 +901,12 @@ def test_opencode_plan_enqueues_registered_worker_step(monkeypatch):
         "request": "Create a small feature", "title": "Feature task",
     })
     monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    monkeypatch.setattr(tasks_module, "get_settings", lambda: type("EnabledSettings", (), {
+        "worker_enabled": True, "opencode_enabled": True,
+        "runtime_provisioner_url": "https://runtime.example.test",
+        "runtime_provisioner_token": object(),
+        "runtime_provisioner_allowed_origins": ["https://runtime.example.test"],
+    })())
     app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
     try:
         response = client.post("/v1/tasks/00000000-0000-0000-0000-000000000001/opencode-plan")
