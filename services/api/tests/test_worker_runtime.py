@@ -210,6 +210,9 @@ class FakeEngineRunStore:
     def attach_upstream_run_id(self, run_id, step, upstream_run_id):
         self.events.append(("attach", run_id, step.step_id, upstream_run_id))
         return True
+    def attach_runtime_id(self, run_id, step, runtime_id):
+        self.events.append(("runtime", run_id, step.step_id, runtime_id))
+        return True
     def append_event(self, run_id, step, event):
         self.events.append(("event", run_id, step.step_id, dict(event)))
         return True
@@ -229,6 +232,7 @@ class FakeRuntimeBroker:
             task_id=task_id,
             engine_run_id=engine_run_id,
             engine_id=engine_id,
+            runtime_id="00000000-0000-0000-0000-000000000055",
         )
         self.acquired.append(lease)
         return lease
@@ -410,8 +414,10 @@ def test_hermes_run_is_recorded_as_succeeded(monkeypatch):
     )
     assert result["content"] == "finished"
     assert store.events[0][0] == "start"
-    assert store.events[1][0] == "finish"
-    assert store.events[1][3] == "succeeded"
+    assert store.events[1][0] == "runtime"
+    assert store.events[1][3] == "00000000-0000-0000-0000-000000000055"
+    assert store.events[2][0] == "finish"
+    assert store.events[2][3] == "succeeded"
     assert store.events[0][2] == "hermes-agent"
     assert store.events[1][2] == store.events[0][1]
 
@@ -438,8 +444,8 @@ def test_hermes_run_records_failure_without_raw_error(monkeypatch):
             make_step({"operation": "hermes.agent.turn", "prompt": "safe"}),
             ToolExecutionContext(engine_run_store=store, runtime_broker=FakeRuntimeBroker()),
         )
-    assert store.events[1][3] == "failed"
-    assert store.events[1][4] == "engine_execution_failed"
+    assert store.events[2][3] == "failed"
+    assert store.events[2][4] == "engine_execution_failed"
 
 
 def test_hermes_run_records_cooperative_cancellation(monkeypatch):
@@ -465,7 +471,7 @@ def test_hermes_run_records_cooperative_cancellation(monkeypatch):
             make_step({"operation": "hermes.agent.turn", "prompt": "safe"}),
             ToolExecutionContext(engine_run_store=store, runtime_broker=FakeRuntimeBroker()),
         )
-    assert store.events[1][3] == "cancelled"
+    assert store.events[2][3] == "cancelled"
 
 
 def test_agent_catalog_contains_roles_but_keeps_unavailable_agents_disabled(monkeypatch):
