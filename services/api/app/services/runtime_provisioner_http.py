@@ -173,14 +173,14 @@ class HTTPSRuntimeLeaseProvider:
             str(runtime) != runtime_id
             or str(task) != task_id
             or str(run) != engine_run_id
-            or engine_id != "opencode"
+            or engine_id not in {"opencode", "hermes-agent"}
         ):
             raise ValueError("runtime_recovery_identity_invalid")
         try:
             with self._client.stream(
                 "POST",
                 f"/v1/runtimes/{runtime_id}/recover",
-                json={"task_id": task_id, "engine_run_id": engine_run_id},
+                json={"task_id": task_id, "engine_run_id": engine_run_id, "engine_id": engine_id},
             ) as response:
                 data = self._json(response, frozenset({200}))
         except RuntimeProvisionerError:
