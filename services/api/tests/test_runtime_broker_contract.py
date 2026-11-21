@@ -343,18 +343,24 @@ class ExecutableProvider(FakeProvider):
     def acquire(self, task_id, engine_run_id, engine_id, *, files=None):
         return super().acquire(task_id, engine_run_id, engine_id)
 
-    def run_task(self, lease, *, prompt, title="SULY task"):
-        return {"execution": {"session_id": "sesABC123"}, "results": {"changed_files": []}}
+    def run_task(self, lease, *, prompt, title="SULY task", on_session_created=None):
+        session_id = "sesABC123"
+        if on_session_created is not None:
+            on_session_created(lease, session_id)
+        return {"execution": {"session_id": session_id}, "results": {"changed_files": []}}
 
 
 def test_successful_task_retains_runtime_until_explicit_review_release():
     lease = make_lease()
     provider = ExecutableProvider([lease])
     broker = TaskScopedRuntimeBroker(provider, allowed_origins=ORIGINS)
+    created_sessions = []
     result = broker.run_task(
-        TASK_ID, RUN_ID, ENGINE_ID, files=[], prompt="Implement feature"
+        TASK_ID, RUN_ID, ENGINE_ID, files=[], prompt="Implement feature",
+        on_session_created=lambda current_lease, session_id: created_sessions.append((current_lease, session_id)),
     )
     assert result["execution"]["runtime_id"] == lease.runtime_id
+    assert created_sessions == [(lease, "sesABC123")]
     assert broker.active_count == 1
     assert broker.lease_for_attempt(TASK_ID, RUN_ID, ENGINE_ID) is lease
     assert broker.release_attempt(TASK_ID, RUN_ID, ENGINE_ID) is True
@@ -366,7 +372,7 @@ def test_failed_execution_releases_runtime_immediately():
     lease = make_lease()
 
     class FailingProvider(ExecutableProvider):
-        def run_task(self, lease, *, prompt, title="SULY task"):
+        def run_task(self, lease, *, prompt, title="SULY task", on_session_created=None):
             raise RuntimeError("engine failed")
 
     provider = FailingProvider([lease])
