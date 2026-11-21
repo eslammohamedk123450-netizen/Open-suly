@@ -42,9 +42,12 @@ def test_registry_exposes_only_registered_tool_metadata():
     assert by_name["engine.collaborate"]["requires_approval"] is True
     assert by_name["engine.collaborate"]["permission_scope"] == "engine.delegate"
     assert by_name["engine.collaborate"]["allowed_input_fields"] == [
-        "capability", "max_runtime_seconds", "max_child_tasks", "max_parallel_children",
-        "max_input_bytes", "source_step_key", "target_engine", "title", "prompt", "project_id"
+        "capability", "project_id", "prompt", "source_step_key", "target_engine", "title"
     ]
+    assert by_name["engine.collaborate"]["required_input_fields"] == [
+        "capability", "prompt", "source_step_key", "target_engine"
+    ]
+    assert by_name["engine.collaborate"]["max_input_bytes"] == 32_000
     assert by_name["text.analyze"]["allowed_input_fields"] == ["text"]
 
 
