@@ -393,6 +393,7 @@ class _SteerAdmin:
                 "engine_id": "hermes-agent",
                 "status": "running",
                 "upstream_run_id": "run_native_123",
+                "runtime_id": "00000000-0000-0000-0000-000000000055",
             }],
             "task_steps": [{
                 "id": "00000000-0000-0000-0000-000000000002",
@@ -412,12 +413,23 @@ class _SteerAdmin:
         return SimpleNamespace(execute=lambda: SimpleNamespace(data=True))
 
 
+
+def _fake_hermes_runtime_recovery(*_args, **kwargs):
+    from types import SimpleNamespace
+    return SimpleNamespace(
+        runtime_id=kwargs["runtime_id"],
+        task_id=str(kwargs["task_id"]),
+        engine_run_id=str(kwargs["engine_run_id"]),
+        engine_id="hermes-agent",
+    )
+
 def test_task_owner_can_steer_only_their_active_hermes_run(monkeypatch):
     from types import SimpleNamespace
 
     admin = _SteerAdmin()
     steered = []
     monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    monkeypatch.setattr(tasks_module, "_recover_hermes_runtime", _fake_hermes_runtime_recovery)
     monkeypatch.setattr(tasks_module, "get_settings", lambda: SimpleNamespace(
         worker_enabled=True,
         hermes_agent_enabled=True,
@@ -427,7 +439,7 @@ def test_task_owner_can_steer_only_their_active_hermes_run(monkeypatch):
     ))
     monkeypatch.setattr(
         tasks_module, "steer_agent_run",
-        lambda upstream_id, text: steered.append((upstream_id, text)) or True,
+        lambda upstream_id, text, **_kwargs: steered.append((upstream_id, text)) or True,
     )
     app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
     try:
@@ -548,6 +560,7 @@ def test_task_owner_can_fetch_redacted_details_for_their_pending_approval(monkey
         "approval_request_id": "approval-req_123",
     }]
     monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    monkeypatch.setattr(tasks_module, "_recover_hermes_runtime", _fake_hermes_runtime_recovery)
     monkeypatch.setattr(tasks_module, "get_settings", lambda: SimpleNamespace(
         worker_enabled=True,
         hermes_agent_enabled=True,
@@ -555,7 +568,7 @@ def test_task_owner_can_fetch_redacted_details_for_their_pending_approval(monkey
         hermes_agent_base_url="http://hermes:8642",
         hermes_agent_api_key=object(),
     ))
-    monkeypatch.setattr(tasks_module, "get_agent_approval_details", lambda upstream_id, request_id: {
+    monkeypatch.setattr(tasks_module, "get_agent_approval_details", lambda upstream_id, request_id, **_kwargs: {
         "request_id": request_id,
         "command": "git status",
         "description": "Review repository status",
@@ -673,6 +686,7 @@ def test_task_owner_can_resolve_one_exact_hermes_approval_once(monkeypatch):
     }]
     resolved = []
     monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    monkeypatch.setattr(tasks_module, "_recover_hermes_runtime", _fake_hermes_runtime_recovery)
     monkeypatch.setattr(tasks_module, "get_settings", lambda: SimpleNamespace(
         worker_enabled=True,
         hermes_agent_enabled=True,
@@ -682,7 +696,7 @@ def test_task_owner_can_resolve_one_exact_hermes_approval_once(monkeypatch):
     ))
     monkeypatch.setattr(
         tasks_module, "resolve_agent_approval",
-        lambda upstream_id, request_id, choice: resolved.append((upstream_id, request_id, choice)) or True,
+        lambda upstream_id, request_id, choice, **_kwargs: resolved.append((upstream_id, request_id, choice)) or True,
     )
     app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
     try:
