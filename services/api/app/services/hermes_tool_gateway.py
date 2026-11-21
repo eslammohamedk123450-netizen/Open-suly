@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from datetime import datetime, timezone
 from typing import Any, Callable
 from uuid import UUID
 
@@ -52,23 +53,47 @@ class HermesToolGateway:
         ).eq("permission_scope", scope).is_("revoked_at", "null").limit(1).execute().data
         return bool(rows)
 
+    def _assert_live_step(
+        self, *, owner: str, task_id: str, step_id: str, lease_token: str,
+    ) -> None:
+        _owner(task_id)
+        _owner(step_id)
+        _owner(lease_token)
+        now = datetime.now(timezone.utc).isoformat()
+        task_rows = self._client.table("tasks").select(
+            "id,status,cancel_requested_at"
+        ).eq("id", task_id).eq("user_id", owner).limit(1).execute().data or []
+        if (
+            not task_rows
+            or task_rows[0].get("status") != "running"
+            or task_rows[0].get("cancel_requested_at") is not None
+        ):
+            raise PermissionError("hermes_tool_task_not_running")
+        step_rows = self._client.table("task_steps").select("id").eq(
+            "id", step_id
+        ).eq("task_id", task_id).eq("user_id", owner).eq(
+            "status", "running"
+        ).eq("lease_token", lease_token).gt(
+            "lease_expires_at", now
+        ).limit(1).execute().data or []
+        if not step_rows:
+            raise PermissionError("hermes_tool_step_lease_invalid")
+
     def invoke(
-        self, *, user_id: str, task_id: str, tool_id: str,
-        arguments: dict[str, Any], executor: Callable[[dict[str, Any]], Any],
+        self, *, user_id: str, task_id: str, step_id: str, lease_token: str,
+        tool_id: str, arguments: dict[str, Any],
+        executor: Callable[[dict[str, Any]], Any],
     ) -> Any:
         owner = _owner(user_id)
-        _owner(task_id)
+        self._assert_live_step(
+            owner=owner, task_id=task_id, step_id=step_id, lease_token=lease_token
+        )
         if tool_id in _BLOCKED_TOOLS or tool_id.startswith((
             "shell.", "terminal.", "browser.", "computer.", "mcp.",
             "process.", "filesystem.write", "docker.",
         )):
             raise PermissionError("hermes_tool_requires_dedicated_sandbox_bridge")
         scope = self.permission_scope(tool_id)
-        task_rows = self._client.table("tasks").select("id").eq(
-            "id", task_id
-        ).eq("user_id", owner).limit(1).execute().data
-        if not task_rows:
-            raise PermissionError("hermes_tool_task_owner_mismatch")
         if not callable(executor):
             raise ValueError("hermes_tool_executor_invalid")
         try:
@@ -87,6 +112,11 @@ class HermesToolGateway:
         ).eq("permission_scope", scope).is_("revoked_at", "null").limit(1).execute().data
         if not rows:
             raise PermissionError("hermes_tool_approval_required")
+
+        # Revalidate ownership and the live worker lease immediately before dispatch.
+        self._assert_live_step(
+            owner=owner, task_id=task_id, step_id=step_id, lease_token=lease_token
+        )
 
         # Persist a metadata-only audit event. Arguments and tool output are
         # deliberately excluded; the hash is useful for incident correlation.
