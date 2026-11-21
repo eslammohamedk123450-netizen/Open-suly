@@ -141,26 +141,80 @@ paths:
         - runtimeLeaseBearer: []
       parameters:
         - $ref: '#/components/parameters/RuntimeId'
-        - in: path
-          name: upstream_run_id
-          required: true
-          schema: { type: string, maxLength: 128 }
+        - $ref: '#/components/parameters/UpstreamRunId'
       responses:
         '200': { description: Hermes run status }
         '401': { description: Invalid runtime lease }
-    post:
-      operationId: hermesControlRun
-      summary: Proxy the exact Hermes run control subroute (steer, stop, approval resolution)
+  /v1/runtime-gateway/{runtime_id}/v1/runs/{upstream_run_id}/events:
+    get:
+      operationId: hermesRunEvents
+      summary: Stream bounded Hermes SSE events from this runtime only
       security:
         - runtimeLeaseBearer: []
       parameters:
         - $ref: '#/components/parameters/RuntimeId'
+        - $ref: '#/components/parameters/UpstreamRunId'
+      responses:
+        '200':
+          description: text/event-stream from the matching task runtime
+          content:
+            text/event-stream: {}
+        '401': { description: Invalid runtime lease }
+  /v1/runtime-gateway/{runtime_id}/v1/runs/{upstream_run_id}/stop:
+    post:
+      operationId: hermesStopRun
+      summary: Stop a run inside this exact runtime
+      security:
+        - runtimeLeaseBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RuntimeId'
+        - $ref: '#/components/parameters/UpstreamRunId'
+      responses:
+        '200': { description: Hermes stop result }
+        '401': { description: Invalid runtime lease }
+  /v1/runtime-gateway/{runtime_id}/v1/runs/{upstream_run_id}/steer:
+    post:
+      operationId: hermesSteerRun
+      summary: Steer a run inside this exact runtime
+      security:
+        - runtimeLeaseBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RuntimeId'
+        - $ref: '#/components/parameters/UpstreamRunId'
+      responses:
+        '200': { description: Hermes steer result }
+        '401': { description: Invalid runtime lease }
+  /v1/runtime-gateway/{runtime_id}/v1/runs/{upstream_run_id}/approvals/{approval_id}:
+    get:
+      operationId: hermesApprovalDetails
+      summary: Read approval details from this exact runtime
+      security:
+        - runtimeLeaseBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RuntimeId'
+        - $ref: '#/components/parameters/UpstreamRunId'
         - in: path
-          name: upstream_run_id
+          name: approval_id
           required: true
           schema: { type: string, maxLength: 128 }
       responses:
-        '200': { description: Hermes control result }
+        '200': { description: Hermes approval detail }
+        '401': { description: Invalid runtime lease }
+  /v1/runtime-gateway/{runtime_id}/v1/runs/{upstream_run_id}/approvals/{approval_id}/resolve:
+    post:
+      operationId: hermesResolveApproval
+      summary: Resolve an approval in this exact runtime
+      security:
+        - runtimeLeaseBearer: []
+      parameters:
+        - $ref: '#/components/parameters/RuntimeId'
+        - $ref: '#/components/parameters/UpstreamRunId'
+        - in: path
+          name: approval_id
+          required: true
+          schema: { type: string, maxLength: 128 }
+      responses:
+        '200': { description: Hermes approval resolution result }
         '401': { description: Invalid runtime lease }
 components:
   securitySchemes:
@@ -180,6 +234,14 @@ components:
       schema:
         type: string
         format: uuid
+    UpstreamRunId:
+      in: path
+      name: upstream_run_id
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
   schemas:
     AcquireRuntimeRequest:
       type: object
