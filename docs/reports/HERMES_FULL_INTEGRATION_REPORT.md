@@ -610,3 +610,20 @@ The profile ID is an authenticated contract with the trusted provisioner, not cr
 | Production Hermes activation | Blocked until profile-enforcing provisioner deployment |
 
 The overall integration remains **IN PROGRESS**.
+
+
+## 23. Execution checkpoint 14 — external runtime provisioner contract
+
+### Implemented
+
+- Added `docs/runtime-provisioner-openapi.yaml` describing the HTTPS provisioner acquire, recover, release, result retrieval, and task-scoped Hermes gateway routes.
+- The contract specifies provisioner bearer authentication separately from the short-lived runtime lease bearer.
+- The request/response schemas include task/run/engine identity, workspace snapshots, runtime profile echo, exact gateway path, lease expiry, and confirmed teardown result.
+- Documented exact Hermes Runs API status/events/stop/steer/approval subroutes behind the per-runtime gateway.
+- Linked the contract from `engines/hermes/README.md`.
+
+### Boundary
+
+This is an API contract, not the external provisioner implementation. No Docker/containerd controller, runtime gateway, token store, network policy enforcement, or deployment manifest has been added. The integration cannot be activated in production until a trusted provider implements this contract and passes the staging conformance/security tests.
+
+The overall integration remains **IN PROGRESS**.
