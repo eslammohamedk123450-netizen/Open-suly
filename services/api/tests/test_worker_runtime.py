@@ -242,6 +242,88 @@ class FakeRuntimeBroker:
         return True
 
 
+def test_hermes_prompt_loads_only_owner_scoped_prior_conversation_messages(monkeypatch):
+    import app.worker_runtime as runtime_module
+
+    task_id = str(make_step({"operation": "hermes.agent.turn", "prompt": "current request"}).task_id)
+    step = make_step({"operation": "hermes.agent.turn", "prompt": "current request"})
+    calls = []
+
+    class Query:
+        def __init__(self, table):
+            self.table_name = table
+        def select(self, *_args): return self
+        def eq(self, key, value):
+            calls.append((self.table_name, "eq", key, value))
+            return self
+        def in_(self, key, value):
+            calls.append((self.table_name, "in", key, value))
+            return self
+        def lte(self, key, value):
+            calls.append((self.table_name, "lte", key, value))
+            return self
+        def order(self, *_args, **_kwargs): return self
+        def limit(self, *_args): return self
+        def execute(self):
+            if self.table_name == "tasks":
+                return SimpleNamespace(data=[{
+                    "conversation_id": "conversation-1",
+                    "created_at": "2026-11-21T10:00:00Z",
+                }])
+            return SimpleNamespace(data=[
+                {"role": "assistant", "content": "Earlier assistant reply"},
+                {"role": "user", "content": "Earlier user message"},
+                {"role": "system", "content": "must not include system rows"},
+                {"role": "tool", "content": "must not include tool rows"},
+            ])
+
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def table(self, name): return Query(name)
+
+    monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: Client())
+    prompt = runtime_module._hermes_prompt_with_conversation_context(step, "current request")
+
+    assert "Earlier assistant reply" in prompt
+    assert "Earlier user message" in prompt
+    assert "must not include system rows" not in prompt
+    assert "must not include tool rows" not in prompt
+    assert "current request" in prompt
+    assert ("messages", "eq", "user_id", str(step.user_id)) in calls
+    assert ("messages", "eq", "conversation_id", "conversation-1") in calls
+    assert ("messages", "lte", "created_at", "2026-11-21T10:00:00Z") in calls
+    assert ("messages", "in", "role", ["user", "assistant"]) in calls
+
+
+def test_hermes_prompt_context_is_bounded_by_current_request_size(monkeypatch):
+    import app.worker_runtime as runtime_module
+
+    step = make_step({"operation": "hermes.agent.turn", "prompt": "x" * 19_900})
+    class Query:
+        def __init__(self, table): self.table_name = table
+        def select(self, *_args): return self
+        def eq(self, *_args): return self
+        def in_(self, *_args): return self
+        def lte(self, *_args): return self
+        def order(self, *_args, **_kwargs): return self
+        def limit(self, *_args): return self
+        def execute(self):
+            return SimpleNamespace(data=(
+                [{"conversation_id": "conversation-1", "created_at": "2026-11-21T10:00:00Z"}]
+                if self.table_name == "tasks"
+                else [{"role": "user", "content": "z" * 8000}]
+            ))
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def table(self, name): return Query(name)
+    monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: Client())
+    result = runtime_module._hermes_prompt_with_conversation_context(step, "x" * 19_900)
+    assert len(result) <= 20_000
+    assert result.endswith("x" * 19_900)
+
+
 def test_hermes_agent_task_calls_bridge_only_after_approval(monkeypatch):
     import app.worker_runtime as runtime_module
     from types import SimpleNamespace
