@@ -834,3 +834,76 @@ def test_task_creation_rejects_project_not_owned_by_user(monkeypatch):
         app.dependency_overrides.clear()
     assert response.status_code == 404
     assert response.json()["detail"] == "Project not found."
+
+
+
+class _OpenCodePlanQuery:
+    def __init__(self, rows):
+        self.rows = rows
+    def select(self, *_args): return self
+    def eq(self, *_args): return self
+    def limit(self, *_args): return self
+    def execute(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(data=self.rows)
+
+
+class _OpenCodePlanRpc:
+    def __init__(self, result):
+        self.result = result
+        self.payload = None
+    def execute(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(data=self.result)
+
+
+class _OpenCodePlanAdmin:
+    def __init__(self, task):
+        self.task = task
+        self.rpc_calls = []
+    def __enter__(self): return self
+    def __exit__(self, *_args): return False
+    def table(self, _name):
+        return _OpenCodePlanQuery([self.task])
+    def rpc(self, name, payload):
+        call = _OpenCodePlanRpc({"task_id": payload["p_task_id"], "planned": True})
+        self.rpc_calls.append((name, payload))
+        return call
+
+
+def test_opencode_plan_requires_task_linked_project_before_rpc(monkeypatch):
+    admin = _OpenCodePlanAdmin({
+        "id": "00000000-0000-0000-0000-000000000001",
+        "user_id": "test-user", "status": "queued",
+        "project_id": None, "request": "Build an app", "title": "Build",
+    })
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    try:
+        response = client.post("/v1/tasks/00000000-0000-0000-0000-000000000001/opencode-plan")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 422
+    assert admin.rpc_calls == []
+
+
+def test_opencode_plan_enqueues_registered_worker_step(monkeypatch):
+    admin = _OpenCodePlanAdmin({
+        "id": "00000000-0000-0000-0000-000000000001",
+        "user_id": "test-user", "status": "queued",
+        "project_id": "00000000-0000-0000-0000-000000000099",
+        "request": "Create a small feature", "title": "Feature task",
+    })
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    try:
+        response = client.post("/v1/tasks/00000000-0000-0000-0000-000000000001/opencode-plan")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 202
+    assert response.json()["planner"] == "opencode-direct-v1"
+    assert len(admin.rpc_calls) == 1
+    plan = admin.rpc_calls[0][1]["p_steps"]
+    assert plan[0]["input"]["operation"] == "opencode.task.run"
+    assert plan[0]["input"]["project_id"] == "00000000-0000-0000-0000-000000000099"
+    assert plan[0]["input"]["prompt"] == "Create a small feature"
