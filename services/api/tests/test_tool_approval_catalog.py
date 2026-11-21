@@ -16,7 +16,7 @@ def test_catalog_lists_registered_tools_and_user_approval(monkeypatch):
     class FakeStore:
         def active_scopes(self, user_id):
             assert user_id == "catalog-user"
-            return frozenset({"agent.hermes.run"})
+            return frozenset({"agent.hermes.run", "engine.delegate"})
 
     monkeypatch.setattr(approvals_router, "_store", lambda: FakeStore())
     app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
@@ -30,7 +30,7 @@ def test_catalog_lists_registered_tools_and_user_approval(monkeypatch):
     assert response.status_code == 200
     items = response.json()["items"]
     by_name = {item["name"]: item for item in items}
-    assert set(by_name) == {"text.analyze", "hermes.agent.turn", "ai.respond", "opencode.task.run"}
+    assert set(by_name) == {"text.analyze", "hermes.agent.turn", "ai.respond", "opencode.task.run", "engine.collaborate"}
     assert by_name["text.analyze"]["approved"] is True
     assert by_name["ai.respond"]["approved"] is False
     assert by_name["ai.respond"]["available"] is False
@@ -48,6 +48,9 @@ def test_catalog_lists_registered_tools_and_user_approval(monkeypatch):
     assert by_name["opencode.task.run"]["available"] is False
     assert by_name["opencode.task.run"]["permission_scope"] == "engine.opencode.run"
     assert by_name["opencode.task.run"]["supports_cancellation"] is True
+    assert by_name["engine.collaborate"]["permission_scope"] == "engine.delegate"
+    assert by_name["engine.collaborate"]["approved"] is True
+    assert by_name["engine.collaborate"]["available"] is False
 
 
 def test_catalog_marks_hermes_unapproved_for_user(monkeypatch):
@@ -81,6 +84,7 @@ def test_catalog_reports_hermes_available_only_when_runtime_is_configured(monkey
         ai_model = None
         worker_enabled = True
         hermes_agent_enabled = True
+        opencode_enabled = True
         hermes_agent_isolation_confirmed = True
         hermes_agent_base_url = "http://hermes.internal:8642"
         hermes_agent_api_key = object()
@@ -99,9 +103,12 @@ def test_catalog_reports_hermes_available_only_when_runtime_is_configured(monkey
         app.dependency_overrides.clear()
 
     assert response.status_code == 200
-    hermes = next(item for item in response.json()["items"] if item["name"] == "hermes.agent.turn")
-    assert hermes["available"] is True
-    assert hermes["approved"] is False
+    by_name = {item["name"]: item for item in response.json()["items"]}
+    assert by_name["hermes.agent.turn"]["available"] is True
+    assert by_name["hermes.agent.turn"]["approved"] is False
+    assert by_name["opencode.task.run"]["available"] is True
+    assert by_name["engine.collaborate"]["available"] is True
+    assert by_name["engine.collaborate"]["approved"] is False
 
 
 def test_catalog_reports_ai_provider_available_only_when_fully_configured(monkeypatch):
