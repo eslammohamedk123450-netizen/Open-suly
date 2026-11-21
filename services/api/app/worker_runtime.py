@@ -27,6 +27,12 @@ from app.services.engine_run_reconciler import EngineRunReconciler
 from app.services.task_worker import ClaimedStep, TaskWorker
 from app.services.tool_registry import ToolDefinition, ToolExecutionContext, ToolRegistry
 from app.services.tool_approvals import ToolApprovalStore
+from app.services.opencode_task_executor import OpenCodeTaskExecutor
+from app.services.opencode_lifecycle_store import OpenCodeLifecycleStore
+from app.services.opencode_session_store import OpenCodeSessionStore
+from app.services.project_workspace_store import ProjectWorkspaceStore
+from app.services.runtime_broker_contract import TaskScopedRuntimeBroker
+from app.services.runtime_provisioner_http import HTTPSRuntimeLeaseProvider
 
 logger = logging.getLogger("suly.worker")
 
@@ -222,6 +228,80 @@ def dispatch_cancel_aware(
     return dispatch(step, approval_store, cancel_event=cancel_event)
 
 
+def opencode_task_run(step: ClaimedStep, context: ToolExecutionContext | None = None) -> dict[str, Any]:
+    """تنفيذ مهمة برمجية عبر OpenCode داخل runtime منفصل ومربوط بملكية المهمة."""
+    settings = get_settings()
+    broker = context.runtime_broker if context is not None else None
+    run_store = context.engine_run_store if context is not None else None
+    cancel_event = context.cancel_event if context is not None else None
+    project_id = step.input.get("project_id")
+    prompt = step.input.get("prompt")
+    title = step.input.get("title", step.title)
+    if (
+        not settings.worker_enabled or not settings.opencode_enabled
+        or broker is None or run_store is None
+    ):
+        raise RuntimeError("opencode_engine_disabled_or_unavailable")
+    if cancel_event is not None and cancel_event.is_set():
+        raise RuntimeError("task_execution_cancelled")
+    if not isinstance(project_id, str):
+        raise ValueError("opencode_project_id_required")
+    try:
+        project_uuid = UUID(project_id)
+    except (TypeError, ValueError, AttributeError) as exc:
+        raise ValueError("opencode_project_id_invalid") from exc
+    if str(project_uuid) != project_id:
+        raise ValueError("opencode_project_id_invalid")
+    if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 32_000:
+        raise ValueError("opencode_prompt_invalid")
+    if not isinstance(title, str) or not title.strip() or len(title.strip()) > 120:
+        raise ValueError("opencode_title_invalid")
+
+    # نبدأ سجل المحرك من RPC المقيد بالـlease قبل تشغيل OpenCode.
+    engine_run_id = run_store.start(step, "opencode")
+    client = get_supabase_admin_client()
+    if client is None:
+        run_store.finish(engine_run_id, step, "failed", "opencode_store_unavailable")
+        raise RuntimeError("opencode_store_unavailable")
+    executor = OpenCodeTaskExecutor(
+        workspace_store=ProjectWorkspaceStore(client),
+        session_store=OpenCodeSessionStore(client),
+        runtime_broker=broker,
+        lifecycle_store=OpenCodeLifecycleStore(client),
+    )
+    try:
+        result = executor.execute(
+            user_id=str(step.user_id), project_id=project_id, task_id=str(step.task_id),
+            engine_run_id=str(engine_run_id), prompt=prompt.strip(), title=title.strip(),
+            cancel_event=cancel_event,
+        )
+        if cancel_event is not None and cancel_event.is_set():
+            run_store.finish(engine_run_id, step, "cancelled")
+            raise RuntimeError("opencode_task_cancelled")
+        if not run_store.finish(engine_run_id, step, "succeeded"):
+            raise RuntimeError("opencode_engine_run_lease_lost")
+        changes = result.get("changes", {})
+        task_run = result.get("task_run", {})
+        change_set = result.get("change_set", {})
+        session = result.get("session", {})
+        return {
+            "operation": "opencode.task.run",
+            "engine_run_id": str(engine_run_id),
+            "opencode_run_id": task_run.get("id"),
+            "session_record_id": session.get("id"),
+            "change_set_id": change_set.get("id"),
+            "status": task_run.get("status", "review_ready"),
+            "changed_count": changes.get("changed_count", 0),
+            "requires_review": True,
+        }
+    except Exception:
+        try:
+            run_store.finish(engine_run_id, step, "failed", "opencode_execution_failed")
+        except Exception:
+            logger.warning("OpenCode engine-run failure status was not persisted")
+        raise
+
+
 def build_tool_registry() -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(ToolDefinition(
@@ -244,6 +324,18 @@ def build_tool_registry() -> ToolRegistry:
         handler=ai_respond,
         requires_approval=True,
         max_output_bytes=52_000,
+    ))
+    registry.register(ToolDefinition(
+        name="opencode.task.run",
+        description="Run one bounded coding prompt in an isolated OpenCode task runtime and return a reviewable change set",
+        permission_scope="engine.opencode.run",
+        allowed_input_fields=frozenset({"project_id", "prompt", "title"}),
+        required_input_fields=frozenset({"project_id", "prompt"}),
+        max_input_bytes=48_000,
+        handler=opencode_task_run,
+        requires_approval=True,
+        max_output_bytes=16_000,
+        supports_cancellation=True,
     ))
     registry.register(ToolDefinition(
         name="hermes.agent.turn",
