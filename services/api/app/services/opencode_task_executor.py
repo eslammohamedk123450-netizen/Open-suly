@@ -5,7 +5,7 @@ canonical project files automatically.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 from threading import Event, Thread
 import logging
 from difflib import unified_diff
@@ -50,6 +50,7 @@ class OpenCodeTaskExecutor:
         title: str = "SULY coding task",
         timeout_seconds: int = 900,
         cancel_event: Event | None = None,
+        on_runtime_acquired: Callable[[Any], bool | None] | None = None,
     ) -> dict[str, Any]:
         if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= 1800:
             raise ValueError("opencode_timeout_invalid")
@@ -95,6 +96,10 @@ class OpenCodeTaskExecutor:
                 cancel_watch_thread.join(timeout=2.0)
 
         def persist_runtime_lease(lease) -> None:
+            # Persist the engine-run runtime identity under the worker's live step lease
+            # before execution. This makes orphan cleanup recoverable after process restart.
+            if on_runtime_acquired is not None and on_runtime_acquired(lease) is False:
+                raise RuntimeError("opencode_engine_runtime_identity_persist_failed")
             if lifecycle_run is None:
                 return
             persisted = self._lifecycle.set_runtime(
