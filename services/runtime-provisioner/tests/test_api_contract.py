@@ -371,8 +371,9 @@ def test_runtime_manager_factory_is_distinct_for_each_engine(monkeypatch):
 
     created = []
     class FakeManager:
-        def __init__(self, *, image, workspace_root):
+        def __init__(self, *, image, workspace_root, engine_id):
             self.image = image
+            self.engine_id = engine_id
             created.append(self)
 
     monkeypatch.setattr(runtime_api, "DockerTaskRuntimeManager", FakeManager)
