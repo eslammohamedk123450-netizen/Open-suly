@@ -584,3 +584,15 @@ undefined
 - **CI verified على main HEAD `b6f896dff319ad184eb36c020cb567e7b81b2aa1`: Platform CI #1049 نجح — API tests **608 passed, 5 warnings**، Client typecheck + Expo compatibility + Web export نجح. Repository baseline #1067 نجح. `OPENCODE_ENABLED` و`WORKER_ENABLED` افتراضيًا false.
 - OpenCode upstream verification #177: runtime primitive tests نجحت؛ bridge/protocol tests وupstream provenance وBun frozen install وserver typecheck نجحت؛ Docker image build وsmoke test ما زالا قيد التنفيذ وقت هذا التوثيق. Verification #1014 السابقة مكتملة بنجاح، لكن #177 أحدث run يحتاج إغلاق.
 - لا Live runtime، لا worker، لا migration/deploy. لم يتم اختبار integration end-to-end مع provisioner أو قاعدة Staging؛ هذا يظل شرطًا مهمًا قبل إعلان التكامل closed.
+
+
+## إغلاق تكامل OpenCode على مستوى الكود — 2026-11-21
+
+- آخر code checkpoint: `7399ec775d25aa523ed0ba3a19d697d221e21e88` (موجود على main). أُضيف دليل تدفق التشغيل `docs/operations/OPENCODE_TASK_FLOW_AR.md` بعده.
+- **تم إغلاق مسار التكامل البرمجي الأساسي:** task linked to project -> `opencode-plan` -> allow-listed worker operation -> explicit approval -> engine-run ledger -> OpenCode executor/runtime lease -> lifecycle events -> result/change set -> task UI diff review -> CAS apply/reject.
+- UI يدعم وضع OpenCode داخل مشروع، readiness/config gate، موافقة `engine.opencode.run`، event timeline، مراجعة diff مع توسيع full diff، وتطبيق/رفض المجموعة.
+- **Platform CI #1059 على commit `7399ec77`: success.** API compilation/tests **609 passed, 5 warnings**؛ TypeScript typecheck، Expo dependency compatibility، وWeb export جميعها success. Repository baseline #1077 على commit ذاته success.
+- **OpenCode upstream verification #177: success.** isolated runtime primitives + bridge/protocol/provenance + frozen upstream install + upstream server typecheck + Docker build + authenticated server smoke test نجحوا. هذا run على commit `1a84d30d`؛ engine/upstream files لم تتغير بعدها.
+- كان هناك CI failures خلال تطوير UI/endpoint، وتم إصلاحها؛ checkpoint #1059 و#1077 أعطيا نتائج green. لا نُخفي المحاولات الفاشلة السابقة، لكنها لا تمثل HEAD بعد الإصلاح.
+- **إغلاق نطاق الكود الأساسي: مكتمل.** لا يزال Staging/Live integration غير مختبر: worker وOpenCode افتراضيًا disabled؛ لا اتصال حقيقي بالProvisioner، لا migrations/deploy، لا live runtime. كذلك usage/credits metering للمهام البرمجية غير موجود حتى الآن ويجب أن يسبق أي تشغيل مدفوع/مفتوح.
+- لا نعتبر ذلك إطلاق Beta أو Production. القرار المتبقي: Staging provisioning/migrations وcredits model ومراجعة egress/limits/cancel/teardown/recovery وAndroid/Web acceptance بعد موافقة صريحة.
