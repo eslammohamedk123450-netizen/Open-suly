@@ -27,15 +27,15 @@ _BLOCKED_NAMES = {
 }
 _SECRET_PATTERNS = (
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----", re.IGNORECASE),
-    re.compile(r"\\bAKIA[0-9A-Z]{16}\\b"),
-    re.compile(r"\\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})\\b"),
-    re.compile(r"\\bsk-[A-Za-z0-9]{20,}\\b"),
-    re.compile(r"\\bAIza[0-9A-Za-z_-]{30,}\\b"),
-    re.compile(r"\\bxox[baprs]-[A-Za-z0-9-]{10,}\\b"),
-    re.compile(r"\\b(?:sk|rk)_(?:live|test)_[0-9A-Za-z]{16,}\\b"),
-    re.compile(r"\\bsb_secret_[A-Za-z0-9_-]{20,}\\b"),
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+    re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})\b"),
+    re.compile(r"\bsk-[A-Za-z0-9]{20,}\b"),
+    re.compile(r"\bAIza[0-9A-Za-z_-]{30,}\b"),
+    re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"),
+    re.compile(r"\b(?:sk|rk)_(?:live|test)_[0-9A-Za-z]{16,}\b"),
+    re.compile(r"\bsb_secret_[A-Za-z0-9_-]{20,}\b"),
     re.compile(
-        r"""(?im)\\b(?:api[_-]?key|access[_-]?token|client[_-]?secret|password|secret[_-]?key)\\s*[:=]\\s*["']?(?!\\$\\{|\\{\\{|YOUR_|CHANGEME|REPLACE_ME|example|placeholder)[A-Za-z0-9_./+=-]{24,}"""
+        r"""(?im)\b(?:api[_-]?key|access[_-]?token|client[_-]?secret|password|secret[_-]?key)\s*[:=]\s*["']?(?!\$\{|\{\{|YOUR_|CHANGEME|REPLACE_ME|example|placeholder)[A-Za-z0-9_./+=-]{24,}"""
     ),
 )
 _REVISION_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -102,6 +102,10 @@ class ProjectWorkspaceStore:
             content = row.get("content")
             if not isinstance(content, str) or "\x00" in content:
                 raise ProjectWorkspaceError("workspace_binary_or_invalid_file")
+            if _contains_secret_material(content):
+                # Fail the entire snapshot rather than silently sending a
+                # partially redacted source file to an untrusted model runtime.
+                raise ProjectWorkspaceError("workspace_secret_material_detected")
             encoded = content.encode("utf-8")
             size = len(encoded)
             if size > _MAX_FILE_BYTES:
