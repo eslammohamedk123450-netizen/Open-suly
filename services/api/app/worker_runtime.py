@@ -193,6 +193,17 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
         raise RuntimeError("hermes_task_runtime_acquire_failed") from exc
 
     try:
+        if not run_store.attach_runtime_id(run_id, step, runtime_lease.runtime_id):
+            raise RuntimeError("engine_runtime_identity_lease_lost")
+    except Exception as exc:
+        try:
+            runtime_broker.release(runtime_lease)
+        except Exception:
+            logger.warning("Hermes runtime cleanup failed after identity persistence refusal")
+        run_store.finish(run_id, step, "failed", "hermes_runtime_identity_persist_failed")
+        raise RuntimeError("hermes_runtime_identity_persist_failed") from exc
+
+    try:
         registry = build_engine_registry(
             cancel_event,
             idempotency_key=f"suly-{run_id}",
