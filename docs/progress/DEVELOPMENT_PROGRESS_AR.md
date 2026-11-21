@@ -529,3 +529,11 @@ undefined
 - Rate limiting لا يزال per-process وليس distributed، ولا توجد ingress-level IP/global throttling.
 - متابعة worker/RLS/engine idempotency وruntime recovery/teardown، egress isolation، disposable DB integration tests، privacy/scale/production packaging.
 - تقدير المشروع لا يتغير من checkpoint السابق: **~20% من Controlled Beta readiness (مؤقت)**؛ هذا تقدير milestone-weighted محافظ، وليس نسبة من عدد الملفات. هذه الدفعة تقوي API safety/tests، ولا تغلق staging/runtime/production milestones.
+
+
+### تحديث نتائج CI بعد checkpoint
+- Platform CI #1006 على commit `e0d9741d` اكتمل بنجاح: API tests، TypeScript، Expo compatibility، وWeb export.
+- Repository baseline checks #1024 على `e0d9741d` نجح. Baseline #1025 على commit `442ccd06` و#1026 على `45aacc23` نجحا أيضًا.
+- OpenCode verification #166: Runtime primitives نجحت، upstream provenance/Bun install/server typecheck/Docker image build نجحت، وDocker smoke-test الأصلي كان قيد التنفيذ عند آخر قراءة.
+- آخر HEAD وقت التحديث: `45aacc232cf720725c590c08aefdaf87ccaf8392`. التغييرات بعد #1006 هي توثيق فقط؛ Platform CI على commits الوثائق ما زال pending.
+- Worker workflow لم يعد له schedule؛ لا يوجد worker execution في هذا التحديث.
