@@ -265,11 +265,14 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
     prompt = _hermes_prompt_with_conversation_context(step, prompt)
 
     # نجهز طلب المحرك بحد أقصى زمني معروف من إعدادات الخادم.
+    runtime_budget = step.input.get("runtime_budget_seconds", int(settings.hermes_agent_timeout_seconds))
+    if isinstance(runtime_budget, bool) or not isinstance(runtime_budget, int) or not 1 <= runtime_budget <= 300:
+        raise ValueError("hermes_runtime_budget_invalid")
     request = EngineRequest(
         task_id=str(step.task_id),
         capability="agent.general",
         input_payload={"prompt": prompt},
-        timeout_seconds=max(1, min(300, int(settings.hermes_agent_timeout_seconds))),
+        timeout_seconds=runtime_budget,
     )
     cancel_event = context.cancel_event if context is not None else None
     run_store = context.engine_run_store if context is not None else None
@@ -423,6 +426,9 @@ def opencode_task_run(step: ClaimedStep, context: ToolExecutionContext | None = 
         raise ValueError("opencode_prompt_invalid")
     if not isinstance(title, str) or not title.strip() or len(title.strip()) > 120:
         raise ValueError("opencode_title_invalid")
+    runtime_budget = step.input.get("runtime_budget_seconds", 900)
+    if isinstance(runtime_budget, bool) or not isinstance(runtime_budget, int) or not 1 <= runtime_budget <= 1800:
+        raise ValueError("opencode_runtime_budget_invalid")
 
     # نبدأ سجل المحرك من RPC المقيد بالـlease قبل تشغيل OpenCode.
     engine_run_id = run_store.start(step, "opencode")
@@ -440,7 +446,7 @@ def opencode_task_run(step: ClaimedStep, context: ToolExecutionContext | None = 
         result = executor.execute(
             user_id=str(step.user_id), project_id=project_id, task_id=str(step.task_id),
             engine_run_id=str(engine_run_id), prompt=prompt.strip(), title=title.strip(),
-            cancel_event=cancel_event,
+            timeout_seconds=runtime_budget, cancel_event=cancel_event,
         )
         if cancel_event is not None and cancel_event.is_set():
             run_store.finish(engine_run_id, step, "cancelled")
@@ -485,7 +491,7 @@ def build_tool_registry() -> ToolRegistry:
         name="ai.respond",
         description="Generate one bounded response through the configured SULY AI provider",
         permission_scope="ai.provider.run",
-        allowed_input_fields=frozenset({"prompt"}),
+        allowed_input_fields=frozenset({"prompt", "runtime_budget_seconds"}),
         required_input_fields=frozenset({"prompt"}),
         max_input_bytes=20_100,
         handler=ai_respond,
@@ -496,7 +502,7 @@ def build_tool_registry() -> ToolRegistry:
         name="opencode.task.run",
         description="Run one bounded coding prompt in an isolated OpenCode task runtime and return a reviewable change set",
         permission_scope="engine.opencode.run",
-        allowed_input_fields=frozenset({"project_id", "prompt", "title"}),
+        allowed_input_fields=frozenset({"project_id", "prompt", "title", "runtime_budget_seconds"}),
         required_input_fields=frozenset({"project_id", "prompt"}),
         max_input_bytes=48_000,
         handler=opencode_task_run,
