@@ -97,3 +97,9 @@ def test_artifact_handoff_requires_approved_media_type():
             (ARTIFACT,), owner_id=OWNER, target_engine="opencode",
             approved_media_types=frozenset({"application/pdf"}),
         )
+
+
+def test_hermes_handoff_rejects_runtime_budget_above_native_run_limit():
+    with pytest.raises(ValueError, match="hermes_runtime_budget_exceeds_limit"):
+        contract(max_runtime_seconds=301).validate()
+    contract(max_runtime_seconds=300).validate()
