@@ -16,7 +16,7 @@ from supabase import Client
 _MAX_FILES = 200
 _MAX_FILE_BYTES = 256 * 1024
 _MAX_TOTAL_BYTES = 5 * 1024 * 1024
-_BLOCKED = {".git", "node_modules", ".suly", "__pycache__"}
+_BLOCKED = {".git", "node_modules", ".suly", "__pycache__", "secrets"}
 _REVISION_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
