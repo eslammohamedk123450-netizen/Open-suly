@@ -228,3 +228,55 @@ def test_executor_runs_event_consumer_concurrently_and_stops_it_after_prompt():
 
     assert started.is_set()
     assert stopped.is_set()
+
+
+
+def test_executor_releases_runtime_when_worker_lease_cancel_event_fires():
+    from threading import Event
+    from types import SimpleNamespace
+    from app.services.opencode_task_executor import OpenCodeTaskExecutor
+
+    user_id, project_id, task_id, run_id = (str(uuid4()) for _ in range(4))
+    cancel_event, released = Event(), Event()
+
+    class CancelBroker(Broker):
+        def __init__(self):
+            super().__init__()
+            self.release_calls = 0
+        def run_task(self, task_id, run_id, engine_id, *, files, prompt, title, on_lease_acquired=None, on_session_created=None):
+            lease = SimpleNamespace(
+                runtime_id=str(uuid4()),
+                base_url="https://runtime.example.test",
+                gateway_path=f"/v1/runtime-gateway/{str(uuid4())}",
+                access_token="x" * 48,
+            )
+            on_lease_acquired(lease)
+            on_session_created(lease, "sesABC123")
+            cancel_event.set()
+            assert released.wait(timeout=2)
+            return {
+                "execution": {"runtime_id": lease.runtime_id, "session_id": "sesABC123"},
+                "results": {"changed_files": [], "deleted_paths": [], "changed_count": 0},
+            }
+        def release_attempt(self, *_args):
+            self.release_calls += 1
+            released.set()
+            return True
+
+    class EventConsumer:
+        def consume(self, **kwargs):
+            kwargs["stop_event"].wait(timeout=2)
+
+    lifecycle = Lifecycle()
+    broker = CancelBroker()
+    executor = OpenCodeTaskExecutor(
+        workspace_store=Workspace(), session_store=Sessions(), runtime_broker=broker,
+        lifecycle_store=lifecycle, event_consumer=EventConsumer(),
+    )
+    with pytest.raises(RuntimeError, match="opencode_task_cancelled"):
+        executor.execute(
+            user_id=user_id, project_id=project_id, task_id=task_id,
+            engine_run_id=run_id, prompt="Wait then cancel", cancel_event=cancel_event,
+    )
+    assert broker.release_calls == 1
+    assert any(call[0] == "status" and call[1]["status"] == "failed" for call in lifecycle.calls)
