@@ -48,11 +48,12 @@ class FakeDocker:
         self.networks, self.containers = FakeNetworks(), FakeContainers()
 
 
-def manager(tmp_path):
+def manager(tmp_path, engine_id="opencode"):
     fake = FakeDocker()
+    image_name = "hermes" if engine_id == "hermes-agent" else "opencode"
     return DockerTaskRuntimeManager(
-        image="registry.example/opencode@sha256:" + "a" * 64,
-        workspace_root=str(tmp_path), client=fake,
+        image=f"registry.example/{image_name}@sha256:" + "a" * 64,
+        workspace_root=str(tmp_path), engine_id=engine_id, client=fake,
     ), fake
 
 
@@ -175,7 +176,7 @@ def test_network_egress_false_values_keep_internal_network(tmp_path, monkeypatch
 
 
 def test_hermes_runtime_requires_exact_profile_and_uses_separate_locked_down_container(tmp_path):
-    mgr, fake = manager(tmp_path)
+    mgr, fake = manager(tmp_path, engine_id="hermes-agent")
     task, run = str(uuid4()), str(uuid4())
     with pytest.raises(ValueError, match="runtime_profile_required"):
         mgr.create(task_id=task, engine_run_id=run, engine_id="hermes-agent", files=[])
@@ -223,7 +224,7 @@ def test_hermes_runtime_rejects_profile_on_opencode(tmp_path):
 
 
 def test_hermes_runtime_rejects_unknown_profile_before_docker(tmp_path):
-    mgr, fake = manager(tmp_path)
+    mgr, fake = manager(tmp_path, engine_id="hermes-agent")
     with pytest.raises(ValueError, match="runtime_profile_required"):
         mgr.create(
             task_id=str(uuid4()), engine_run_id=str(uuid4()), engine_id="hermes-agent",
