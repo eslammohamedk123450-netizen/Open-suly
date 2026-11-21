@@ -284,7 +284,7 @@ def test_execution_uses_upstream_default_basic_auth_username(monkeypatch):
                 return FakeStreamResponse({"data": {"id": "sesABC123"}})
             return FakeStreamResponse({"data": {"ok": True}})
 
-    monkeypatch.setattr(runtime_api, "_runtime", lambda runtime_id, token: {"host_port": 4096})
+    monkeypatch.setattr(runtime_api, "_runtime", lambda runtime_id, token: {"host_port": 4096, "engine_id": "opencode"})
     monkeypatch.setattr(runtime_api.httpx, "AsyncClient", FakeClient)
 
     result = asyncio.run(runtime_api.execute(
@@ -299,7 +299,7 @@ def test_execution_uses_upstream_default_basic_auth_username(monkeypatch):
 
 def test_execute_gateway_rejects_oversized_body_before_json_parse(monkeypatch):
     runtime_id = "00000000-0000-4000-8000-000000000001"
-    monkeypatch.setattr(runtime_api, "_runtime", lambda _runtime_id, _token: {"host_port": 4096})
+    monkeypatch.setattr(runtime_api, "_runtime", lambda _runtime_id, _token: {"host_port": 4096, "engine_id": "opencode"})
     response = client.post(
         f"/v1/runtime-gateway/{runtime_id}/execute",
         headers={"Authorization": "Bearer " + "x" * 48, "Content-Type": "application/json"},
@@ -398,3 +398,51 @@ def test_hermes_manager_requires_digest_pinned_image(monkeypatch):
     monkeypatch.setattr(runtime_api, "_runtime_managers", {})
     with pytest.raises(RuntimeError, match="digest-pinned"):
         runtime_api._get_manager("hermes-agent")
+
+
+def test_hermes_gateway_rejects_opencode_execute_shortcut(monkeypatch):
+    import pytest
+    from fastapi import HTTPException
+    from app.main import runtime_gateway
+
+    monkeypatch.setattr(
+        runtime_api, "_runtime",
+        lambda runtime_id, token: {"host_port": 8642, "engine_id": "hermes-agent"},
+    )
+
+    class FakeRequest:
+        method = "POST"
+        headers = {"content-length": "2"}
+        async def stream(self):
+            raise AssertionError("Hermes must be rejected before reading the execute body")
+            yield b""
+
+    with pytest.raises(HTTPException) as error:
+        import asyncio
+        asyncio.run(runtime_gateway(
+            "00000000-0000-4000-8000-000000000001",
+            "execute",
+            FakeRequest(),
+            authorization="Bearer " + "x" * 48,
+        ))
+    assert error.value.status_code == 404
+    assert error.value.detail == "route_not_allowed"
+
+
+def test_hermes_execute_endpoint_rejects_non_native_execution_path(monkeypatch):
+    import pytest
+    from fastapi import HTTPException
+    import asyncio
+
+    monkeypatch.setattr(
+        runtime_api, "_runtime",
+        lambda runtime_id, token: {"host_port": 8642, "engine_id": "hermes-agent"},
+    )
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(runtime_api.execute(
+            "00000000-0000-4000-8000-000000000001",
+            runtime_api.ExecuteRequest(prompt="must use native Runs API"),
+            authorization="Bearer " + "x" * 48,
+        ))
+    assert error.value.status_code == 404
+    assert error.value.detail == "route_not_allowed"
