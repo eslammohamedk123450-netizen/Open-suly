@@ -494,26 +494,20 @@ def main() -> None:
     logging.basicConfig(level=settings.log_level.upper())
     logger.info("Worker starting: %s", worker_id)
     approval_store = ToolApprovalStore(client)
+    # Per-task Hermes runtimes are released through their lease. Crash recovery
+    # still depends on the provisioner's TTL until runtime identity is persisted
+    # and a lease-recovery stop reconciler is implemented.
     reconciler = None
-    if (
-        settings.engine_reconciler_enabled
-        and settings.hermes_agent_base_url
-        and settings.hermes_agent_api_key is not None
-    ):
-        reconciler = EngineRunReconciler(
-            EngineRunStore(client),
-            stop_handlers={"hermes-agent": stop_agent_run},
-        )
     runtime_broker = None
     runtime_provider = None
-    if settings.opencode_enabled:
+    if settings.opencode_enabled or settings.hermes_agent_enabled:
         configured = (
             settings.runtime_provisioner_url,
             settings.runtime_provisioner_token,
             settings.runtime_provisioner_allowed_origins,
         )
         if not all(configured):
-            raise SystemExit("OpenCode runtime configuration is incomplete.")
+            raise SystemExit("Isolated engine runtime configuration is incomplete.")
         allowed_origins = frozenset(settings.runtime_provisioner_allowed_origins)
         runtime_provider = HTTPSRuntimeLeaseProvider(
             base_url=settings.runtime_provisioner_url,
