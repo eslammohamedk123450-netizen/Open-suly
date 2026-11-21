@@ -109,6 +109,7 @@ class ExecuteRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=32000)
     session_id: str | None = Field(default=None, pattern=r"^ses[A-Za-z0-9_-]{1,128}$")
     title: str = Field(default="SULY task", min_length=1, max_length=120)
+    timeout_seconds: int = Field(default=900, ge=1, le=1800)
 
 
 class RecoverRuntime(BaseModel):
@@ -589,7 +590,7 @@ async def execute(runtime_id: str, body: ExecuteRequest, authorization: str | No
     base = f"http://127.0.0.1:{row['host_port']}"
     auth = ("opencode", _runtime_token_from_request(authorization))
     try:
-        async with httpx.AsyncClient(base_url=base, auth=auth, timeout=httpx.Timeout(900, connect=5), trust_env=False) as client:
+        async with httpx.AsyncClient(base_url=base, auth=auth, timeout=httpx.Timeout(body.timeout_seconds, connect=5), trust_env=False) as client:
             session_id = body.session_id
             if session_id is None:
                 payload = await _bounded_opencode_json(client, "/api/session", {
