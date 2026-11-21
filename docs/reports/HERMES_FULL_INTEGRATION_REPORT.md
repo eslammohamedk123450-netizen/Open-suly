@@ -22,7 +22,9 @@ The current `main` branch already contains a substantial Hermes integration foun
 - OpenCode has a separate upstream source/runtime integration path. The current roadmap records its core code integration as closed, while staging/runtime activation remains gated.
 - No Hermes runtime, model provider, live tool execution, or production sandbox has been verified.
 
-The principal remaining work is not to duplicate these foundations. It is to complete the missing runtime security boundary and the capability adapters (skills, memory, sessions, delegation/subagents, MCP, provider routing, and lifecycle reconciliation) without weakening SULY's control plane.
+Subsequent execution checkpoints on `main` have added task-scoped runtime leases, opaque runtime identity persistence/recovery, approval and steering recovery, orphan cleanup, teardown-before-success gating, a mandatory Hermes runtime profile, bounded conversation continuity, owner-scoped project workspace snapshots, metadata-only subagent visibility in the task UI, and read-only skills/toolset discovery.
+
+The remaining blockers are now narrower but still production-critical: there is no runtime-provisioner implementation/deployment in this repository; the external provider has not demonstrated enforcement of `suly-hermes-task-v1`; the additive Supabase migrations have not been applied to staging/production; and persistent Hermes sessions, long-term memory, skill source/install/update, MCP credential brokering, SULY-owned child-task budgets/cancellation, and unified provider routing remain incomplete.
 
 ## 2. Initial repository state
 
