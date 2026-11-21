@@ -451,3 +451,13 @@ For every engine:
 - Startup activation was tightened with `OPENCODE_ENABLED` default `false`. Runtime broker/provider are cleared and startup exits when disabled, even if provisioner URL/token/origins exist. Added a focused test; its CI is pending after this commit.
 - **OpenCode code integration remains incomplete for users.** The transport includes prompt submit and interrupt primitives, but a verified owner/task/run/lease-bound user prompt route and task-worker executor wiring are not yet integrated. Do not call this complete or enable it until those pieces, DB staging tests, and runtime isolation are implemented.
 - Do not deploy or apply migrations. No live runtime/worker/provider was activated.
+
+
+## OpenCode worker integration update — 2026-11-21
+
+- **Implemented in code (CI pending for latest commit):** `opencode.task.run` allow-listed worker tool with strict project/prompt/title input; explicit `engine.opencode.run` consent; lease-protected EngineRun ledger start/finish; server-side Workspace, Session and Lifecycle stores; result checkpoint returns IDs/status/count only and requires review; runtime broker/provider is constructed only when worker and OpenCode are explicitly enabled and provisioner config is complete.
+- **User task entry:** authenticated `POST /v1/tasks/{task_id}/opencode-plan` queues a single coding step only for an owned queued task linked to a project. It does not launch execution itself.
+- **Cancellation boundary:** executor watches the worker cancel/lease-loss event and calls task-attempt runtime release; it refuses to accept a late result after cancellation. Cancellation cleanup is covered by a focused unit test added in the latest commit, but its CI result has not been observed yet.
+- **Tool approvals:** catalog includes the OpenCode operation, and reports availability false unless worker/runtime opt-in is configured. The approval scope cannot be self-granted through task input.
+- **Current default:** `SULY_WORKER_ENABLED=false`, `OPENCODE_ENABLED=false`; no worker starts, no provisioner contact, no migrations, no deploy.
+- **Remaining closure requirements:** confirm latest CI; inspect failing/pending runs and correct issues; verify runtime release semantics for cancellation against the provisioner contract; add/validate durable task/run recovery and event streaming behavior for OpenCode; confirm change-set review/apply lifecycle transitions and UI integration; run isolated staging integration tests after user approval. Until these checks, do not mark OpenCode integration complete or enable live execution.
