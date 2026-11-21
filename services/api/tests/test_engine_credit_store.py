@@ -96,6 +96,12 @@ def test_reserve_rejects_unknown_engine_and_noncanonical_ids():
             engine_id="browser-use", amount=10,
             idempotency_key="engine:run:reserve:001",
         )
+    with pytest.raises(ValueError, match="engine_credit_engine_invalid"):
+        store.reserve(
+            user_id=USER_ID, task_id=TASK_ID, engine_run_id=RUN_ID,
+            engine_id=None, amount=10,
+            idempotency_key="engine:run:reserve:001",
+        )
     with pytest.raises(ValueError, match="engine_credit_task_invalid"):
         store.reserve(
             user_id=USER_ID, task_id="not-a-uuid", engine_run_id=RUN_ID,

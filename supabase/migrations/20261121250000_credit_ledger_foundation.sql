@@ -136,7 +136,7 @@ begin
   if found then
     if v_existing.transaction_type <> 'grant'
        or v_existing.available_delta <> p_amount
-       or v_existing.metadata ->> 'reason' <> p_reason then
+       or v_existing.metadata ->> 'reason' is distinct from p_reason then
       raise exception 'engine_credit_idempotency_conflict';
     end if;
     return v_available;
@@ -277,7 +277,7 @@ begin
   if found then
     if v_existing.transaction_type <> 'settle'
        or v_existing.reservation_id <> p_reservation_id
-       or v_existing.metadata ->> 'actual_credits' <> p_actual_credits::text then
+       or v_existing.metadata ->> 'actual_credits' is distinct from p_actual_credits::text then
       raise exception 'engine_credit_idempotency_conflict';
     end if;
     return true;

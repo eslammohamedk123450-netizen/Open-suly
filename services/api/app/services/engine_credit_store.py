@@ -72,7 +72,7 @@ class EngineCreditStore:
         owner = _canonical_uuid(user_id, "engine_credit_user_invalid")
         task = _canonical_uuid(task_id, "engine_credit_task_invalid")
         run = _canonical_uuid(engine_run_id, "engine_credit_run_invalid")
-        if engine_id not in _ENGINE_IDS:
+        if not isinstance(engine_id, str) or engine_id not in _ENGINE_IDS:
             raise ValueError("engine_credit_engine_invalid")
         value = _credits(amount)
         key = _idempotency_key(idempotency_key)
