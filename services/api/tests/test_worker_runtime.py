@@ -789,9 +789,9 @@ def test_runtime_does_not_log_exception_messages_or_tracebacks(caplog):
 
 def test_opencode_worker_operation_is_registered_but_disabled_by_default(monkeypatch):
     from types import SimpleNamespace
-    import app.core.config as config
+    import app.worker_runtime as runtime
     from app.services.tool_registry import ToolExecutionContext
-    from app.worker_runtime import TOOL_REGISTRY, opencode_task_run
+    from app.worker_runtime import TOOL_REGISTRY
 
     tool = TOOL_REGISTRY.get("opencode.task.run")
     assert tool is not None
@@ -799,7 +799,7 @@ def test_opencode_worker_operation_is_registered_but_disabled_by_default(monkeyp
     assert tool.supports_cancellation is True
     assert tool.permission_scope == "engine.opencode.run"
 
-    monkeypatch.setattr(config, "get_settings", lambda: SimpleNamespace(
+    monkeypatch.setattr(runtime, "get_settings", lambda: SimpleNamespace(
         worker_enabled=False,
         opencode_enabled=False,
     ))
@@ -815,7 +815,7 @@ def test_opencode_worker_operation_is_registered_but_disabled_by_default(monkeyp
         AssertionError("Disabled OpenCode must not create an engine run")
     ))
     with pytest.raises(RuntimeError, match="disabled_or_unavailable"):
-        opencode_task_run(step, ToolExecutionContext(
+        runtime.opencode_task_run(step, ToolExecutionContext(
             approved_scopes=frozenset({"engine.opencode.run"}),
             cancel_event=Event(),
             engine_run_store=fake_store,
