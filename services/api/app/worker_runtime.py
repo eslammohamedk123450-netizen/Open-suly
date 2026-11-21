@@ -22,7 +22,7 @@ from app.services.engine_registry import EngineRegistry
 from app.services.agent_manager import AgentManager
 from app.services.engine_catalog import build_engine_registry as build_pinned_engine_registry
 from app.services.agent_catalog import build_agent_manager as build_catalog_agent_manager
-from app.services.hermes_agent import HermesAgentCancelled, run_agent_turn, stop_agent_run
+from app.services.hermes_agent import HermesAgentCancelled, run_agent_turn
 from app.services.engine_run_store import EngineRunStore
 from app.services.engine_run_reconciler import EngineRunReconciler
 from app.services.task_worker import ClaimedStep, TaskWorker
