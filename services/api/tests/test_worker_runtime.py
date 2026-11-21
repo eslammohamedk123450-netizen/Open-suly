@@ -646,7 +646,7 @@ def test_hermes_engine_requires_task_scoped_runtime_broker(monkeypatch):
     with pytest.raises(RuntimeError, match="hermes_task_runtime_unavailable"):
         runtime_module.hermes_agent_turn(
             make_step({"operation": "hermes.agent.turn", "prompt": "safe"}),
-            ToolExecutionContext(engine_run_store=store, runtime_broker=FakeRuntimeBroker()),
+            ToolExecutionContext(engine_run_store=store),
         )
     assert store.events == []
 
