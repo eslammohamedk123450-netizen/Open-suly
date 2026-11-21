@@ -195,15 +195,6 @@ def auto_plan_task(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Create a deterministic plan only for an operation the worker can run."""
-    settings = get_settings()
-    if not (
-        settings.worker_enabled
-        and settings.opencode_enabled
-        and settings.runtime_provisioner_url
-        and settings.runtime_provisioner_token
-        and settings.runtime_provisioner_allowed_origins
-    ):
-        raise HTTPException(status_code=503, detail="OpenCode runtime is not configured or enabled.")
     client = _admin_client()
     try:
         with client:
@@ -639,6 +630,15 @@ def plan_opencode_task(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Create a single approved OpenCode worker step for an owned project task."""
+    settings = get_settings()
+    if not (
+        settings.worker_enabled
+        and settings.opencode_enabled
+        and settings.runtime_provisioner_url
+        and settings.runtime_provisioner_token
+        and settings.runtime_provisioner_allowed_origins
+    ):
+        raise HTTPException(status_code=503, detail="OpenCode runtime is not configured or enabled.")
     client = _admin_client()
     try:
         with client:
