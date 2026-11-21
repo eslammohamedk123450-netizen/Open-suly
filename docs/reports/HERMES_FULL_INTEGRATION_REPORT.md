@@ -573,3 +573,38 @@ The overall integration remains **IN PROGRESS**.
 | Provisioner materialization/isolation | Not runtime-verified |
 
 The overall integration remains **IN PROGRESS**.
+
+
+## 22. Execution checkpoint 13 — mandatory Hermes runtime security profile
+
+### Implemented
+
+- Added a versioned runtime profile identifier: `suly-hermes-task-v1`.
+- The HTTPS provisioner receives this profile on Hermes runtime acquire and recover requests.
+- The provisioner must echo the same profile in the returned lease.
+- `RuntimeLease.validate` rejects Hermes leases with a missing or mismatched profile; the normal worker broker enforces this before the lease can be used.
+- Orphan cleanup now recovers and releases Hermes leases through `TaskScopedRuntimeBroker`, so the same profile, identity, expiry, HTTPS-origin, gateway-path, and credential checks apply during cleanup.
+- The profile contract requires a unique task runtime, no shared process/host filesystem, privileged toolsets disabled unless separately reviewed, default-deny network egress except the configured model gateway, resource limits, and complete process-tree teardown.
+
+### Security boundary
+
+The profile ID is an authenticated contract with the trusted provisioner, not cryptographic proof of OS-level enforcement. No provisioner implementation/deployment is present in this repository checkpoint, so Hermes must remain disabled until a provider that enforces this exact profile is deployed and verified.
+
+### Verification
+
+- Platform CI API tests at commit `60127ae64f308f6344a2fb2f1ece78e0c4e52c30`: **672 passed, 5 warnings**.
+- Repository baseline checks for that commit: **passed**.
+- Client typecheck/web export was still running when this checkpoint was recorded.
+- Tests cover profile request/response and rejection of unprofiled Hermes leases; they do not verify a live container's actual toolset/network policy.
+
+### Updated capability state
+
+| Capability | Updated status |
+|---|---|
+| Hermes runtime profile request | Implemented |
+| Profile echo and lease validation | Implemented + tests |
+| Profile validation during orphan cleanup | Implemented through task runtime broker |
+| Actual toolset/network enforcement | External provisioner responsibility; not verified |
+| Production Hermes activation | Blocked until profile-enforcing provisioner deployment |
+
+The overall integration remains **IN PROGRESS**.
