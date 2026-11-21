@@ -24,7 +24,7 @@ from uuid import UUID
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.docker_runtime import DockerTaskRuntimeManager, RuntimeErrorSafe
 
@@ -73,6 +73,8 @@ class CreateRuntime(BaseModel):
 
 
 class ExecuteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     prompt: str = Field(min_length=1, max_length=32000)
     session_id: str | None = Field(default=None, pattern=r"^ses[A-Za-z0-9_-]{1,128}$")
     title: str = Field(default="SULY task", min_length=1, max_length=120)
@@ -330,9 +332,10 @@ def recover_runtime(
 async def runtime_gateway(runtime_id: str, path: str, request: Request, authorization: str | None = Header(default=None)):
     row = _runtime(runtime_id, authorization[7:] if authorization and authorization.startswith("Bearer ") else None)
     if request.method == "POST" and path == "execute":
+        raw_body = await _read_bounded_request_body(request, limit=65536)
         try:
-            payload = ExecuteRequest.model_validate(await request.json())
-        except Exception as exc:
+            payload = ExecuteRequest.model_validate(json.loads(raw_body))
+        except (ValueError, TypeError) as exc:
             raise HTTPException(422, "invalid_execution_request") from exc
         return await execute(runtime_id, payload, authorization)
     route = "/" + path
