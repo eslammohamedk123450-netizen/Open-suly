@@ -109,6 +109,8 @@ class HTTPSRuntimeLeaseProvider:
         if str(task) != task_id or str(run) != engine_run_id or not isinstance(engine_id, str) or not _ENGINE.fullmatch(engine_id):
             raise ValueError("runtime_attempt_identity_invalid")
         payload: dict[str, Any] = {"task_id": task_id, "engine_run_id": engine_run_id, "engine_id": engine_id}
+        if engine_id == "hermes-agent":
+            payload["runtime_profile"] = "suly-hermes-task-v1"
         if files is not None:
             if not isinstance(files, list) or len(files) > 200:
                 raise ValueError("runtime_workspace_snapshot_invalid")
@@ -149,6 +151,7 @@ class HTTPSRuntimeLeaseProvider:
                 access_token=str(data["access_token"]),
                 expires_at=float(data["expires_at"]),
                 gateway_path=str(data.get("gateway_path", "")),
+                runtime_profile=str(data.get("runtime_profile", "")),
             )
         except (KeyError, TypeError, ValueError, OverflowError) as exc:
             raise RuntimeProvisionerError("runtime_provisioner_invalid_lease") from exc
@@ -176,11 +179,14 @@ class HTTPSRuntimeLeaseProvider:
             or engine_id not in {"opencode", "hermes-agent"}
         ):
             raise ValueError("runtime_recovery_identity_invalid")
+        recovery_payload = {"task_id": task_id, "engine_run_id": engine_run_id, "engine_id": engine_id}
+        if engine_id == "hermes-agent":
+            recovery_payload["runtime_profile"] = "suly-hermes-task-v1"
         try:
             with self._client.stream(
                 "POST",
                 f"/v1/runtimes/{runtime_id}/recover",
-                json={"task_id": task_id, "engine_run_id": engine_run_id, "engine_id": engine_id},
+                json=recovery_payload,
             ) as response:
                 data = self._json(response, frozenset({200}))
         except RuntimeProvisionerError:
@@ -197,6 +203,7 @@ class HTTPSRuntimeLeaseProvider:
                 access_token=str(data["access_token"]),
                 expires_at=float(data["expires_at"]),
                 gateway_path=str(data["gateway_path"]),
+                runtime_profile=str(data.get("runtime_profile", "")),
             )
         except (KeyError, TypeError, ValueError, OverflowError) as exc:
             raise RuntimeProvisionerError("runtime_recovery_invalid_lease") from exc
