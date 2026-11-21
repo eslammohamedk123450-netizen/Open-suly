@@ -163,3 +163,43 @@ The authenticated tool catalog now publishes each registered tool's allowed and 
 - It drops approval.responded events unless both the request_id is valid and the decision is exactly once or deny. Upstream session/always and malformed decisions cannot enter SULY's durable event path.
 - Added unit tests for missing IDs, control characters, unsupported permanent/session choices, and successful metadata-only event reduction.
 - This closes a failure mode where an invalid approval event could be emitted without its required request identity and then be rejected by the database RPC during persistence.
+
+
+---
+
+## 2026-11-21 — current SULY integration state (supersedes earlier pending labels)
+
+This section is the current status snapshot. Earlier sections are historical implementation notes and must not be read as the latest state where they conflict with this section.
+
+| Capability | Current repository implementation | Current boundary / remaining work |
+|---|---|---|
+| Original Hermes source | Independent submodule at `engines/hermes/upstream`, pinned to `2de9f51b8008a7d49a49221c184f2f11cbfc4af1`; original upstream Dockerfile retained | Submodule checkout and immutable image digest must be verified in the deployment build |
+| Native agent runtime | Dedicated per-attempt Hermes container path, API server on 8642, per-runtime key, native Runs API gateway | No real Hermes image/provider execution has been verified |
+| OpenCode independence | Separate source submodule, image, runtime manager, API routes, workspace exporter, session and review/apply path | Do not share process, credentials, writable workspace or session with Hermes |
+| Run lifecycle | SULY engine-run ledger, native run admission/status/events/stop/steer/one-time approval bridge, lease-bound upstream run ID | Runtime cancellation remains cooperative until provider-confirmed teardown; DB migrations are not applied live |
+| Runtime isolation | Separate container/network/workspace/home per task attempt; non-root provisioner; digest-pinned images; read-only root, dropped capabilities, resource limits, loopback-only published port, no direct egress | Docker fake-client tests do not prove host/kernel isolation, host firewall or live container behavior |
+| Conversation/session continuity | SULY conversation remains authoritative; bounded owner-matched prior messages are included in each task | This is not a persistent native Hermes session; Hermes home is intentionally task-scoped and ephemeral |
+| Long-term memory | Native Hermes memory and user-profile memory are disabled in the task profile | SULY-owned persistent memory namespace, retrieval, write approval, retention, export and deletion are not implemented |
+| Skills | Authenticated, bounded read-only installed-skill catalog and SULY client display | Source/provenance review, per-user/project installation, updates, execution approval and rollback are not implemented; runtime skill toolset is disabled |
+| Toolsets | Authenticated, bounded read-only toolset catalog; upstream toolsets are disabled in the Hermes runtime by default | No per-user SULY-to-Hermes toolset grant adapter or native tool execution is enabled |
+| MCP | Original upstream MCP implementation is retained in the pinned source | SULY MCP broker, server allowlist, per-tenant credential injection, consent and process supervision are not implemented; MCP is disabled |
+| Subagents / delegation | Safe upstream subagent metadata projection; SULY collaboration contracts and durable handoff API/SQL lifecycle exist | SULY-owned child tasks, inherited scoped grants, end-to-end budget accounting, parent-child cancellation and artifact verification require DB migration and runtime tests; native Hermes delegation remains disabled |
+| Cross-engine collaboration | Owner-scoped pending handoff, explicit approval, child task creation, bounded depth/concurrency/runtime/input, metadata event history and typed artifact/result contracts | No live DB application or full worker-to-worker E2E proof yet; no shared workspace is allowed |
+| Provider/model routing | Hermes API server configuration is prepared for its own runtime | A task-aware provider egress gateway and provider credential broker are missing. Direct task-container egress remains blocked, so real model calls are not expected to work yet |
+| Cron / automation | SULY task ledger and worker remain the intended scheduler authority | Hermes native cron is not exposed; SULY schedule translation and quotas remain pending |
+| Browser / terminal / filesystem | Upstream components remain present in the original source | Disabled in Hermes profile; separate tool permission model, egress proxy, filesystem grant and security tests are prerequisites |
+| Multimodal tools | Upstream source retained | No SULY policy/usage integration or runtime grant path |
+| Supabase persistence | Additive engine-run and collaboration migrations committed in repository | Live project migration history currently ends at `20261120003706`; no engine-run/collaboration migrations have been applied |
+| Frontend | Task progress/approval UI, read-only skill/toolset display, collaboration API contracts | Native session/memory controls and verified tool execution controls remain pending |
+
+### Security defaults currently enforced in the Hermes runtime profile
+
+- `platform_toolsets.api_server` is empty by default.
+- Native terminal, browser, computer-use, file, web, MCP, delegation, skills and memory toolsets are disabled.
+- Native memory and user-profile memory are disabled.
+- Upstream subagent orchestration is disabled.
+- Task network is Docker-internal with no direct egress; no "temporary internet" bypass is allowed.
+- No Docker socket, Supabase service key, SULY admin secret, or shared OpenCode workspace is mounted into Hermes.
+- The per-runtime API key is distinct from the provisioner management credential and is never persisted in plaintext by the provisioner.
+
+These are implemented configuration/code controls, not proof of host-level enforcement. Keep Hermes disabled for user traffic until the staging gates in the full report pass.
