@@ -162,6 +162,7 @@ class RuntimeLeaseProvider(Protocol):
 
     def run_task(
         self, lease: RuntimeLease, *, prompt: str, title: str = "SULY task",
+        timeout_seconds: int = 900,
         on_session_created: Callable[[RuntimeLease, str], None] | None = None,
     ) -> dict:
         ...
@@ -289,6 +290,7 @@ class TaskScopedRuntimeBroker:
         files: list[dict] | None,
         prompt: str,
         title: str = "SULY task",
+        timeout_seconds: int = 900,
         on_lease_acquired: Callable[[RuntimeLease], None] | None = None,
         on_session_created: Callable[[RuntimeLease, str], None] | None = None,
     ) -> dict:
@@ -297,6 +299,8 @@ class TaskScopedRuntimeBroker:
         Failed executions are torn down immediately. Successful runtimes remain
         task-scoped and expire at the provisioner TTL if the API worker crashes.
         """
+        if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= 1800:
+            raise ValueError("runtime_execution_timeout_invalid")
         runner = getattr(self._provider, "run_task", None)
         if not callable(runner):
             raise RuntimeError("runtime_provider_execution_not_supported")
@@ -310,6 +314,7 @@ class TaskScopedRuntimeBroker:
                 raise ValueError("runtime_session_callback_invalid")
             result = runner(
                 lease, prompt=prompt, title=title,
+                timeout_seconds=timeout_seconds,
                 on_session_created=on_session_created,
             )
             if not isinstance(result, dict):
