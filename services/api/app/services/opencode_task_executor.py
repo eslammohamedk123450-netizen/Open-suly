@@ -299,6 +299,10 @@ class OpenCodeTaskExecutor:
                     event_type="changes.collected",
                     payload={"change_set_id": change_set["id"], "changed_count": len(changes)},
                 )
+            # Results are already materialized as a SULY-owned reviewable change set.
+            # The upstream process no longer needs to remain alive while the user reviews it.
+            if not self._broker.release_attempt(task_id, engine_run_id, "opencode"):
+                raise RuntimeError("opencode_runtime_cleanup_pending")
     
         except Exception:
             stop_cancel_watch()

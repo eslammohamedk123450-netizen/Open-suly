@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Any
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -70,6 +71,17 @@ def list_run_events(
         raise
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Could not load OpenCode task events.") from exc
+
+
+def _append_run_event(client, *, user_id: str, run_id: str, event_type: str, payload: dict[str, Any]) -> None:
+    rows = client.table("opencode_task_events").select("sequence").eq(
+        "run_id", run_id
+    ).eq("user_id", user_id).order("sequence", desc=True).limit(1).execute().data or []
+    sequence = int(rows[0]["sequence"]) + 1 if rows else 1
+    OpenCodeLifecycleStore(client).append_event(
+        user_id=user_id, run_id=run_id, sequence=sequence,
+        event_type=event_type, payload=payload,
+    )
 
 
 def _release_runtime_for_run(request: Request, client, user_id: str, run_id: str) -> None:
@@ -219,8 +231,11 @@ def decide_change_set(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Apply atomically against the captured revision, or reject the pending set."""
+    client = _client()
+    store = OpenCodeLifecycleStore(client)
+    run_id: str | None = None
+    applying = False
     try:
-        client = _client()
         owned = client.table("opencode_change_sets").select(
             "id,run_id"
         ).eq("id", str(change_set_id)).eq("user_id", user.id).eq(
@@ -228,28 +243,74 @@ def decide_change_set(
         ).limit(1).execute().data
         if not owned:
             raise HTTPException(status_code=404, detail="Change set not found or already decided.")
-        run_id = owned[0]["run_id"]
-        store = OpenCodeLifecycleStore(client)
+        run_id = str(owned[0]["run_id"])
+
         if body.decision == "apply":
+            if not store.update_status(user_id=user.id, run_id=run_id, status="applying"):
+                raise HTTPException(status_code=409, detail="OpenCode run is no longer reviewable.")
+            applying = True
             result = store.apply_change_set(
                 user_id=user.id, change_set_id=str(change_set_id)
             )
-            if not result["applied"] and result.get("reason") == "workspace_revision_conflict":
-                raise HTTPException(status_code=409, detail="Project changed after this result was prepared.")
             if not result["applied"]:
+                reason = result.get("reason") or "change_set_rejected"
+                store.update_status(
+                    user_id=user.id, run_id=run_id, status="failed",
+                    error_code="workspace_revision_conflict" if reason == "workspace_revision_conflict" else "change_set_apply_failed",
+                )
+                _append_run_event(
+                    client, user_id=user.id, run_id=run_id, event_type="task.failed",
+                    payload={"code": "workspace_revision_conflict" if reason == "workspace_revision_conflict" else "change_set_apply_failed"},
+                )
+                _release_runtime_for_run(request, client, user.id, run_id)
+                if reason == "workspace_revision_conflict":
+                    raise HTTPException(status_code=409, detail="Project changed after this result was prepared.")
                 raise HTTPException(status_code=409, detail="Change set is no longer reviewable.")
+
+            _append_run_event(
+                client, user_id=user.id, run_id=run_id, event_type="changes.approved",
+                payload={"change_set_id": str(change_set_id)},
+            )
+            _append_run_event(
+                client, user_id=user.id, run_id=run_id, event_type="task.completed",
+                payload={"change_set_id": str(change_set_id)},
+            )
             _release_runtime_for_run(request, client, user.id, run_id)
             return result
+
         rows = client.table("opencode_change_sets").update({
-            "status": "rejected",
+            "status": "rejected", "decided_at": datetime.now(timezone.utc).isoformat(),
         }).eq("id", str(change_set_id)).eq("user_id", user.id).eq(
             "status", "review_ready"
         ).execute().data
         if not rows:
             raise HTTPException(status_code=404, detail="Change set not found or already decided.")
+        if not store.update_status(user_id=user.id, run_id=run_id, status="completed"):
+            raise HTTPException(status_code=409, detail="OpenCode run could not be closed after rejection.")
+        _append_run_event(
+            client, user_id=user.id, run_id=run_id, event_type="changes.rejected",
+            payload={"change_set_id": str(change_set_id)},
+        )
+        _append_run_event(
+            client, user_id=user.id, run_id=run_id, event_type="task.completed",
+            payload={"change_set_id": str(change_set_id), "rejected": True},
+        )
         _release_runtime_for_run(request, client, user.id, run_id)
         return {"applied": False, "rejected": True, "change_set_id": str(change_set_id)}
     except HTTPException:
         raise
     except Exception as exc:
+        if run_id is not None and applying:
+            try:
+                store.update_status(
+                    user_id=user.id, run_id=run_id, status="failed",
+                    error_code="change_set_decision_failed",
+                )
+                _append_run_event(
+                    client, user_id=user.id, run_id=run_id, event_type="task.failed",
+                    payload={"code": "change_set_decision_failed"},
+                )
+            except Exception:
+                pass
+            _release_runtime_for_run(request, client, user.id, run_id)
         raise HTTPException(status_code=503, detail="Could not decide OpenCode change set.") from exc
