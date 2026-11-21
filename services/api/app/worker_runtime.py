@@ -12,6 +12,7 @@ import signal
 from time import monotonic
 from threading import Event
 from typing import Any, Callable
+from uuid import UUID
 
 from app.core.config import get_settings
 from app.core.supabase import get_supabase_admin_client
