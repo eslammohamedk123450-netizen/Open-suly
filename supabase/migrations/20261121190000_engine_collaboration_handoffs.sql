@@ -8,6 +8,7 @@ create table public.engine_handoffs (
   user_id uuid not null,
   source_step_id uuid not null references public.task_steps(id) on delete cascade,
   target_step_id uuid not null references public.task_steps(id) on delete cascade,
+  target_attempt_count smallint not null check (target_attempt_count between 1 and 10),
   source_run_id uuid not null references public.engine_runs(id) on delete cascade,
   target_run_id uuid references public.engine_runs(id) on delete set null,
   source_engine_id text not null check (source_engine_id in ('hermes-agent', 'opencode')),
@@ -35,7 +36,7 @@ create table public.engine_handoffs (
     check (max_parallel_children <= max_child_tasks),
   constraint engine_handoffs_terminal_timestamp_check
     check ((status = 'running') = (completed_at is null)),
-  unique (target_step_id)
+  unique (target_step_id, target_attempt_count)
 );
 
 create index engine_handoffs_user_created_idx
@@ -64,6 +65,7 @@ create function public.start_engine_handoff(
   p_user_id uuid,
   p_source_step_id uuid,
   p_target_step_id uuid,
+  p_target_attempt_count integer,
   p_lease_token uuid,
   p_source_run_id uuid,
   p_source_engine_id text,
@@ -91,7 +93,8 @@ begin
      or p_source_engine_id = p_target_engine_id
      or p_capability is null
      or p_capability !~ '^[a-z][a-z0-9_.-]{1,95}$'
-     or p_depth not between 1 and 3
+     or p_depth is null or p_depth not between 1 and 3
+     or p_target_attempt_count is null or p_target_attempt_count not between 1 and 10
      or p_max_child_tasks not between 1 and 8
      or p_max_parallel_children not between 1 and 2
      or p_max_parallel_children > p_max_child_tasks
@@ -144,17 +147,17 @@ begin
   end if;
 
   insert into public.engine_handoffs (
-    id, task_id, user_id, source_step_id, target_step_id, source_run_id,
+    id, task_id, user_id, source_step_id, target_step_id, target_attempt_count, source_run_id,
     source_engine_id, target_engine_id, capability, depth,
     max_child_tasks, max_parallel_children, max_runtime_seconds,
     input_sha256, input_bytes
   ) values (
     p_handoff_id, p_task_id, p_user_id, p_source_step_id, p_target_step_id,
-    p_source_run_id, p_source_engine_id, p_target_engine_id, p_capability,
+    p_target_attempt_count, p_source_run_id, p_source_engine_id, p_target_engine_id, p_capability,
     p_depth, p_max_child_tasks, p_max_parallel_children, p_max_runtime_seconds,
     p_input_sha256, p_input_bytes
   )
-  on conflict (target_step_id) do nothing;
+  on conflict (target_step_id, target_attempt_count) do nothing;
 
   return exists (
     select 1 from public.engine_handoffs h
@@ -163,6 +166,7 @@ begin
        and h.user_id = p_user_id
        and h.source_step_id = p_source_step_id
        and h.target_step_id = p_target_step_id
+       and h.target_attempt_count = p_target_attempt_count
        and h.source_run_id = p_source_run_id
        and h.status = 'running'
   );
