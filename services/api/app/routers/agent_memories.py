@@ -164,7 +164,10 @@ def update_memory(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     memory_id = _memory_id(memory_id)
-    payload = request.model_dump(exclude_unset=True)
+    payload = {
+        key: value for key, value in request.model_dump(exclude_unset=True).items()
+        if value is not None
+    }
     if not payload:
         raise HTTPException(status_code=422, detail="At least one memory field must be provided.")
     payload["updated_at"] = datetime.now(timezone.utc).isoformat()
