@@ -45,6 +45,7 @@ The FastAPI bridge uses these server-only environment variables:
 The task worker now acquires a distinct runtime lease for each SULY engine-run attempt through the HTTPS runtime provisioner. The provisioner is a separate trusted service; the public API process has no Docker socket and does not launch containers itself.
 
 The worker persists only the opaque runtime UUID in the SULY engine-run ledger. The short-lived runtime access token is never stored in Supabase. Hermes traffic is sent through the lease's exact runtime gateway path; approval detail, approval resolution, steering, and orphan cleanup recover a short-lived lease using the stored runtime/task/run identity. Outbound Hermes HTTP clients disable ambient proxy variables and redirects.
+ When a task is linked to a SULY project, the worker also snapshots that owner's bounded project files (maximum 200 files / 5 MiB, with reserved paths and secret-like files excluded) and asks the provisioner to materialize them inside that task's fresh runtime. Project files are never mounted from the API host filesystem.
 
 The bridge uses Hermes' native `/v1/runs` admission and status endpoints, a stable per-attempt `Idempotency-Key`, lease-guarded upstream run ID persistence, bounded status polling, metadata-only SSE progress, and cooperative cancellation. Subagent lifecycle events are reduced to an allow-listed set of opaque identifiers and counters; goals, summaries, prompts, tool arguments, reasoning, and output text are not persisted as event metadata.
 
