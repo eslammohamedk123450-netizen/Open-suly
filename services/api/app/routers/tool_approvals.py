@@ -121,12 +121,21 @@ def list_available_tools(
             and settings.hermes_agent_base_url
             and settings.hermes_agent_api_key
         )
+        opencode_available = bool(
+            settings.worker_enabled
+            and getattr(settings, "opencode_enabled", False)
+            and getattr(settings, "runtime_provisioner_url", None)
+            and getattr(settings, "runtime_provisioner_token", None)
+            and getattr(settings, "runtime_provisioner_allowed_origins", None)
+        )
         items = []
         for tool in TOOL_REGISTRY.describe():
             if tool["name"] == "hermes.agent.turn":
                 available = hermes_available  # Hermes has its own isolated runtime configuration.
             elif tool["name"] == "ai.respond":
                 available = ai_provider_available
+            elif tool["name"] == "opencode.task.run":
+                available = opencode_available
             else:
                 available = settings.worker_enabled
             items.append({
