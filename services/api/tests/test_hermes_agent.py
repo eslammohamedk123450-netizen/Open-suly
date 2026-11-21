@@ -235,9 +235,16 @@ def test_hermes_native_runs_api_admits_polls_and_persists_run_id(monkeypatch):
             })
 
     persisted = []
-    result = invoke(
-        monkeypatch,
-        Client(),
+    client_options = {}
+    monkeypatch.setattr(hermes_agent, "get_settings", lambda: settings())
+    monkeypatch.setattr(
+        hermes_agent.httpx,
+        "AsyncClient",
+        lambda **kwargs: client_options.update(kwargs) or Client(),
+    )
+    result = hermes_agent.run_agent_turn(
+        "Do a safe task",
+        idempotency_key="suly-test-run-0001",
         on_run_started=lambda run_id: persisted.append(run_id) or True,
     )
     assert result == {"engine": "hermes-agent", "content": "Task completed safely."}
@@ -247,6 +254,8 @@ def test_hermes_native_runs_api_admits_polls_and_persists_run_id(monkeypatch):
     assert calls[0][2]["headers"]["Idempotency-Key"] == "suly-test-run-0001"
     assert calls[0][2]["json"] == {"input": "Do a safe task"}
     assert calls[1][1] == "http://hermes:8642/v1/runs/run_native_123"
+    assert client_options["trust_env"] is False
+    assert client_options["follow_redirects"] is False
 
 
 @pytest.mark.parametrize("prompt", ["", "  ", "x" * 20001, None])
