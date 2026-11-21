@@ -101,3 +101,58 @@ def test_snapshot_refuses_secret_directories():
     })
     with pytest.raises(ValueError, match="workspace_path_reserved"):
         ProjectWorkspaceStore(client).snapshot(user_id=user, project_id=project)
+
+
+@pytest.mark.parametrize("path", [
+    ".ssh/id_rsa",
+    ".aws/credentials",
+    ".npmrc",
+    "config/.netrc",
+    "service-account.json",
+])
+def test_snapshot_rejects_sensitive_credential_paths(path):
+    user, project = str(uuid4()), str(uuid4())
+    client = Client({
+        "projects": [{"id": project, "user_id": user}],
+        "project_files": [{
+            "project_id": project, "user_id": user,
+            "path": path, "content": "credential material",
+        }],
+    })
+    with pytest.raises(ValueError, match="workspace_path_reserved"):
+        ProjectWorkspaceStore(client).snapshot(user_id=user, project_id=project)
+
+
+@pytest.mark.parametrize("content", [
+    "-----BEGIN OPENSSH PRIVATE KEY-----\\nprivate-data\\n-----END OPENSSH PRIVATE KEY-----",
+    "AWS_ACCESS_KEY_ID=AKIAABCDEFGHIJKLMNOP",
+    "GITHUB_TOKEN=ghp_" + "a" * 36,
+    "OPENAI_API_KEY=sk-" + "b" * 28,
+    "api_key = \"" + "c" * 32 + "\"",
+    "password: " + "d" * 32,
+    "SUPABASE_KEY=sb_secret_" + "e" * 32,
+])
+def test_snapshot_fails_closed_when_file_content_contains_secret_material(content):
+    user, project = str(uuid4()), str(uuid4())
+    client = Client({
+        "projects": [{"id": project, "user_id": user}],
+        "project_files": [{
+            "project_id": project, "user_id": user,
+            "path": "src/config.py", "content": content,
+        }],
+    })
+    with pytest.raises(ProjectWorkspaceError, match="workspace_secret_material_detected"):
+        ProjectWorkspaceStore(client).snapshot(user_id=user, project_id=project)
+
+
+def test_snapshot_allows_environment_variable_placeholders_not_real_credentials():
+    user, project = str(uuid4()), str(uuid4())
+    client = Client({
+        "projects": [{"id": project, "user_id": user}],
+        "project_files": [{
+            "project_id": project, "user_id": user,
+            "path": "config/example.env", "content": "API_KEY=${API_KEY}\\nPASSWORD=YOUR_PASSWORD",
+        }],
+    })
+    snapshot = ProjectWorkspaceStore(client).snapshot(user_id=user, project_id=project)
+    assert snapshot["file_count"] == 1
