@@ -256,3 +256,49 @@ This report must be updated after every implementation batch. The final report m
 | Skill tenant/project/task scopes | Not implemented |
 
 The overall integration remains **IN PROGRESS** and Hermes must remain disabled for user task execution.
+
+
+## 12. Execution checkpoint 03 — read-only Toolset Discovery vertical slice
+
+**Committed on `main`:**
+- `9d414eaf7dee0562c183cb7100a6653d9db7b40b` — add bounded toolset catalog normalization and transport.
+- `e2cc881faa8016ec85b9bbbfaf551a818dfae657` — expose authenticated `GET /v1/agents/hermes/toolsets`.
+- `072f1ffc92e6454460481f039fac93e5384c18d6` — add toolset discovery regression tests.
+
+### Implemented
+
+- Reused the same fixed-route, bounded, no-ambient-proxy metadata transport as Skills Discovery.
+- Reads only Hermes `GET /v1/toolsets`.
+- Returns toolset name, label, description, enabled flag, and validated tool identifiers.
+- Does not return the upstream `configured` field, credentials, configuration, or arbitrary response fields.
+- Validates platform identity, list size, toolset count, tool count, and tool identifier syntax.
+- Exposes the metadata through authenticated `GET /v1/agents/hermes/toolsets`.
+- Does not invoke any tool and does not modify Hermes configuration or permissions.
+
+### Deliberate limits
+
+- Toolset discovery is descriptive only. A listed or enabled upstream toolset is **not** permission for a SULY user to execute it.
+- SULY's persisted approval registry and worker allow-list remain authoritative.
+- Terminal, filesystem, browser, MCP, and other privileged capabilities remain blocked from user execution until per-task whole-process isolation and the SULY tool-scope bridge are verified.
+
+### Verification
+
+- Extended `services/api/tests/test_hermes_catalog.py` with toolset schema, metadata allow-list, route, and authentication tests.
+- Tests are authored but **not executed in this environment**.
+- GitHub combined status for `072f1ffc92e6454460481f039fac93e5384c18d6` currently shows a pending Railway service status context; it is not a completed CI test result.
+
+### Updated capability state
+
+| Capability | Updated status |
+|---|---|
+| Skills discovery | Code implemented; CI/runtime verification pending |
+| Toolset discovery | **CODE IMPLEMENTED — CI/runtime verification pending** |
+| Skill source viewing | Not implemented |
+| Skills validation/linting | Not implemented in SULY |
+| Skills installation/update | Not implemented |
+| Skills execution and usage ledger | Not implemented |
+| MCP discovery/broker | Not implemented in SULY |
+| User-scoped memory/session bridge | Not implemented |
+| Subagent/delegation task bridge | Not implemented |
+
+The overall integration remains **IN PROGRESS**. Hermes user task execution remains disabled.
