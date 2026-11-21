@@ -69,6 +69,32 @@ class EngineRunStore:
             raise RuntimeError("engine_run_attach_invalid_response")
         return response.data
 
+    def attach_runtime_id(
+        self,
+        run_id: UUID,
+        step: ClaimedStep,
+        runtime_id: str,
+    ) -> bool:
+        """Persist only the opaque runtime UUID under the active worker lease."""
+        try:
+            runtime_uuid = UUID(runtime_id)
+        except (TypeError, ValueError, AttributeError) as exc:
+            raise ValueError("invalid_engine_runtime_id") from exc
+        if str(runtime_uuid) != runtime_id:
+            raise ValueError("invalid_engine_runtime_id")
+        response = self._client.rpc(
+            "attach_engine_runtime_identity",
+            {
+                "p_run_id": str(run_id),
+                "p_step_id": str(step.step_id),
+                "p_lease_token": str(step.lease_token),
+                "p_runtime_id": runtime_id,
+            },
+        ).execute()
+        if not isinstance(response.data, bool):
+            raise RuntimeError("engine_run_runtime_attach_invalid_response")
+        return response.data
+
     def append_event(
         self,
         run_id: UUID,
