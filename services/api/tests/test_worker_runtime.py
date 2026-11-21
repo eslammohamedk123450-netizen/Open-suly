@@ -821,3 +821,66 @@ def test_opencode_worker_operation_is_registered_but_disabled_by_default(monkeyp
             engine_run_store=fake_store,
             runtime_broker=fake_broker,
         ))
+
+
+
+def test_opencode_worker_handler_returns_review_ids_and_finishes_engine_run(monkeypatch):
+    from types import SimpleNamespace
+    from uuid import UUID
+    import app.worker_runtime as runtime
+    from app.services.tool_registry import ToolExecutionContext
+
+    project_id = "00000000-0000-0000-0000-000000000099"
+    engine_run_id = UUID("00000000-0000-0000-0000-000000000088")
+    finishes = []
+
+    class FakeEngineRunStore:
+        def start(self, step, engine):
+            assert engine == "opencode"
+            assert step.input["operation"] == "opencode.task.run"
+            return engine_run_id
+        def finish(self, run_id, step, status, error_code=None):
+            finishes.append((run_id, status, error_code))
+            return True
+
+    class FakeExecutor:
+        def __init__(self, **kwargs):
+            assert kwargs["runtime_broker"] is not None
+        def execute(self, **kwargs):
+            assert kwargs["user_id"] == str(step.user_id)
+            assert kwargs["project_id"] == project_id
+            assert kwargs["engine_run_id"] == str(engine_run_id)
+            assert kwargs["prompt"] == "Build a feature"
+            return {
+                "task_run": {"id": "opencode-run", "status": "review_ready"},
+                "session": {"id": "session-record"},
+                "change_set": {"id": "change-set"},
+                "changes": {"changed_count": 2},
+            }
+
+    monkeypatch.setattr(runtime, "get_settings", lambda: SimpleNamespace(worker_enabled=True, opencode_enabled=True))
+    monkeypatch.setattr(runtime, "get_supabase_admin_client", lambda: object())
+    monkeypatch.setattr(runtime, "OpenCodeTaskExecutor", FakeExecutor)
+    step = make_step({
+        "operation": "opencode.task.run",
+        "project_id": project_id,
+        "prompt": "Build a feature",
+        "title": "Feature task",
+    })
+    result = runtime.opencode_task_run(step, ToolExecutionContext(
+        approved_scopes=frozenset({"engine.opencode.run"}),
+        cancel_event=Event(),
+        engine_run_store=FakeEngineRunStore(),
+        runtime_broker=object(),
+    ))
+    assert result == {
+        "operation": "opencode.task.run",
+        "engine_run_id": str(engine_run_id),
+        "opencode_run_id": "opencode-run",
+        "session_record_id": "session-record",
+        "change_set_id": "change-set",
+        "status": "review_ready",
+        "changed_count": 2,
+        "requires_review": True,
+    }
+    assert finishes == [(engine_run_id, "succeeded", None)]
