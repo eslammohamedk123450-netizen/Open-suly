@@ -543,3 +543,33 @@ The overall integration remains **IN PROGRESS**.
 - Client typecheck/web export was still running when this checkpoint was recorded.
 
 The overall integration remains **IN PROGRESS**.
+
+
+## 21. Execution checkpoint 12 — Hermes project workspace snapshots
+
+### Implemented
+
+- Hermes task execution now checks whether the durable task is linked to a SULY project.
+- For project-linked tasks, it uses the existing owner-scoped `ProjectWorkspaceStore` to create a deterministic, bounded snapshot.
+- The worker passes only normalized `path`, `content`, and `sha256` entries into `TaskScopedRuntimeBroker.acquire(..., files=...)`.
+- The existing workspace policy limits the snapshot to 200 files / 5 MiB, caps individual files at 256 KiB, and excludes reserved paths such as `.git`, `node_modules`, `.env*`, and secret directories.
+- The project is re-verified against the task owner before any file rows are loaded. No host filesystem path is mounted or exposed to Hermes.
+- Added a regression test proving the project snapshot is passed into the task-scoped Hermes runtime lease.
+
+### Verification
+
+- Platform CI API tests at commit `ceabd3a3681d9252be8c2c7a0dff1ac6b2f3c1d1`: **668 passed, 5 warnings**.
+- Repository baseline checks for that commit: **passed**.
+- Client typecheck/web export was still running when this checkpoint was recorded.
+- The external provisioner must still prove that it materializes the supplied files inside the correct isolated container and never into a shared host workspace.
+
+### Updated capability state
+
+| Capability | Updated status |
+|---|---|
+| Project-linked Hermes task | Implemented through existing Agent project context |
+| Owner-scoped project snapshot | Reuses existing bounded ProjectWorkspaceStore |
+| Runtime workspace file handoff | Implemented through lease provider contract |
+| Provisioner materialization/isolation | Not runtime-verified |
+
+The overall integration remains **IN PROGRESS**.
