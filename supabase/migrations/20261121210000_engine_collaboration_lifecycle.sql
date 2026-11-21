@@ -5,6 +5,11 @@
 alter table public.engine_collaboration_handoffs
   add column if not exists input_payload jsonb not null default '{}'::jsonb;
 
+-- The previous lifecycle draft may already have created this named check.
+-- Rebuild it deterministically so this migration remains replay-safe.
+alter table public.engine_collaboration_handoffs
+  drop constraint if exists engine_collaboration_input_payload_check;
+
 alter table public.engine_collaboration_handoffs
   add constraint engine_collaboration_input_payload_check
   check (
