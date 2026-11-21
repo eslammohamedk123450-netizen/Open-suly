@@ -244,6 +244,7 @@ class FakeRuntimeBroker:
 
 def test_hermes_prompt_loads_only_owner_scoped_prior_conversation_messages(monkeypatch):
     import app.worker_runtime as runtime_module
+    from types import SimpleNamespace
 
     task_id = str(make_step({"operation": "hermes.agent.turn", "prompt": "current request"}).task_id)
     step = make_step({"operation": "hermes.agent.turn", "prompt": "current request"})
@@ -298,6 +299,7 @@ def test_hermes_prompt_loads_only_owner_scoped_prior_conversation_messages(monke
 
 def test_hermes_prompt_context_is_bounded_by_current_request_size(monkeypatch):
     import app.worker_runtime as runtime_module
+    from types import SimpleNamespace
 
     step = make_step({"operation": "hermes.agent.turn", "prompt": "x" * 19_900})
     class Query:
