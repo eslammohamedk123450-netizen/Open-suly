@@ -326,6 +326,7 @@ def test_hermes_operation_routes_through_registry_after_approval(monkeypatch):
     result = dispatch(
         make_step({"operation": "hermes.agent.turn", "prompt": "safe task"}),
         ApprovedScopes(),
+        runtime_broker=FakeRuntimeBroker(),
     )
     assert result == {
         "operation": "hermes.agent.turn",
