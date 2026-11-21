@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import signal
 from time import monotonic
 from threading import Event
@@ -31,7 +32,7 @@ from app.services.tool_approvals import ToolApprovalStore
 from app.services.opencode_task_executor import OpenCodeTaskExecutor
 from app.services.opencode_lifecycle_store import OpenCodeLifecycleStore
 from app.services.opencode_session_store import OpenCodeSessionStore
-from app.services.project_workspace_store import ProjectWorkspaceStore
+from app.services.project_workspace_store import ProjectWorkspaceStore, contains_secret_material
 from app.services.runtime_broker_contract import RuntimeLease, TaskScopedRuntimeBroker
 from app.services.runtime_provisioner_http import HTTPSRuntimeLeaseProvider
 
@@ -248,7 +249,6 @@ def _suly_user_memory_context(step: ClaimedStep, prompt: str) -> str:
             or not isinstance(content, str) or not content.strip()
         ):
             continue
-        from app.services.project_workspace_store import contains_secret_material
         if contains_secret_material(content):
             continue
         tags = row.get("tags")
