@@ -85,3 +85,19 @@ def test_snapshot_rejects_paths_longer_than_runtime_gateway_contract():
     })
     with pytest.raises(ValueError, match="workspace_path_invalid"):
         ProjectWorkspaceStore(client).snapshot(user_id=user, project_id=project)
+
+
+
+def test_snapshot_refuses_secret_directories():
+    user, project = str(uuid4()), str(uuid4())
+    client = Client({
+        "projects": [{"id": project, "user_id": user}],
+        "project_files": [{
+            "project_id": project,
+            "user_id": user,
+            "path": "secrets/provider.json",
+            "content": "must not enter runtime",
+        }],
+    })
+    with pytest.raises(ValueError, match="workspace_path_reserved"):
+        ProjectWorkspaceStore(client).snapshot(user_id=user, project_id=project)
