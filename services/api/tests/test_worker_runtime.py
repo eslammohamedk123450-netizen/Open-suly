@@ -33,6 +33,8 @@ def stub_hermes_context(monkeypatch):
         lambda _step: {"project_id": None, "conversation_id": None},
     )
     monkeypatch.setattr(runtime_module, "_hermes_approved_skills", lambda _step: [])
+    # State stores only retain this client in these tests; no DB methods are invoked.
+    monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: object())
 
 
 def test_text_analyze_returns_bounded_deterministic_metrics():
@@ -236,9 +238,10 @@ class FakeRuntimeBroker:
     def __init__(self):
         self.acquired = []
         self.acquired_files = []
+        self.acquired_skills = []
         self.released = []
 
-    def acquire(self, task_id, engine_run_id, engine_id, *, files=None):
+    def acquire(self, task_id, engine_run_id, engine_id, *, files=None, skills=None):
         from types import SimpleNamespace
         lease = SimpleNamespace(
             task_id=task_id,
@@ -248,6 +251,7 @@ class FakeRuntimeBroker:
         )
         self.acquired.append(lease)
         self.acquired_files.append(files)
+        self.acquired_skills.append(skills)
         return lease
 
     def release(self, lease):
