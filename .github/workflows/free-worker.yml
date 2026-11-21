@@ -1,10 +1,14 @@
 name: SULY Free Test Worker
 
 on:
-  schedule:
-    # GitHub may delay scheduled runs; this is best-effort queue polling.
-    - cron: "*/5 * * * *"
+  # Worker processing is intentionally manual until the owner explicitly opts in.
   workflow_dispatch:
+    inputs:
+      enable_worker:
+        description: "Explicitly authorize a bounded worker session against the configured backend"
+        type: boolean
+        required: true
+        default: false
 
 permissions:
   contents: read
@@ -15,6 +19,7 @@ concurrency:
 
 jobs:
   worker:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.enable_worker == true }}
     name: Process queued tasks for up to 3m 50s
     runs-on: ubuntu-latest
     timeout-minutes: 5
