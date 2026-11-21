@@ -1,10 +1,12 @@
 from types import SimpleNamespace
+import pytest
 
 from fastapi.testclient import TestClient
 
 from app.core import rate_limit as rate_limit_module
 from app.core.auth import AuthenticatedUser, get_current_user
 from app.main import app
+from app.routers import chat as chat_module
 
 client = TestClient(app)
 
@@ -68,3 +70,40 @@ def test_rate_limit_zero_disables_the_limiter(monkeypatch) -> None:
         app.dependency_overrides.clear()
         rate_limit_module.reset_limiters()
     assert statuses == [503, 503, 503, 503]
+
+
+@pytest.mark.parametrize(
+    "route,body,scope",
+    [
+        ("/v1/chat/conversations", {"title": "Test"}, "conversations"),
+        (
+            "/v1/chat/conversations/00000000-0000-0000-0000-000000000001/messages",
+            {"content": "Hello"},
+            "messages",
+        ),
+    ],
+)
+def test_chat_write_routes_enforce_independent_scopes(monkeypatch, route, body, scope):
+    rate_limit_module.reset_limiters()
+    limits = {"respond": 10, "conversations": 1, "messages": 1}
+    limits[scope] = 1
+    _override_settings(monkeypatch, **limits) if False else None
+    monkeypatch.setattr(
+        rate_limit_module,
+        "get_settings",
+        lambda: SimpleNamespace(
+            rate_limit_chat_respond_per_minute=limits["respond"],
+            rate_limit_chat_conversations_per_minute=limits["conversations"],
+            rate_limit_chat_messages_per_minute=limits["messages"],
+        ),
+    )
+    monkeypatch.setattr(chat_module, "get_supabase_admin_client", lambda: None)
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="scope-user", email=None)
+    try:
+        first = client.post(route, json=body)
+        second = client.post(route, json=body)
+    finally:
+        app.dependency_overrides.clear()
+        rate_limit_module.reset_limiters()
+    assert first.status_code == 503
+    assert second.status_code == 429
