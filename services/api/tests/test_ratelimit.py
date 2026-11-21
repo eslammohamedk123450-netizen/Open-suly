@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from app.core.ratelimit import RateLimitExceeded, TokenBucketStore, apply_rate_limit, rate_limit_settings
+from app.core.ratelimit import RateLimitExceeded, TokenBucket, TokenBucketStore, apply_rate_limit, rate_limit_settings
 
 
 def test_bucket_allows_burst_then_blocks_and_recovers(monkeypatch):
