@@ -215,7 +215,7 @@ def _hermes_prompt_with_conversation_context(step: ClaimedStep, prompt: str) -> 
 
 def _suly_user_memory_context(step: ClaimedStep, prompt: str) -> str:
     """Append only explicitly saved, owner-scoped memory as bounded untrusted context."""
-    if not get_settings().agent_memory_enabled:
+    if not getattr(get_settings(), "agent_memory_enabled", False):
         return prompt
     client = get_supabase_admin_client()
     if client is None or not callable(getattr(client, "table", None)):
