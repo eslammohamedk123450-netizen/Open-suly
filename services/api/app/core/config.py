@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     hermes_agent_timeout_seconds: float = Field(default=90.0, ge=5.0, le=300.0)
     hermes_agent_max_output_chars: int = Field(default=12000, ge=256, le=50000)
 
+    # SULY-owned explicit memory; keep disabled until its migration is applied.
+    agent_memory_enabled: bool = False
+
     # OpenCode must remain explicitly disabled; provisioner credentials alone cannot activate it.
     opencode_enabled: bool = False
     # Isolated runtime provider configuration. These values do not activate it unless opencode_enabled is true.
