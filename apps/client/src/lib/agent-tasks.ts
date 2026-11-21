@@ -2,7 +2,7 @@ import { supabase } from "@/lib/supabase";
 
 const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim().replace(/\/$/, "");
 
-export type AgentOperation = "text.analyze" | "ai.respond" | "hermes.agent.turn" | "opencode.task.run" | "engine.team.run";
+export type AgentOperation = "text.analyze" | "ai.respond" | "hermes.agent.turn" | "opencode.task.run";
 
 export type AgentTask = {
   id: string;
@@ -53,34 +53,11 @@ export type AgentEngineEvent = {
   received_at: string;
 };
 
-export type AgentEngineHandoff = {
-  id: string;
-  task_id: string;
-  source_step_id: string;
-  target_step_id: string;
-  target_attempt_count: number;
-  source_run_id: string;
-  target_run_id?: string | null;
-  source_engine_id: string;
-  target_engine_id: string;
-  capability: string;
-  depth: number;
-  status: string;
-  input_sha256: string;
-  input_bytes: number;
-  output_sha256?: string | null;
-  output_bytes?: number | null;
-  error_code?: string | null;
-  created_at?: string;
-  completed_at?: string | null;
-};
-
 export type AgentTaskSnapshot = {
   task: AgentTask;
   steps: AgentTaskStep[];
   engine_runs: AgentEngineRun[];
   engine_events: AgentEngineEvent[];
-  engine_handoffs: AgentEngineHandoff[];
 };
 
 type ToolCatalogItem = {
@@ -163,7 +140,7 @@ export async function grantAIApproval(): Promise<void> {
   });
 }
 
-export async function revokeToolApproval(permissionScope: "ai.provider.run" | "agent.hermes.run" | "engine.opencode.run" | "engine.delegate"): Promise<void> {
+export async function revokeToolApproval(permissionScope: "ai.provider.run" | "agent.hermes.run" | "engine.opencode.run"): Promise<void> {
   await request("/v1/tools/approvals", {
     method: "DELETE",
     body: JSON.stringify({ permission_scope: permissionScope }),
@@ -184,13 +161,6 @@ export async function grantOpenCodeApproval(): Promise<void> {
   });
 }
 
-export async function grantCollaborationApproval(): Promise<void> {
-  await request("/v1/tools/approvals", {
-    method: "POST",
-    body: JSON.stringify({ permission_scope: "engine.delegate" }),
-  });
-}
-
 export async function createAgentTask(
   operation: AgentOperation,
   prompt: string,
@@ -199,13 +169,13 @@ export async function createAgentTask(
 ): Promise<AgentTask> {
   const cleanPrompt = prompt.trim();
   if (!cleanPrompt) throw new Error("اكتب وصف المهمة أولًا.");
-  if ((operation === "opencode.task.run" || operation === "engine.team.run") && !projectId) throw new Error("اربط المهمة بمشروع قبل إرسالها إلى OpenCode أو فريق المحركات.");
+  if (operation === "opencode.task.run" && !projectId) throw new Error("اربط المهمة بمشروع قبل إرسالها إلى OpenCode.");
   if (cleanPrompt.length > 20000) throw new Error("المهمة تتجاوز الحد المسموح وهو 20 ألف حرف.");
   const task = await request<AgentTask>("/v1/tasks", {
     method: "POST",
     body: JSON.stringify({
-      title: operation === "engine.team.run" ? "فريق Hermes + OpenCode" : operation === "opencode.task.run" ? "مهمة OpenCode برمجية" : operation === "hermes.agent.turn" ? "مهمة Hermes Agent" : operation === "ai.respond" ? "مهمة SULY AI" : "تحليل نص",
-      request: operation === "text.analyze" ? "analyze: " + cleanPrompt : operation === "hermes.agent.turn" ? "agent: " + cleanPrompt : operation === "engine.team.run" ? "team: " + cleanPrompt : cleanPrompt,
+      title: operation === "opencode.task.run" ? "مهمة OpenCode برمجية" : operation === "hermes.agent.turn" ? "مهمة Hermes Agent" : operation === "ai.respond" ? "مهمة SULY AI" : "تحليل نص",
+      request: operation === "text.analyze" ? "analyze: " + cleanPrompt : operation === "hermes.agent.turn" ? "agent: " + cleanPrompt : cleanPrompt,
       ...(projectId ? { project_id: projectId } : {}),
       ...(conversationId ? { conversation_id: conversationId } : {}),
       idempotency_key: "agent-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 14),
@@ -216,7 +186,7 @@ export async function createAgentTask(
       method: "POST",
       body: "{}",
     });
-  } else if (operation === "text.analyze" || operation === "hermes.agent.turn" || operation === "engine.team.run") {
+  } else if (operation === "text.analyze" || operation === "hermes.agent.turn") {
     // يترك العميل اختيار العملية للخادم؛ auto-plan يتحقق من توفر الوكيل والعزل والـallow-list.
     await request("/v1/tasks/" + encodeURIComponent(task.id) + "/auto-plan", {
       method: "POST",
