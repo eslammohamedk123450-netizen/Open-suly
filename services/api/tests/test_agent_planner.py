@@ -176,3 +176,56 @@ def test_agent_plan_validator_accepts_the_new_opencode_worker_operation():
     }])
     assert planned[0]["input"]["operation"] == "opencode.task.run"
     assert planned[0]["input"]["project_id"] == project_id
+
+
+
+def test_planner_routes_explicit_code_task_to_original_opencode_engine(monkeypatch):
+    from types import SimpleNamespace
+    import app.core.config as config
+
+    project_id = "00000000-0000-0000-0000-000000000099"
+    monkeypatch.setattr(config, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
+        opencode_enabled=True,
+        runtime_provisioner_url="https://runtime-provisioner.internal",
+        runtime_provisioner_token=object(),
+        runtime_provisioner_allowed_origins=("https://opencode-runtime.internal:8443",),
+    ))
+    planned = plan_request("code: Add a login screen", project_id=project_id)
+    assert planned.planner == "opencode-routing-v1"
+    assert planned.steps[0]["input"] == {
+        "operation": "opencode.task.run",
+        "project_id": project_id,
+        "prompt": "Add a login screen",
+        "title": "SULY coding task",
+    }
+
+
+def test_planner_rejects_code_task_without_project(monkeypatch):
+    from types import SimpleNamespace
+    import app.core.config as config
+
+    monkeypatch.setattr(config, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
+        opencode_enabled=True,
+        runtime_provisioner_url="https://runtime-provisioner.internal",
+        runtime_provisioner_token=object(),
+        runtime_provisioner_allowed_origins=("https://opencode-runtime.internal:8443",),
+    ))
+    with pytest.raises(UnsupportedTaskRequest, match="project_id is required"):
+        plan_request("code: Fix the bug")
+
+
+def test_planner_keeps_opencode_disabled_by_default(monkeypatch):
+    from types import SimpleNamespace
+    import app.core.config as config
+
+    monkeypatch.setattr(config, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
+        opencode_enabled=False,
+        runtime_provisioner_url="https://runtime-provisioner.internal",
+        runtime_provisioner_token=object(),
+        runtime_provisioner_allowed_origins=("https://opencode-runtime.internal:8443",),
+    ))
+    with pytest.raises(UnsupportedTaskRequest, match="OpenCode coding is unavailable"):
+        plan_request("code: Fix the bug", project_id="00000000-0000-0000-0000-000000000099")
