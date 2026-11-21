@@ -132,6 +132,8 @@ def test_snapshot_rejects_sensitive_credential_paths(path):
     "password: " + "d" * 32,
     "SUPABASE_KEY=sb_secret_" + "e" * 32,
     "SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzZXJ2aWNlX3JvbGUifQ.signaturepayload12345",
+    "secret = " + "f" * 32,
+    "token = " + "g" * 32,
 ])
 def test_snapshot_fails_closed_when_file_content_contains_secret_material(content):
     user, project = str(uuid4()), str(uuid4())
