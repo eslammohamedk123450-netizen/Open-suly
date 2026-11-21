@@ -43,7 +43,7 @@ _SECRET_PATTERNS = (
     re.compile(r"\bsb_secret_[A-Za-z0-9_-]{20,}\b"),
     re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b"),
     re.compile(
-        r"""(?im)\b(?:api[_-]?key|access[_-]?token|client[_-]?secret|password|secret[_-]?key)\s*[:=]\s*["']?(?!\$\{|\{\{|YOUR_|CHANGEME|REPLACE_ME|example|placeholder)[A-Za-z0-9_./+=-]{24,}"""
+        r"""(?im)\b(?:api[_-]?key|access[_-]?token|token|client[_-]?secret|password|secret|private[_-]?key|service[_-]?role[_-]?key)\s*[:=]\s*["']?(?!\$\{|\{\{|YOUR_|CHANGEME|REPLACE_ME|example|placeholder)[A-Za-z0-9_./+=-]{24,}"""
     ),
 )
 
