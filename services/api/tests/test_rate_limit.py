@@ -106,3 +106,33 @@ def test_chat_write_routes_enforce_independent_scopes(monkeypatch, route, body, 
         rate_limit_module.reset_limiters()
     assert first.status_code == 503
     assert second.status_code == 429
+
+
+def test_sliding_window_prunes_idle_keys_before_key_cap():
+    now = [0.0]
+    limiter = rate_limit_module.SlidingWindowLimiter(
+        limit=1, window_seconds=10.0, max_keys=1, prune_interval=5.0,
+        clock=lambda: now[0],
+    )
+    assert limiter.allow("idle-user")
+    now[0] = 11.0
+    assert limiter.allow("new-user")
+
+
+def test_sliding_window_fails_closed_when_key_cap_is_full():
+    now = [0.0]
+    limiter = rate_limit_module.SlidingWindowLimiter(
+        limit=1, window_seconds=60.0, max_keys=1, prune_interval=600.0,
+        clock=lambda: now[0],
+    )
+    assert limiter.allow("first-user")
+    assert not limiter.allow("second-user")
+
+
+def test_sliding_window_reconfigures_limit_without_resetting_events():
+    limiter = rate_limit_module.SlidingWindowLimiter(limit=3, window_seconds=60.0)
+    assert limiter.allow("user-a", now=100.0)
+    assert limiter.allow("user-a", now=101.0)
+    limiter.set_limit(1)
+    assert not limiter.allow("user-a", now=102.0)
+    assert limiter.limit == 1
