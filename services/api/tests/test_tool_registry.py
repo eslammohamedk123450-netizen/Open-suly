@@ -26,7 +26,7 @@ def make_step(input_data):
 
 def test_registry_exposes_only_registered_tool_metadata():
     tools = TOOL_REGISTRY.describe()
-    assert [tool["name"] for tool in tools] == ["ai.respond", "engine.collaborate", "hermes.agent.turn", "opencode.task.run", "text.analyze"]
+    assert [tool["name"] for tool in tools] == ["ai.respond", "hermes.agent.turn", "opencode.task.run", "text.analyze"]
     by_name = {tool["name"]: tool for tool in tools}
     assert by_name["ai.respond"]["requires_approval"] is True
     assert by_name["text.analyze"]["requires_approval"] is False
