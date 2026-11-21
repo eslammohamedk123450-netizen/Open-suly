@@ -302,3 +302,53 @@ The overall integration remains **IN PROGRESS** and Hermes must remain disabled 
 | Subagent/delegation task bridge | Not implemented |
 
 The overall integration remains **IN PROGRESS**. Hermes user task execution remains disabled.
+
+
+## 13. Execution checkpoint 04 — task-scoped runtime execution and control plane
+
+### Implemented
+
+- Hermes task execution now requires a `TaskScopedRuntimeBroker` and a runtime lease for the exact `task_id`, SULY engine-run ID, and `hermes-agent` engine ID.
+- The worker acquires a separate runtime for each task attempt and releases it in a `finally` cleanup path.
+- The Hermes adapter uses the lease gateway path and short-lived access token; it no longer needs the shared Hermes API key for this execution path.
+- Lease validation checks the configured HTTPS origin allow-list, engine identity, task identity, engine-run identity, runtime ID, expiry, and gateway path.
+- The worker persists only the opaque runtime UUID through the service-role RPC `attach_engine_runtime_identity`; it never stores the runtime access token.
+- Added migration `20261121130000_engine_run_runtime_identity.sql` with a unique runtime identity index and active-step-lease guarded persistence RPC.
+- Approval detail, approval resolution, and steering routes now recover a short-lived runtime credential through the trusted provisioner using the task/run/runtime identity.
+- Those routes verify owner scope and the live worker lease before attempting runtime recovery.
+- Added lease-aware stop operations and a runtime-aware engine stop reconciler. The reconciler can recover an orphaned Hermes runtime, request upstream stop when a run ID exists, and release the whole runtime process tree. It also handles the narrow window where a runtime exists before an upstream run ID is returned.
+- Legacy shared-runtime run cleanup remains available for old rows that have an upstream run ID but no runtime ID.
+- Added migration `20261121140000_engine_runtime_stop_recovery.sql` to reconcile/claim stale runs using either an upstream run ID or an opaque runtime ID.
+
+### Security and lifecycle behavior
+
+- No runtime token is stored in Supabase.
+- Approval/steering requests do not accept a caller-supplied runtime URL, token, or runtime ID; the server obtains the runtime ID from the owner-scoped engine-run record.
+- The provider's recover operation is bound to the exact runtime ID, task ID, engine-run ID, and engine ID.
+- Runtime acquisition is rejected if the provider returns a mismatched lease.
+- If upstream stop does not confirm, the reconciler still requests provider-side runtime release; only provider-confirmed release is counted as cleanup success.
+- Worker-crash cleanup is now represented in code, but remains dependent on the external provisioner's recover/release semantics and TTL enforcement. Those semantics have not been runtime-tested.
+
+### Verification
+
+- GitHub Platform CI API test job for commit `3cfa01217043e5b798b76c588ccec57e8da7b443`: **646 passed, 5 warnings**.
+- Repository baseline checks for that commit: **passed**.
+- Client typecheck/web export for that commit was still in progress at the time of this report update.
+- The following later commit `90c43a9a5d509c02c11d2a264b92c8e3ca676f86` adds legacy stop fallback for pre-existing shared-runtime rows; its CI run is pending.
+- No migration was applied to the live Supabase project.
+- No container/provisioner was started; no runtime isolation or process-tree teardown was verified in a deployed environment.
+
+### Updated capability state
+
+| Capability | Updated status |
+|---|---|
+| Per-task Hermes runtime lease | Code implemented; external provisioner contract required |
+| Runtime identity persistence | Code + additive migration implemented; DB apply pending |
+| Task-scoped approval details | Code implemented; CI passed at checkpoint commit |
+| Task-scoped approval resolution | Code implemented; CI passed at checkpoint commit |
+| Task-scoped steering | Code implemented; CI passed at checkpoint commit |
+| Orphaned runtime stop/release | Code + additive migration implemented; runtime verification pending |
+| Worker crash recovery | Code path implemented; depends on provisioner recovery/release guarantees |
+| Production isolation | Not verified; do not enable user task execution until provisioner/runtime tests pass |
+
+The overall integration remains **IN PROGRESS**. A green API test suite is not evidence of deployed container isolation.
