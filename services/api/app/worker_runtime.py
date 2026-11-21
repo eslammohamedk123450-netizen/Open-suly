@@ -22,7 +22,7 @@ from app.services.engine_registry import EngineRegistry
 from app.services.agent_manager import AgentManager
 from app.services.engine_catalog import build_engine_registry as build_pinned_engine_registry
 from app.services.agent_catalog import build_agent_manager as build_catalog_agent_manager
-from app.services.hermes_agent import HermesAgentCancelled, run_agent_turn
+from app.services.hermes_agent import HermesAgentCancelled, run_agent_turn, stop_agent_run
 from app.services.engine_run_store import EngineRunStore
 from app.services.engine_run_reconciler import EngineRunReconciler
 from app.services.task_worker import ClaimedStep, TaskWorker
@@ -505,13 +505,12 @@ def main() -> None:
     logging.basicConfig(level=settings.log_level.upper())
     logger.info("Worker starting: %s", worker_id)
     approval_store = ToolApprovalStore(client)
-    # Per-task Hermes runtimes are released through their lease. Crash recovery
-    # still depends on the provisioner's TTL until runtime identity is persisted
-    # and a lease-recovery stop reconciler is implemented.
+    # The stop reconciler can recover and release abandoned Hermes task runtimes
+    # by their opaque runtime identity; it never needs a persisted runtime token.
     reconciler = None
     runtime_broker = None
     runtime_provider = None
-    if settings.opencode_enabled or settings.hermes_agent_enabled:
+    if settings.opencode_enabled or settings.hermes_agent_enabled or settings.engine_reconciler_enabled:
         configured = (
             settings.runtime_provisioner_url,
             settings.runtime_provisioner_token,
@@ -529,6 +528,38 @@ def main() -> None:
         runtime_broker = TaskScopedRuntimeBroker(
             runtime_provider, allowed_origins=allowed_origins
         )
+        if settings.engine_reconciler_enabled:
+            run_store = EngineRunStore(client)
+
+            def stop_hermes_claim(claim) -> bool:
+                if claim.runtime_id is None or claim.task_id is None:
+                    return False
+                lease = runtime_provider.recover(
+                    str(claim.runtime_id),
+                    str(claim.task_id),
+                    str(claim.run_id),
+                    engine_id="hermes-agent",
+                )
+                try:
+                    if claim.upstream_run_id is not None:
+                        try:
+                            stop_agent_run(
+                                claim.upstream_run_id,
+                                runtime_lease=lease,
+                                task_id=str(claim.task_id),
+                                engine_run_id=str(claim.run_id),
+                            )
+                        except Exception:
+                            # Runtime release below is the final process-tree cleanup boundary.
+                            logger.warning("Hermes upstream stop did not confirm for run %s", claim.run_id)
+                    return runtime_provider.release(lease) is True
+                except Exception:
+                    return False
+
+            reconciler = EngineRunReconciler(
+                run_store,
+                claim_handlers={"hermes-agent": stop_hermes_claim},
+            )
     WorkerRuntime(
         worker,
         poll_interval_seconds=settings.worker_poll_interval_seconds,
