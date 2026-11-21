@@ -195,6 +195,8 @@ def test_hermes_runtime_requires_exact_profile_and_uses_separate_locked_down_con
     assert options["environment"]["API_SERVER_PORT"] == "8642"
     assert options["environment"]["API_SERVER_KEY"] == result["access_token"]
     assert options["environment"]["HERMES_HOME"] == "/opt/data"
+    assert options["environment"]["HERMES_UID"] == str(__import__("os").getuid())
+    assert options["environment"]["HERMES_GID"] == str(__import__("os").getgid())
     assert options["cap_drop"] == ["ALL"]
     assert options["privileged"] is False
     assert options["read_only"] is True

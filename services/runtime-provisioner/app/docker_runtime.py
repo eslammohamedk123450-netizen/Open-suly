@@ -204,11 +204,10 @@ class DockerTaskRuntimeManager:
                 fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
                 with os.fdopen(fd, "w", encoding="utf-8") as stream:
                     stream.write(hermes_config)
-                # Upstream Hermes runs its supervised gateway as UID/GID 10000.
-                # Bind-mounted data must be accessible to that non-root identity.
-                os.chown(hermes_home, 10000, 10000)
-                os.chown(config_path, 10000, 10000)
-                os.chown(workspace, 10000, 10000)
+                # Hermes supports runtime UID/GID remapping in its own stage2
+                # hook. Match the non-root provisioner identity that owns these
+                # fresh bind mounts instead of calling chown on the host (which
+                # would require CAP_CHOWN and is not available to the CI/test user).
         except Exception:
             shutil.rmtree(runtime_root, ignore_errors=True)
             raise
@@ -233,6 +232,8 @@ class DockerTaskRuntimeManager:
                     "API_SERVER_PORT": "8642",
                     "API_SERVER_MODEL_NAME": "hermes-agent",
                     "HERMES_HOME": "/opt/data",
+                    "HERMES_UID": str(os.getuid()),
+                    "HERMES_GID": str(os.getgid()),
                 }
                 if is_hermes
                 else {"OPENCODE_SERVER_PASSWORD": token, "OPENCODE_SERVER_USERNAME": "opencode"}

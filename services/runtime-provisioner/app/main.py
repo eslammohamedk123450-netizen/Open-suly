@@ -62,7 +62,7 @@ def _allowed_opencode_route(method: str, route: str) -> bool:
         ("POST", r"/api/session/ses[A-Za-z0-9_-]{1,128}/prompt"),
         ("POST", r"/api/session/ses[A-Za-z0-9_-]{1,128}/interrupt"),
     )
-    return any(method == expected and re.fullmatch(pattern, route) for method, pattern in patterns)
+    return any(method == expected and re.fullmatch(pattern, route) for expected, pattern in patterns)
 
 
 def _allowed_hermes_route(method: str, route: str) -> bool:
@@ -242,7 +242,17 @@ def _runtime(runtime_id: str, token: str | None):
 async def _cleanup_expired_loop() -> None:
     while True:
         try:
-            await asyncio.to_thread(_get_manager().cleanup_expired)
+            # Every engine has its own Docker manager and image configuration.
+            # Reap both container families; never let the default OpenCode manager
+            # silently leave expired Hermes process trees behind.
+            for engine_id, image in (
+                ("opencode", IMAGE),
+                ("hermes-agent", HERMES_IMAGE),
+            ):
+                if not image:
+                    continue
+                manager = await asyncio.to_thread(_get_manager, engine_id)
+                await asyncio.to_thread(manager.cleanup_expired)
             db = _db()
             try:
                 db.execute("DELETE FROM runtimes WHERE expires_at<=?", (time.time(),))
@@ -265,8 +275,12 @@ async def startup() -> None:
     validate_egress_disabled()
     if not SULY_TOKEN:
         raise RuntimeError("SULY_PROVISIONER_TOKEN is required")
+    if os.getuid() == 0:
+        raise RuntimeError("runtime_provisioner_must_not_run_as_root")
     if not IMAGE or not re.fullmatch(r"[A-Za-z0-9./:_-]+@sha256:[0-9a-f]{64}", IMAGE):
         raise RuntimeError("OPENCODE_RUNTIME_IMAGE must be digest-pinned")
+    if HERMES_IMAGE and not re.fullmatch(r"[A-Za-z0-9./:_-]+@sha256:[0-9a-f]{64}", HERMES_IMAGE):
+        raise RuntimeError("HERMES_RUNTIME_IMAGE must be digest-pinned")
     parsed = httpx.URL(PUBLIC_GATEWAY_ORIGIN)
     if (parsed.scheme != "https" or not parsed.host or parsed.path not in ("", "/")
             or parsed.query or parsed.fragment or parsed.username or parsed.password):
@@ -297,8 +311,6 @@ async def create_runtime(request: Request, authorization: str | None = Header(de
     except (ValueError, TypeError) as exc:
         raise HTTPException(422, "invalid_runtime_request") from exc
     task_id, run_id = _identity(body.task_id), _identity(body.engine_run_id)
-    if body.engine_id != "opencode":
-        raise HTTPException(422, "engine_not_allowed")
     if body.engine_id not in {"opencode", "hermes-agent"}:
         raise HTTPException(422, "engine_not_allowed")
     if body.engine_id == "hermes-agent" and body.runtime_profile != _HERMES_RUNTIME_PROFILE:
