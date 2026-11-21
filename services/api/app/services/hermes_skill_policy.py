@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -117,7 +118,7 @@ class HermesSkillApprovalStore:
             raise ValueError("hermes_skill_digest_invalid")
         rows = self._client.table("hermes_skill_approvals").update({
             "status": "approved", "enabled": True, "approved_by": owner,
-            "approved_at": "now()",
+            "approved_at": datetime.now(timezone.utc).isoformat(),
         }).eq("id", skill_id).eq("user_id", owner).eq(
             "content_sha256", expected_sha256
         ).eq("status", "pending").eq("enabled", False).execute().data
