@@ -231,3 +231,39 @@ def test_recover_supports_hermes_task_runtime_identity():
     assert lease.runtime_profile == "suly-hermes-task-v1"
     assert '"engine_id":"hermes-agent"' in seen["body"]
     assert '"runtime_profile":"suly-hermes-task-v1"' in seen["body"]
+
+
+def test_opencode_run_task_forwards_bounded_runtime_budget():
+    from app.services.runtime_broker_contract import RuntimeLease
+
+    runtime, task, run = str(uuid4()), str(uuid4()), str(uuid4())
+    seen = {}
+    gateway = f"/v1/runtime-gateway/{runtime}"
+
+    def handler(request):
+        if request.method == "POST" and request.url.path == gateway + "/api/session":
+            return httpx.Response(201, json={"data": {"id": "sesABC123"}})
+        if request.method == "POST" and request.url.path == gateway + "/execute":
+            seen["execute_body"] = request.read().decode()
+            return httpx.Response(200, json={
+                "runtime_id": runtime, "session_id": "sesABC123", "result": {"ok": True},
+            })
+        if request.method == "GET" and request.url.path == f"/v1/runtimes/{runtime}/results":
+            return httpx.Response(200, json={"changed_files": [], "deleted_paths": []})
+        raise AssertionError(f"unexpected request: {request.method} {request.url.path}")
+
+    client = provider(handler)
+    lease = RuntimeLease(
+        runtime_id=runtime, task_id=task, engine_run_id=run,
+        engine_id="opencode", base_url=ORIGIN, gateway_path=gateway,
+        access_token="t" * 48, expires_at=time() + 600,
+    )
+    try:
+        result = client.run_task(
+            lease, prompt="bounded task", title="Budget test", timeout_seconds=123,
+        )
+    finally:
+        client.close()
+
+    assert result["execution"]["session_id"] == "sesABC123"
+    assert '"timeout_seconds":123' in seen["execute_body"]
