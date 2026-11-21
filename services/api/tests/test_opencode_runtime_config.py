@@ -55,6 +55,12 @@ def test_hermes_runtime_configures_task_lease_provider(monkeypatch):
     class FakeProvider:
         def __init__(self, **kwargs):
             created.update(kwargs)
+        def acquire(self, *_args, **_kwargs):
+            raise NotImplementedError
+        def release(self, *_args, **_kwargs):
+            return True
+        def recover(self, *_args, **_kwargs):
+            raise NotImplementedError
         def close(self):
             return None
 
