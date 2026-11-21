@@ -84,6 +84,9 @@ def test_planner_supports_arabic_general_agent_prefix_when_enabled(monkeypatch):
         hermes_agent_isolation_confirmed=True,
         hermes_agent_base_url="http://hermes:8642",
         hermes_agent_api_key=object(),
+        runtime_provisioner_url="https://runtime-provisioner.internal",
+        runtime_provisioner_token=object(),
+        runtime_provisioner_allowed_origins=("https://hermes-runtime.internal:8443",),
     ))
     planned = plan_request("وكيل: راجع هذه المهمة")
     assert planned.steps[0]["input"]["prompt"] == "راجع هذه المهمة"
