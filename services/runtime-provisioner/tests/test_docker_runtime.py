@@ -205,7 +205,8 @@ def test_hermes_runtime_requires_exact_profile_and_uses_separate_locked_down_con
     runtime_root = Path(result["workspace_path"])
     assert (runtime_root / "workspace" / "src" / "app.py").read_text() == "print('hermes')"
     profile = (runtime_root / "hermes_home" / "config.yaml").read_text()
-    assert "api_server: []" in profile
+    assert "platform_toolsets:\n  api_server: []" in profile
+    assert "\\n" not in profile
     assert "memory_enabled: false" in profile
     assert "orchestrator_enabled: false" in profile
     assert Path(options["volumes"][str(runtime_root / "hermes_home")]["bind"]) == Path("/opt/data")
