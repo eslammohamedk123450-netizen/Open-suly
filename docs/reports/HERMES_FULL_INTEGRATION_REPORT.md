@@ -207,3 +207,52 @@ No remote database migration was applied during this audit. Do not run destructi
 | Overall Hermes integration | **IN PROGRESS** |
 
 This report must be updated after every implementation batch. The final report may be marked complete only when each claim is backed by code references and exact test/runtime evidence.
+
+
+## 11. Execution checkpoint 02 — read-only Skills Discovery vertical slice
+
+**Committed on `main`:**
+- `d3ab9eab3062bdab0f43c90a949bb005323bd1f1` — add bounded Hermes catalog adapter.
+- `9dddfd0bf5cc334925ce251ea471ccbd3951812e` — expose authenticated `GET /v1/agents/hermes/skills`.
+- `baa6a4114797a1f9357ce74d44d5c3d5fb593d5b` — add catalog adapter tests.
+- `26feb391ad622df187c00fb8a4e7b2897e34813b` — reject traversal-like skill identifiers.
+- `c8323740e120a68170afeefbbb10c970c3607399` — add traversal regression coverage.
+
+### Implemented
+
+- Added `services/api/app/services/hermes_catalog.py`.
+- Reads only the pinned Hermes `GET /v1/skills` catalog endpoint.
+- Requires both Hermes feature enablement and the isolation-attestation gate; also requires server-side URL and API key configuration.
+- Uses a fixed GET route, bounded timeout, no ambient proxy inheritance, no redirects, and a 256 KiB response ceiling.
+- Validates the upstream list envelope and caps catalog size at 500 entries.
+- Returns only `name`, `description`, and `category`; drops source paths and all other upstream fields.
+- Removes control characters, bounds text lengths, deduplicates names, and rejects absolute/traversal-like skill identifiers.
+- Exposes the metadata through authenticated `GET /v1/agents/hermes/skills`.
+- Upstream errors are redacted; no source content, install, update, or execution operation is exposed.
+
+### Deliberate limits
+
+- This is **discovery only**. It does not load or execute skills, install or update skills, write into Hermes storage, or grant tool permissions.
+- Skill descriptions are untrusted text and must be rendered as inert text by clients.
+- The endpoint remains unavailable while Hermes is disabled or isolation is unconfirmed.
+- The isolation setting is still an operator assertion, not proof of a per-task whole-process sandbox.
+
+### Verification
+
+- Added `services/api/tests/test_hermes_catalog.py` for schema validation, size limits, safe URL handling, explicit enablement gates, redaction, bounded metadata, and authentication.
+- The test file was authored and committed; **it has not been executed in this environment**.
+- GitHub combined status for `c8323740e120a68170afeefbbb10c970c3607399` currently reports a pending Railway service status context. This is not a completed test result and does not establish CI success or failure.
+
+### Updated capability state
+
+| Capability | Updated status |
+|---|---|
+| Skills discovery | **CODE IMPLEMENTED — CI/runtime verification pending** |
+| Skills source viewing | Not implemented |
+| Skills validation/linting | Not implemented in SULY |
+| Skills installation/update | Not implemented |
+| Skills execution and usage ledger | Not implemented |
+| Skills provenance/review workflow | Not implemented |
+| Skill tenant/project/task scopes | Not implemented |
+
+The overall integration remains **IN PROGRESS** and Hermes must remain disabled for user task execution.
