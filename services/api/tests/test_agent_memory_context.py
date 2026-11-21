@@ -23,7 +23,7 @@ class Client:
         raise AssertionError("the injected store should serve this focused unit test")
 
 
-def step()::
+def step():
     return SimpleNamespace(user_id=str(uuid4()), task_id=str(uuid4()))
 
 
