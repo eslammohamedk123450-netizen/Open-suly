@@ -49,6 +49,7 @@ jobs:
           test -s engines/opencode/upstream/package.json
           test -s engines/opencode/upstream/bun.lock || test -s engines/opencode/upstream/bun.lockb
           python engines/opencode/verify_upstream.py
+          python engines/hermes/verify_upstream.py
 
       - name: Build original Hermes runtime image
         run: docker build --pull=false -f engines/hermes/upstream/Dockerfile -t suly-hermes-agent:ci engines/hermes/upstream
