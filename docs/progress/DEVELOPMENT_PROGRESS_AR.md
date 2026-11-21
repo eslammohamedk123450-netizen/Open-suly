@@ -559,3 +559,17 @@ undefined
 - هذا تعديل دفاعي: لا يضيف تشغيل prompts أو workers أو user-facing engine start route، ولا يجعل OpenCode متاحًا. التطبيق ما زال يحتاج wiring آمن لمهام المستخدم، runtime provider durable، integration/staging tests، review approvals وworkspace apply.
 - لا يمكننا الادعاء أن الاختبار الجديد نفذ محليًا في هذه الجلسة؛ ينتظر CI بعد commit.
 - التقدير لم يتغير: اكتمال OpenCode **بنية/كود تجريبي فقط وليس end-user engine**. لا تشغيل live أو deploy أو migration.
+
+
+## جلسة تنفيذ — 2026-11-21 (Worker-to-OpenCode wiring)
+
+- راجعنا main وملفات task worker/tool registry، planner validation، OpenCode task executor، session/lifecycle stores، runtime provisioner، migrations، وCI قبل التعديل.
+- أضفنا operation allow-listed باسم `opencode.task.run` إلى Worker Tool Registry. المدخلات المقبولة محددة فقط: `project_id`, `prompt`, `title`; يحتاج grant صريح `engine.opencode.run`؛ يدعم cancel-aware handler؛ ولا يستطيع task input منح صلاحية لنفسه.
+- أضفنا handler worker ينشئ EngineRun عبر lease-protected RPC، يتحقق من project UUID والـprompt، يبني Workspace/Sessions/Lifecycle stores server-side، ويستدعي OpenCode Task Executor. لا يخرج للـtask checkpoint إلا summary محدود (run/session/change-set IDs/status/count) ولا يرجع محتوى الملفات أو tokens في worker output.
+- أضفنا إعداد opt-in لبناء HTTPS Runtime Provider/Broker داخل worker process فقط عند `SULY_WORKER_ENABLED=true` و`OPENCODE_ENABLED=true` مع اكتمال URL/token/origin allowlist. لا توجد مفاتيح أو credentials committed، وما زالت القيم الافتراضية false. API process وworker process لا يشغلان runtime افتراضيًا.
+- أضفنا API `POST /v1/tasks/{task_id}/opencode-plan` لإنشاء خطوة واحدة فقط لمهمة مملوكة للمستخدم ومربوطة بمشروع؛ لا يفعّل تشغيلًا أو يطبق migrations. يستخدم `plan_task` RPC الحالي ويستند إلى task.request.
+- أضفنا Cancel Event monitor في OpenCode executor: عند فقد worker lease أو إلغاء التعاون، يتم طلب release للـruntime attempt حتى لا يستمر تشغيل طويل خارج ملكية lease؛ guard يمنع اعتبار نتيجة متأخرة مكتملة عند cancel event.
+- حدّثنا tool approval catalog ليعرض OpenCode availability فقط عندما worker والمحرك وruntime provisioning config opt-in مكتمل. أضفنا/عدّلنا اختبارات planner, worker disabled gate, endpoint owner/project checks, tool catalog, registry, وcancel cleanup.
+- CI: Platform CI #1036 على commit `9ea8b25c` **success** (API tests + Client Typecheck/Web Export). أحدث CI #1037 على commit `bee29171` ما زال قيد التنفيذ وقت هذا التحديث؛ Repository baseline #1055 قيد التنفيذ؛ OpenCode upstream verification #176 pending. commits `bee29171` لا تزال تنتظر CI.
+- هذه wiring ليست تفعيل live execution: لا Worker بدأ، لا Runtime provisioner اتصل، لا Hermes/OpenCode agent live، لا DB migrations/deploy. الإطلاق الحقيقي يحتاج isolated staging، تطبيق migrations يدويًا بعد موافقة، ومراجعة عملية runtime release/interrupt وworker cancellation/recovery.
+- **المرحلة الحالية:** الكود أصبح يربط task plan -> worker operation -> OpenCode executor -> runtime lease -> lifecycle/session -> reviewable change set. باقي إغلاق الاعتمادية/المراجعة/التطبيق على Staging وواجهة العميل End-to-End والتحقق من نتائج CI الأخيرة، وليس فقط إنشاء wiring.
