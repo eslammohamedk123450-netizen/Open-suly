@@ -123,9 +123,9 @@ def plan_request(request: str) -> PlannedTask:
         if (
             not settings.worker_enabled
             or not settings.hermes_agent_enabled
-            or not settings.hermes_agent_isolation_confirmed
-            or not settings.hermes_agent_base_url
-            or settings.hermes_agent_api_key is None
+            or not settings.runtime_provisioner_url
+            or not settings.runtime_provisioner_token
+            or not settings.runtime_provisioner_allowed_origins
         ):
             raise UnsupportedTaskRequest(
                 "The general agent is unavailable until the isolated Hermes runtime is explicitly enabled."
