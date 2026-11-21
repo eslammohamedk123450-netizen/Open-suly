@@ -29,3 +29,32 @@ def test_migration_version_prefixes_are_unique_and_ordered():
     versions = [path.name.split("_", 1)[0] for path in files]
     assert len(versions) == len(set(versions)), "migration version prefixes must be unique"
     assert versions == sorted(versions), "migration filenames must be ordered by version"
+
+
+
+def test_engine_credit_ledger_is_owner_readable_and_server_written():
+    source = (MIGRATIONS / "20261121250000_credit_ledger_foundation.sql").read_text(encoding="utf-8")
+    for table in ("credit_accounts", "credit_reservations", "credit_ledger"):
+        assert f"alter table public.{table} enable row level security" in source
+        assert f"for select to authenticated using ((select auth.uid()) = user_id)" in source
+    assert "available_credits bigint not null default 0" in source
+    assert "grant select on public.credit_accounts, public.credit_reservations, public.credit_ledger" in source
+    assert "from public, anon, authenticated, service_role" in source
+    assert "grant execute on function public.reserve_engine_credits" in source
+    assert "grant execute on function public.settle_engine_credits" in source
+    assert "grant execute on function public.release_engine_credits" in source
+    assert "grant execute on function public.release_expired_engine_credit_reservations" in source
+    assert "grant insert" not in source.lower()
+    assert "grant update" not in source.lower()
+    assert "grant delete" not in source.lower()
+
+
+def test_expired_credit_holds_are_not_released_while_engine_run_is_running():
+    source = (MIGRATIONS / "20261121250000_credit_ledger_foundation.sql").read_text(encoding="utf-8")
+    expiry_function = source.split(
+        "create or replace function public.release_expired_engine_credit_reservations", 1
+    )[1]
+    assert "not exists (" in expiry_function
+    assert "er.status = 'running'" in expiry_function
+    assert "for update skip locked" in expiry_function
+    assert "limit p_batch_size" in expiry_function
