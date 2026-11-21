@@ -1,6 +1,5 @@
 -- Durable, owner-readable audit metadata for cross-engine handoffs.
--- Payloads and secrets are never stored here; only hashes, engine identities,
--- bounded budgets and lifecycle state cross the handoff ledger.
+-- Payloads, prompts, results, files and credentials are deliberately not stored.
 
 create table public.engine_handoffs (
   id uuid primary key,
@@ -24,7 +23,12 @@ create table public.engine_handoffs (
   output_bytes integer check (output_bytes is null or output_bytes between 0 and 64000),
   status text not null default 'running'
     check (status in ('running', 'completed', 'failed', 'cancelled')),
-  error_code text check (error_code is null or char_length(error_code) <= 80),
+  error_code text check (
+    error_code is null or (
+      char_length(error_code) between 1 and 80
+      and error_code ~ '^[a-z0-9_.-]+$'
+    )
+  ),
   created_at timestamptz not null default now(),
   completed_at timestamptz,
   constraint engine_handoffs_task_owner_fkey
@@ -34,6 +38,8 @@ create table public.engine_handoffs (
     check (source_engine_id <> target_engine_id),
   constraint engine_handoffs_parallel_budget_check
     check (max_parallel_children <= max_child_tasks),
+  constraint engine_handoffs_output_pair_check
+    check ((output_sha256 is null) = (output_bytes is null)),
   constraint engine_handoffs_terminal_timestamp_check
     check ((status = 'running') = (completed_at is null)),
   unique (target_step_id, target_attempt_count)
@@ -156,15 +162,15 @@ begin
   end if;
 
   insert into public.engine_handoffs (
-    id, task_id, user_id, source_step_id, target_step_id, target_attempt_count, source_run_id,
-    source_engine_id, target_engine_id, capability, depth,
+    id, task_id, user_id, source_step_id, target_step_id, target_attempt_count,
+    source_run_id, source_engine_id, target_engine_id, capability, depth,
     max_child_tasks, max_parallel_children, max_runtime_seconds,
     input_sha256, input_bytes
   ) values (
     p_handoff_id, p_task_id, p_user_id, p_source_step_id, p_target_step_id,
-    p_target_attempt_count, p_source_run_id, p_source_engine_id, p_target_engine_id, p_capability,
-    p_depth, p_max_child_tasks, p_max_parallel_children, p_max_runtime_seconds,
-    p_input_sha256, p_input_bytes
+    p_target_attempt_count, p_source_run_id, p_source_engine_id, p_target_engine_id,
+    p_capability, p_depth, p_max_child_tasks, p_max_parallel_children,
+    p_max_runtime_seconds, p_input_sha256, p_input_bytes
   )
   on conflict (target_step_id, target_attempt_count) do nothing;
 
@@ -205,12 +211,21 @@ begin
      or p_lease_token is null
      or p_status is null
      or p_status not in ('completed', 'failed', 'cancelled')
-     or (p_output_sha256 is not null and p_output_sha256 !~ '^[0-9a-f]{64}
+     or (p_output_sha256 is not null and p_output_sha256 !~ '^[0-9a-f]{64}$')
+     or (p_output_bytes is not null and p_output_bytes not between 0 and 64000)
+     or ((p_output_sha256 is null) <> (p_output_bytes is null))
+     or (p_error_code is not null and (
+       char_length(p_error_code) not between 1 and 80
+       or p_error_code !~ '^[a-z0-9_.-]+$'
+     )) then
     raise exception 'invalid_engine_handoff_result' using errcode = '22023';
   end if;
   if p_status = 'completed'
      and (p_target_run_id is null or p_output_sha256 is null or p_output_bytes is null) then
     raise exception 'completed_engine_handoff_requires_result_digest' using errcode = '22023';
+  end if;
+  if p_status in ('failed', 'cancelled') and p_error_code is null then
+    raise exception 'engine_handoff_failure_code_required' using errcode = '22023';
   end if;
 
   select h.*
@@ -234,6 +249,7 @@ begin
        and s.status = 'running'
        and s.lease_token = p_lease_token
        and s.lease_expires_at > now()
+       and s.attempt_count = v_handoff.target_attempt_count
   ) then
     return false;
   end if;
@@ -246,6 +262,7 @@ begin
        and r.step_id = p_target_step_id
        and r.user_id = v_handoff.user_id
        and r.engine_id = v_handoff.target_engine_id
+       and r.attempt_count = v_handoff.target_attempt_count
        and (
          (p_status = 'completed' and r.status = 'succeeded')
          or (p_status = 'failed' and r.status = 'failed')
@@ -272,176 +289,12 @@ $$;
 revoke all on function public.start_engine_handoff(
   uuid,uuid,uuid,uuid,uuid,integer,uuid,uuid,text,text,text,integer,integer,integer,integer,text,integer
 ) from public, anon, authenticated;
+grant execute on function public.start_engine_handoff(
+  uuid,uuid,uuid,uuid,uuid,integer,uuid,uuid,text,text,text,integer,integer,integer,integer,text,integer
+) to service_role;
 revoke all on function public.finish_engine_handoff(
   uuid,uuid,uuid,uuid,text,text,integer,text
 ) from public, anon, authenticated;
-grant execute on function public.start_engine_handoff(
-  uuid,uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,integer,integer,integer,integer,text,integer
-) to service_role;
-grant execute on function public.finish_engine_handoff(
-  uuid,uuid,uuid,uuid,text,text,integer,text
-) to service_role;
-
-comment on table public.engine_handoffs is
-  'Owner-readable metadata-only ledger for explicit sequential cross-engine handoffs. Prompts, raw outputs, workspace bytes and credentials are intentionally excluded.';
-)
-     or (p_output_bytes is not null and p_output_bytes not between 0 and 64000)
-     or ((p_output_sha256 is null) <> (p_output_bytes is null))
-     or (p_error_code is not null and (
-       char_length(p_error_code) > 80
-       or p_error_code !~ '^[a-z0-9_.-]+
-    raise exception 'invalid_engine_handoff_result' using errcode = '22023';
-  end if;
-  if p_status = 'completed'
-     and (p_target_run_id is null or p_output_sha256 is null or p_output_bytes is null) then
-    raise exception 'completed_engine_handoff_requires_result_digest' using errcode = '22023';
-  end if;
-
-  select h.*
-    into v_handoff
-    from public.engine_handoffs h
-   where h.id = p_handoff_id
-     and h.target_step_id = p_target_step_id
-     and h.status = 'running'
-   for update;
-
-  if not found then
-    return false;
-  end if;
-
-  if not exists (
-    select 1
-      from public.task_steps s
-     where s.id = p_target_step_id
-       and s.task_id = v_handoff.task_id
-       and s.user_id = v_handoff.user_id
-       and s.status = 'running'
-       and s.lease_token = p_lease_token
-       and s.lease_expires_at > now()
-  ) then
-    return false;
-  end if;
-
-  if p_target_run_id is not null and not exists (
-    select 1
-      from public.engine_runs r
-     where r.id = p_target_run_id
-       and r.task_id = v_handoff.task_id
-       and r.step_id = p_target_step_id
-       and r.user_id = v_handoff.user_id
-       and r.engine_id = v_handoff.target_engine_id
-       and (
-         (p_status = 'completed' and r.status = 'succeeded')
-         or (p_status = 'failed' and r.status = 'failed')
-         or (p_status = 'cancelled' and r.status = 'cancelled')
-       )
-  ) then
-    raise exception 'engine_handoff_target_run_mismatch' using errcode = '55000';
-  end if;
-
-  update public.engine_handoffs
-     set target_run_id = p_target_run_id,
-         status = p_status,
-         output_sha256 = p_output_sha256,
-         output_bytes = p_output_bytes,
-         error_code = p_error_code,
-         completed_at = now()
-   where id = p_handoff_id
-     and status = 'running';
-
-  return true;
-end;
-$$;
-
-revoke all on function public.start_engine_handoff(
-  uuid,uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,integer,integer,integer,integer,text,integer
-) from public, anon, authenticated;
-revoke all on function public.finish_engine_handoff(
-  uuid,uuid,uuid,uuid,text,text,integer,text
-) from public, anon, authenticated;
-grant execute on function public.start_engine_handoff(
-  uuid,uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,integer,integer,integer,integer,text,integer
-) to service_role;
-grant execute on function public.finish_engine_handoff(
-  uuid,uuid,uuid,uuid,text,text,integer,text
-) to service_role;
-
-comment on table public.engine_handoffs is
-  'Owner-readable metadata-only ledger for explicit sequential cross-engine handoffs. Prompts, raw outputs, workspace bytes and credentials are intentionally excluded.';
-
-     )) then
-    raise exception 'invalid_engine_handoff_result' using errcode = '22023';
-  end if;
-  if p_status = 'completed'
-     and (p_target_run_id is null or p_output_sha256 is null or p_output_bytes is null) then
-    raise exception 'completed_engine_handoff_requires_result_digest' using errcode = '22023';
-  end if;
-
-  select h.*
-    into v_handoff
-    from public.engine_handoffs h
-   where h.id = p_handoff_id
-     and h.target_step_id = p_target_step_id
-     and h.status = 'running'
-   for update;
-
-  if not found then
-    return false;
-  end if;
-
-  if not exists (
-    select 1
-      from public.task_steps s
-     where s.id = p_target_step_id
-       and s.task_id = v_handoff.task_id
-       and s.user_id = v_handoff.user_id
-       and s.status = 'running'
-       and s.lease_token = p_lease_token
-       and s.lease_expires_at > now()
-  ) then
-    return false;
-  end if;
-
-  if p_target_run_id is not null and not exists (
-    select 1
-      from public.engine_runs r
-     where r.id = p_target_run_id
-       and r.task_id = v_handoff.task_id
-       and r.step_id = p_target_step_id
-       and r.user_id = v_handoff.user_id
-       and r.engine_id = v_handoff.target_engine_id
-       and (
-         (p_status = 'completed' and r.status = 'succeeded')
-         or (p_status = 'failed' and r.status = 'failed')
-         or (p_status = 'cancelled' and r.status = 'cancelled')
-       )
-  ) then
-    raise exception 'engine_handoff_target_run_mismatch' using errcode = '55000';
-  end if;
-
-  update public.engine_handoffs
-     set target_run_id = p_target_run_id,
-         status = p_status,
-         output_sha256 = p_output_sha256,
-         output_bytes = p_output_bytes,
-         error_code = p_error_code,
-         completed_at = now()
-   where id = p_handoff_id
-     and status = 'running';
-
-  return true;
-end;
-$$;
-
-revoke all on function public.start_engine_handoff(
-  uuid,uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,integer,integer,integer,integer,text,integer
-) from public, anon, authenticated;
-revoke all on function public.finish_engine_handoff(
-  uuid,uuid,uuid,uuid,text,text,integer,text
-) from public, anon, authenticated;
-grant execute on function public.start_engine_handoff(
-  uuid,uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,integer,integer,integer,integer,text,integer
-) to service_role;
 grant execute on function public.finish_engine_handoff(
   uuid,uuid,uuid,uuid,text,text,integer,text
 ) to service_role;
