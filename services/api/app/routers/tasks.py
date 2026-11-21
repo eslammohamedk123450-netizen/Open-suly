@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.config import get_settings
+from app.core.config import get_settings
 from app.core.supabase import get_supabase_admin_client
 from app.services.agent_planner import UnsupportedTaskRequest, plan_request, validate_agent_plan
 from app.services.hermes_agent import HermesAgentError, HermesAgentUnavailable, get_agent_approval_details, resolve_agent_approval, steer_agent_run
@@ -194,6 +195,15 @@ def auto_plan_task(
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Create a deterministic plan only for an operation the worker can run."""
+    settings = get_settings()
+    if not (
+        settings.worker_enabled
+        and settings.opencode_enabled
+        and settings.runtime_provisioner_url
+        and settings.runtime_provisioner_token
+        and settings.runtime_provisioner_allowed_origins
+    ):
+        raise HTTPException(status_code=503, detail="OpenCode runtime is not configured or enabled.")
     client = _admin_client()
     try:
         with client:
