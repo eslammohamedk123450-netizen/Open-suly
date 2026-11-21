@@ -26,7 +26,7 @@ def make_step(input_data):
 
 def test_registry_exposes_only_registered_tool_metadata():
     tools = TOOL_REGISTRY.describe()
-    assert [tool["name"] for tool in tools] == ["ai.respond", "hermes.agent.turn", "opencode.task.run", "text.analyze"]
+    assert [tool["name"] for tool in tools] == ["ai.respond", "engine.collaborate", "hermes.agent.turn", "opencode.task.run", "text.analyze"]
     by_name = {tool["name"]: tool for tool in tools}
     assert by_name["ai.respond"]["requires_approval"] is True
     assert by_name["text.analyze"]["requires_approval"] is False
@@ -39,6 +39,12 @@ def test_registry_exposes_only_registered_tool_metadata():
     assert by_name["hermes.agent.turn"]["required_input_fields"] == ["prompt"]
     assert by_name["hermes.agent.turn"]["max_input_bytes"] == 20_100
     assert by_name["hermes.agent.turn"]["max_output_bytes"] == 52_000
+    assert by_name["engine.collaborate"]["requires_approval"] is True
+    assert by_name["engine.collaborate"]["permission_scope"] == "engine.delegate"
+    assert by_name["engine.collaborate"]["allowed_input_fields"] == [
+        "capability", "max_runtime_seconds", "max_child_tasks", "max_parallel_children",
+        "max_input_bytes", "source_step_key", "target_engine", "title", "prompt", "project_id"
+    ]
     assert by_name["text.analyze"]["allowed_input_fields"] == ["text"]
 
 
