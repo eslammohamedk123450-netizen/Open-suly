@@ -58,6 +58,7 @@ The bridge uses Hermes' native `/v1/runs` admission and status endpoints, a stab
 - `ENGINE_RECONCILER_ENABLED` — opt-in orphaned-run/runtime cleanup worker.
 
 For Hermes, the provisioner must also return the exact runtime profile `suly-hermes-task-v1`; SULY rejects a lease that does not attest this profile. The profile contract requires a unique whole-process runtime per task attempt; no shared Hermes process or host filesystem; terminal, browser, arbitrary MCP, package-install, and other privileged toolsets disabled unless a separately reviewed SULY grant explicitly enables them; network egress denied by default except the configured model gateway; bounded CPU, memory, PID count, storage, and wall time; and authenticated recover/release semantics that revoke credentials and tear down the complete process tree. A gateway lease must route only to the matching runtime. The profile string is an authenticated provider contract, not proof that the provider's OS-level enforcement has been deployed or tested.
+ The exact SULY control-plane request/response and Hermes gateway routes are specified in [the runtime provisioner OpenAPI contract](../../docs/runtime-provisioner-openapi.yaml).
 
 `HERMES_AGENT_ISOLATION_CONFIRMED` remains an operator attestation gate; it is not proof of isolation. Keep `HERMES_AGENT_ENABLED=false` until the provisioner is deployed and its security controls are tested. Do not use the single-service Compose profile or its named volume as a multi-tenant runtime.
 
