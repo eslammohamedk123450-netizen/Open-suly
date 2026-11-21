@@ -10,6 +10,7 @@ from app.services.hermes_catalog import (
     HermesCatalogError,
     HermesCatalogUnavailable,
     get_hermes_skill_catalog,
+    get_hermes_toolset_catalog,
 )
 from app.worker_runtime import build_agent_manager, build_engine_registry
 
@@ -53,6 +54,19 @@ async def list_hermes_skills(
     """Return bounded skill metadata only; never return skill source or install controls."""
     try:
         return await get_hermes_skill_catalog()
+    except HermesCatalogUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except HermesCatalogError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get("/hermes/toolsets")
+async def list_hermes_toolsets(
+    _user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Return bounded toolset metadata only; never expose config secrets or execute tools."""
+    try:
+        return await get_hermes_toolset_catalog()
     except HermesCatalogUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except HermesCatalogError as exc:
