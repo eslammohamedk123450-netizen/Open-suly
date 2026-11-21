@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.config import get_settings
+from app.core.rate_limit import rate_limit
 from app.core.supabase import get_supabase_admin_client
 from app.services.tool_approvals import ToolApprovalStore
 from app.services.ai_gateway import (
@@ -74,6 +75,7 @@ class ChatRespondRequest(BaseModel):
 async def respond_to_message(
     request: ChatRespondRequest,
     user: AuthenticatedUser = Depends(get_current_user),
+    _rate_limit: None = Depends(rate_limit("chat_respond")),
 ) -> dict[str, Any]:
     """Generate and persist one assistant reply for an owned user message."""
     admin = get_supabase_admin_client()
@@ -236,6 +238,7 @@ def list_conversations(
 def create_conversation(
     request: CreateConversationRequest,
     user: AuthenticatedUser = Depends(get_current_user),
+    _rate_limit: None = Depends(rate_limit("chat_conversations")),
 ) -> dict[str, Any]:
     title = (request.title or "محادثة جديدة").strip()
     if not title or len(title) > 200:
@@ -302,6 +305,7 @@ def add_user_message(
     conversation_id: UUID,
     request: AddUserMessageRequest,
     user: AuthenticatedUser = Depends(get_current_user),
+    _rate_limit: None = Depends(rate_limit("chat_messages")),
 ) -> dict[str, Any]:
     content = request.content.strip()
     if not content or len(content) > 100000:
