@@ -519,3 +519,27 @@ The overall integration remains **IN PROGRESS**.
 | Long-term user/project memory | Not implemented |
 
 The overall integration remains **IN PROGRESS**.
+
+
+## 20. Execution checkpoint 11 — Hermes skill and toolset discovery UI
+
+### Implemented
+
+- Added typed client API functions for the authenticated read-only Hermes skills and toolsets catalogs.
+- The SULY Agent screen now displays up to 20 installed skill metadata entries and up to 20 toolsets, including their names, descriptions, categories, enabled flags, and bounded tool names.
+- The UI explicitly labels this information as descriptive discovery only. It does not offer install, update, source editing, or tool execution controls.
+- Upstream catalog strings remain inert text; the backend continues to normalize and size-limit the metadata.
+
+### Scope boundary
+
+- Catalog discovery still depends on the configured read-only Hermes catalog endpoint and may be unavailable when the legacy catalog sidecar is disabled.
+- The catalog does not prove that a skill or toolset is present or enabled in a particular task-scoped runtime.
+- Skill source inspection, signature/provenance review, install/update/uninstall, per-user skill storage, and execution grants remain unimplemented.
+
+### Verification
+
+- Platform CI API tests at commit `24849d405b21fb15bde3eb3882a6188fdfea7d2f`: **665 passed, 5 warnings**.
+- Repository baseline checks for that commit: **passed**.
+- Client typecheck/web export was still running when this checkpoint was recorded.
+
+The overall integration remains **IN PROGRESS**.
