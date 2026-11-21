@@ -514,7 +514,7 @@ def build_tool_registry() -> ToolRegistry:
         name="hermes.agent.turn",
         description="Run one bounded user prompt through the optional Hermes Agent engine",
         permission_scope="agent.hermes.run",
-        allowed_input_fields=frozenset({"prompt"}),
+        allowed_input_fields=frozenset({"prompt", "runtime_budget_seconds"}),
         required_input_fields=frozenset({"prompt"}),
         max_input_bytes=20_100,
         handler=hermes_agent_turn,
