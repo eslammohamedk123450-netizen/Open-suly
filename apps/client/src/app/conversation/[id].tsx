@@ -72,6 +72,9 @@ export default function ConversationScreen() {
         <View style={styles.header}>
           <Pressable style={styles.backButton} onPress={() => router.replace("/projects")}><Text style={styles.backText}>→</Text></Pressable>
           <View style={styles.headerCopy}><Text style={styles.title}>محادثة SULY</Text><Text style={styles.subtitle}>مساحة محادثة خاصة بحسابك</Text></View>
+          <Pressable style={styles.permissionButton} onPress={() => router.push({ pathname: "/agent", params: { conversationId: id } })}>
+            <Text style={styles.permissionText}>الوكيل</Text>
+          </Pressable>
           <View style={styles.logo}><Text style={styles.logoText}>S</Text></View>
         </View>
         <ScrollView contentContainerStyle={styles.messages} keyboardShouldPersistTaps="handled">
