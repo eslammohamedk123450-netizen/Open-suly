@@ -68,6 +68,20 @@ type ToolCatalogItem = {
   available: boolean;
 };
 
+export type HermesSkill = {
+  name: string;
+  description: string;
+  category: string;
+};
+
+export type HermesToolset = {
+  name: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+  tools: string[];
+};
+
 export type AgentProfile = {
   agent_id: string;
   display_name: string;
@@ -106,6 +120,16 @@ export async function getAgentToolCatalog(): Promise<ToolCatalogItem[]> {
 
 export async function getAgentCatalog(): Promise<AgentProfile[]> {
   const payload = await request<{ items: AgentProfile[] }>("/v1/agents");
+  return payload.items ?? [];
+}
+
+export async function getHermesSkillCatalog(): Promise<HermesSkill[]> {
+  const payload = await request<{ items: HermesSkill[] }>("/v1/agents/hermes/skills");
+  return payload.items ?? [];
+}
+
+export async function getHermesToolsetCatalog(): Promise<HermesToolset[]> {
+  const payload = await request<{ items: HermesToolset[] }>("/v1/agents/hermes/toolsets");
   return payload.items ?? [];
 }
 
