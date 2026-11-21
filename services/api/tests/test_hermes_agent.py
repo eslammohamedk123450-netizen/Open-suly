@@ -135,6 +135,55 @@ def test_safe_run_event_drops_untrusted_or_content_bearing_events(payload):
     assert hermes_agent._safe_run_event(payload, "run_safe_123") is None
 
 
+def test_safe_run_event_projects_only_bounded_subagent_metadata():
+    result = hermes_agent._safe_run_event({
+        "event": "subagent.start",
+        "run_id": "run_safe_123",
+        "subagent_id": "child_01",
+        "delegation_id": "delegation_01",
+        "parent_id": "parent_01",
+        "child_session_id": "session_01",
+        "status": "running",
+        "task_index": 1,
+        "task_count": 3,
+        "depth": 1,
+        "tool_count": 2,
+        "input_tokens": 1200,
+        "output_tokens": 300,
+        "duration_seconds": 1.25,
+        "goal": "private delegation prompt",
+        "summary": "private child output",
+    }, "run_safe_123")
+    assert result == {
+        "event": "subagent.start",
+        "metadata": {
+            "subagent_id": "child_01",
+            "delegation_id": "delegation_01",
+            "parent_id": "parent_01",
+            "child_session_id": "session_01",
+            "status": "running",
+            "task_index": 1,
+            "task_count": 3,
+            "depth": 1,
+            "tool_count": 2,
+            "input_tokens": 1200,
+            "output_tokens": 300,
+            "duration_seconds": 1.25,
+        },
+    }
+
+
+@pytest.mark.parametrize("payload", [
+    {"event": "subagent.start", "run_id": "run_safe_123"},
+    {"event": "subagent.complete", "run_id": "run_safe_123", "subagent_id": "../escape"},
+    {"event": "subagent.start", "run_id": "run_safe_123", "subagent_id": "child", "depth": True},
+    {"event": "subagent.start", "run_id": "run_safe_123", "subagent_id": "child", "duration_seconds": 86401},
+    {"event": "subagent.complete", "run_id": "run_safe_123", "subagent_id": "child", "status": "unknown"},
+])
+def test_safe_run_event_drops_invalid_subagent_metadata(payload):
+    assert hermes_agent._safe_run_event(payload, "run_safe_123") is None
+
+
 @pytest.mark.parametrize("payload", [
     {"event": "approval.request", "run_id": "run_safe_123"},
     {"event": "approval.request", "run_id": "run_safe_123", "request_id": "bad\nrequest"},
