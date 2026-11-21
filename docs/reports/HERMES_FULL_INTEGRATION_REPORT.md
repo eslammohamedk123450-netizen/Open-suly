@@ -627,3 +627,10 @@ The overall integration remains **IN PROGRESS**.
 This is an API contract, not the external provisioner implementation. No Docker/containerd controller, runtime gateway, token store, network policy enforcement, or deployment manifest has been added. The integration cannot be activated in production until a trusted provider implements this contract and passes the staging conformance/security tests.
 
 The overall integration remains **IN PROGRESS**.
+
+
+## 24. Execution checkpoint 15 — staging activation gate
+
+Added `docs/HERMES_RUNTIME_PROVISIONER_ACTIVATION_CHECKLIST.md` as the operational gate for the external provider. It covers the dedicated host boundary, the mandatory `suly-hermes-task-v1` profile, toolset/network restrictions, lease/token lifecycle, worker-crash recovery, process-tree teardown, staging conformance tests, Supabase migration order, and controlled rollout.
+
+This checklist is a deployment plan only. It does not indicate that a provisioner exists or that any checklist item has passed against a live runtime.
