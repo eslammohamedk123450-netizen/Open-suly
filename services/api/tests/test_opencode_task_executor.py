@@ -21,6 +21,7 @@ class Workspace:
 class Broker:
     def __init__(self):
         self.calls = []
+        self.release_calls = []
 
     def run_task(self, task_id, run_id, engine_id, *, files, prompt, title, timeout_seconds=900, on_lease_acquired=None, on_session_created=None):
         self.calls.append((task_id, run_id, engine_id, files, prompt, title, timeout_seconds))
@@ -32,6 +33,11 @@ class Broker:
                 "changed_count": 1,
             },
         }
+
+    def release_attempt(self, task_id, run_id, engine_id):
+        # نحاكي عقد إغلاق lease بعد تحويل النتيجة إلى مجموعة تغييرات قابلة للمراجعة.
+        self.release_calls.append((task_id, run_id, engine_id))
+        return True
 
 
 class Sessions:
@@ -56,6 +62,7 @@ def test_executor_sends_project_snapshot_and_returns_reviewable_changes():
     assert result["changes"]["deleted_paths"] == ["old.py"]
     assert result["requires_review"] is True
     assert sessions.kwargs["workspace_revision"] == "a" * 64
+    assert broker.release_calls == [(task_id, run_id, "opencode")]
 
 
 class Lifecycle:

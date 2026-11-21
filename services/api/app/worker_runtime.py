@@ -351,9 +351,6 @@ def _hermes_approved_skill_context(prompt: str, skills: list[dict[str, Any]]) ->
 
 
 def _hermes_project_workspace_files(step: ClaimedStep) -> list[dict[str, str]] | None:
-
-
-def _hermes_project_workspace_files(step: ClaimedStep) -> list[dict[str, str]] | None:
     """Create a bounded, owner-scoped project snapshot for one isolated Hermes runtime."""
     client = get_supabase_admin_client()
     if client is None or not callable(getattr(client, "table", None)):
