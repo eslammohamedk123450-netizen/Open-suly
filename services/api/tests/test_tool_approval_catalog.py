@@ -84,6 +84,9 @@ def test_catalog_reports_hermes_available_only_when_runtime_is_configured(monkey
         hermes_agent_isolation_confirmed = True
         hermes_agent_base_url = "http://hermes.internal:8642"
         hermes_agent_api_key = object()
+        runtime_provisioner_url = "https://runtime-provisioner.internal"
+        runtime_provisioner_token = object()
+        runtime_provisioner_allowed_origins = ("https://hermes-runtime.internal:8443",)
 
     monkeypatch.setattr(approvals_router, "_store", lambda: FakeStore())
     monkeypatch.setattr(approvals_router, "get_settings", lambda: FakeSettings())
