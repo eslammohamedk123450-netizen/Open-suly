@@ -37,6 +37,8 @@ _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled", "interrupted
 _MAX_PROMPT_CHARS = 20_000
 _MAX_SSE_EVENT_BYTES = 256 * 1024
 _RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+_SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,180}$")
+_TOOL_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_.-]{0,79}$")
 _SSE_EVENT_NAMES = frozenset({
     "tool.started", "tool.completed", "subagent.start", "subagent.complete",
     "run.queued", "run.completed", "run.failed", "run.cancelled",
@@ -107,6 +109,16 @@ def _safe_run_event(payload: object, expected_run_id: str) -> dict[str, object] 
         ):
             return None
         summary["approval_request_id"] = request_id
+        if name == "approval.request":
+            tool_id = payload.get("tool_id") or payload.get("tool_name") or payload.get("name")
+            if not isinstance(tool_id, str):
+                display_target = payload.get("display_target")
+                if isinstance(display_target, str) and display_target.startswith("<") and "> " in display_target:
+                    tool_id = display_target[1:display_target.index(">")]
+            if not isinstance(tool_id, str) and isinstance(payload.get("command"), str):
+                tool_id = "terminal"
+            if isinstance(tool_id, str) and _TOOL_ID_PATTERN.fullmatch(tool_id):
+                summary["tool_id"] = tool_id
         if name == "approval.responded":
             choice = payload.get("choice")
             if not isinstance(choice, str) or choice not in {"once", "deny"}:
@@ -242,6 +254,7 @@ def run_agent_turn(
     idempotency_key: str | None = None,
     on_run_started: Callable[[str], bool] | None = None,
     on_event: Callable[[dict[str, object]], bool | None] | None = None,
+    on_session_created: Callable[[str], bool | None] | None = None,
     runtime_lease: RuntimeLease | None = None,
     task_id: str | None = None,
     engine_run_id: str | None = None,
@@ -288,7 +301,27 @@ def run_agent_turn(
         headers = {"Authorization": f"Bearer {token}"}
         deadline = asyncio.get_running_loop().time() + timeout
         run_id: str | None = None
+        upstream_session_id: str | None = None
         event_task: asyncio.Task | None = None
+
+        def capture_session(payload: dict[str, object]) -> None:
+            nonlocal upstream_session_id
+            raw_session_id = payload.get("session_id")
+            if raw_session_id is None:
+                return
+            if not isinstance(raw_session_id, str) or not _SESSION_ID_PATTERN.fullmatch(raw_session_id):
+                raise HermesAgentError("Hermes returned an invalid session identifier.")
+            if upstream_session_id is not None and upstream_session_id != raw_session_id:
+                raise HermesAgentError("Hermes changed session identity during one run.")
+            if upstream_session_id is None:
+                if on_session_created is not None:
+                    try:
+                        persisted = on_session_created(raw_session_id)
+                    except Exception as exc:
+                        raise HermesAgentError("SULY could not persist the Hermes session.") from exc
+                    if persisted is False:
+                        raise HermesAgentError("SULY refused the Hermes session identity.")
+                upstream_session_id = raw_session_id
 
         async with httpx.AsyncClient(timeout=per_request_timeout, trust_env=False, follow_redirects=False) as client:
             try:
@@ -303,6 +336,7 @@ def run_agent_turn(
                 run_id = admission.get("run_id") if isinstance(admission, dict) else None
                 if not isinstance(run_id, str) or not _RUN_ID_PATTERN.fullmatch(run_id):
                     raise HermesAgentError("Hermes returned an invalid run identifier.")
+                capture_session(admission)
 
                 # لا نكمل التنفيذ قبل حفظ المعرف الخارجي داخل سجل المحاولة في SULY.
                 # إذا فشل RPC بسبب انقطاع مؤقت، نعيد محاولة الحفظ idempotently قبل إيقاف التشغيل.
@@ -349,6 +383,7 @@ def run_agent_turn(
                             status_payload = status_response.json()
                             if not isinstance(status_payload, dict):
                                 raise HermesAgentError("Hermes returned an invalid run status.")
+                            capture_session(status_payload)
                             status = status_payload.get("status")
                             if status in _TERMINAL_STATUSES:
                                 if status == "cancelled":
@@ -362,7 +397,7 @@ def run_agent_turn(
                         if status == "completed":
                             content = status_payload.get("output")
                             if isinstance(content, str) and content.strip():
-                                return {"engine": "hermes-agent", "content": content[:settings.hermes_agent_max_output_chars]}
+                                return {"engine": "hermes-agent", "content": content[:settings.hermes_agent_max_output_chars], **({"session_id": upstream_session_id} if upstream_session_id else {})}
                             raise HermesAgentError("Hermes returned an invalid completed run.")
 
                     # نوقف الانتظار قبل تجاوز المهلة الكلية للمهمة.
@@ -382,6 +417,7 @@ def run_agent_turn(
                     status_payload = status_response.json()
                     if not isinstance(status_payload, dict):
                         raise HermesAgentError("Hermes returned an invalid run status.")
+                    capture_session(status_payload)
                     status = status_payload.get("status")
                     if status == "completed":
                         output = status_payload.get("output")
@@ -389,7 +425,7 @@ def run_agent_turn(
                             raise HermesAgentError("Hermes returned an empty run output.")
                         if len(output) > settings.hermes_agent_max_output_chars:
                             raise HermesAgentError("Hermes run output exceeded the configured limit.")
-                        return {"engine": "hermes-agent", "content": output}
+                        return {"engine": "hermes-agent", "content": output, **({"session_id": upstream_session_id} if upstream_session_id else {})}
                     if status in {"failed", "interrupted", "unknown"}:
                         raise HermesAgentError("Hermes run did not complete successfully.")
                     if status == "cancelled":
@@ -412,6 +448,47 @@ def run_agent_turn(
                         await event_task
 
     return asyncio.run(request())
+
+
+
+def respond_run_approval(
+    *, runtime_lease: RuntimeLease, task_id: str, engine_run_id: str,
+    run_id: str, request_id: str, choice: str,
+) -> bool:
+    """Resolve one exact upstream approval using the task-scoped runtime lease."""
+    if not _RUN_ID_PATTERN.fullmatch(run_id or ""):
+        raise ValueError("hermes_run_id_invalid")
+    if (
+        not isinstance(request_id, str) or not 1 <= len(request_id) <= 256
+        or not request_id.isascii()
+        or any(not (ch.isalnum() or ch in "_-.:@") for ch in request_id)
+    ):
+        raise ValueError("hermes_approval_request_id_invalid")
+    if choice not in {"once", "deny"}:
+        raise ValueError("hermes_approval_choice_invalid")
+    settings = get_settings()
+    base_url, token = _runtime_credentials(
+        settings, runtime_lease=runtime_lease, task_id=task_id, engine_run_id=engine_run_id
+    )
+    try:
+        with httpx.Client(
+            base_url=base_url,
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+            timeout=httpx.Timeout(10.0, connect=3.0),
+            follow_redirects=False, trust_env=False,
+        ) as client:
+            response = client.post(
+                f"/v1/runs/{run_id}/approval",
+                json={"choice": choice, "request_id": request_id},
+            )
+            response.raise_for_status()
+            payload = response.json()
+            return (
+                isinstance(payload, dict) and payload.get("run_id") == run_id
+                and payload.get("choice") == choice and int(payload.get("resolved", 0)) >= 1
+            )
+    except (httpx.HTTPError, ValueError, TypeError) as exc:
+        raise HermesAgentError("Hermes approval response could not be confirmed.") from exc
 
 
 def stop_agent_run(

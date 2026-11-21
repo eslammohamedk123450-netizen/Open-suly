@@ -157,7 +157,7 @@ class RuntimeLease:
 class RuntimeLeaseProvider(Protocol):
     """Provider must enforce fresh runtime identity globally across workers."""
 
-    def acquire(self, task_id: str, engine_run_id: str, engine_id: str, *, files: list[dict] | None = None) -> RuntimeLease:
+    def acquire(self, task_id: str, engine_run_id: str, engine_id: str, *, files: list[dict] | None = None, skills: list[dict] | None = None) -> RuntimeLease:
         ...
 
     def run_task(
@@ -209,9 +209,30 @@ class TaskScopedRuntimeBroker:
         self._pending_attempts: set[tuple[str, str, str]] = set()
         self._releasing_runtime_ids: set[str] = set()
 
-    def acquire(self, task_id: str, engine_run_id: str, engine_id: str, *, files: list[dict] | None = None) -> RuntimeLease:
+    def acquire(self, task_id: str, engine_run_id: str, engine_id: str, *, files: list[dict] | None = None, skills: list[dict] | None = None) -> RuntimeLease:
         if files is not None and (not isinstance(files, list) or len(files) > 200):
             raise ValueError("runtime_workspace_snapshot_invalid")
+        if skills is not None:
+            if not isinstance(skills, list) or len(skills) > 30:
+                raise ValueError("runtime_skill_snapshot_invalid")
+            total_skill_bytes = 0
+            for item in skills:
+                if not isinstance(item, dict) or set(item) != {"name", "content_utf8", "sha256", "content_bytes"}:
+                    raise ValueError("runtime_skill_snapshot_invalid")
+                name, body = item.get("name"), item.get("content_utf8")
+                digest, byte_count = item.get("sha256"), item.get("content_bytes")
+                if not isinstance(name, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", name):
+                    raise ValueError("runtime_skill_name_invalid")
+                if not isinstance(body, str) or not isinstance(byte_count, int) or isinstance(byte_count, bool):
+                    raise ValueError("runtime_skill_content_invalid")
+                encoded = body.encode("utf-8")
+                if len(encoded) != byte_count or len(encoded) > 262144:
+                    raise ValueError("runtime_skill_content_invalid")
+                if not isinstance(digest, str) or hashlib.sha256(encoded).hexdigest() != digest:
+                    raise ValueError("runtime_skill_digest_mismatch")
+                total_skill_bytes += len(encoded)
+                if total_skill_bytes > 1024 * 1024:
+                    raise ValueError("runtime_skill_snapshot_too_large")
         attempt = (task_id, engine_run_id, engine_id)
         with self._lock:
             if attempt in self._seen_attempts or attempt in self._pending_attempts:
@@ -219,10 +240,12 @@ class TaskScopedRuntimeBroker:
             self._pending_attempts.add(attempt)
 
         try:
-            if files is None:
-                lease = self._provider.acquire(task_id, engine_run_id, engine_id)
-            else:
-                lease = self._provider.acquire(task_id, engine_run_id, engine_id, files=files)
+            acquire_kwargs: dict[str, Any] = {}
+            if files is not None:
+                acquire_kwargs["files"] = files
+            if skills is not None:
+                acquire_kwargs["skills"] = skills
+            lease = self._provider.acquire(task_id, engine_run_id, engine_id, **acquire_kwargs)
             if not isinstance(lease, RuntimeLease):
                 raise RuntimeError("runtime_provider_returned_invalid_lease")
             try:

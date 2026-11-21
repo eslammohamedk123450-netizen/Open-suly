@@ -183,6 +183,7 @@ class DockerTaskRuntimeManager:
         engine_id: str,
         files: list[dict[str, Any]],
         runtime_profile: str | None = None,
+        skills: list[dict[str, Any]] | None = None,
         access_token_factory: Callable[[str, str, str], str] | None = None,
     ) -> dict[str, Any]:
         task_id = _canonical_uuid(task_id)
@@ -217,9 +218,11 @@ class DockerTaskRuntimeManager:
                 # SULY owns conversation context and future delegated child tasks.
                 hermes_config = (
                     "platform_toolsets:\n"
-                    "  api_server: []\n"
+                    "  api_server: [terminal, file]\n"
+                    "approvals:\n"
+                    "  mode: manual\n"
                     "agent:\n"
-                    "  disabled_toolsets: [terminal, browser, computer_use, file, web, mcp, delegate_task, skills, memory]\n"
+                    "  disabled_toolsets: [browser, computer_use, web, mcp, delegate_task, memory]\n"
                     "  environment_probe: false\n"
                     "terminal:\n"
                     "  cwd: /workspace\n"
@@ -237,6 +240,34 @@ class DockerTaskRuntimeManager:
                     "  max_concurrent_children: 1\n"
                     "  oneshot_max_children: 0\n"
                 )
+                # Only owner-approved, digest-verified SKILL.md files are staged.
+                if skills is not None:
+                    if not isinstance(skills, list) or len(skills) > 30:
+                        raise ValueError("runtime_skill_snapshot_invalid")
+                    skill_root = hermes_home / "skills"
+                    skill_root.mkdir(mode=0o700, exist_ok=True)
+                    total_skill_bytes = 0
+                    for skill in skills:
+                        if not isinstance(skill, dict) or set(skill) != {"name", "content_utf8", "sha256", "content_bytes"}:
+                            raise ValueError("runtime_skill_snapshot_invalid")
+                        name, body = skill["name"], skill["content_utf8"]
+                        digest, byte_count = skill["sha256"], skill["content_bytes"]
+                        if not isinstance(name, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", name):
+                            raise ValueError("runtime_skill_name_invalid")
+                        if not isinstance(body, str) or not isinstance(byte_count, int) or isinstance(byte_count, bool):
+                            raise ValueError("runtime_skill_content_invalid")
+                        encoded = body.encode("utf-8")
+                        if len(encoded) != byte_count or len(encoded) > 262144 or hashlib.sha256(encoded).hexdigest() != digest:
+                            raise ValueError("runtime_skill_digest_mismatch")
+                        total_skill_bytes += len(encoded)
+                        if total_skill_bytes > 1024 * 1024:
+                            raise ValueError("runtime_skill_snapshot_too_large")
+                        skill_dir = skill_root / name
+                        skill_dir.mkdir(mode=0o700, exist_ok=False)
+                        os.chmod(skill_dir, 0o700)
+                        fd_skill = os.open(skill_dir / "SKILL.md", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                        with os.fdopen(fd_skill, "w", encoding="utf-8") as stream:
+                            stream.write(body)
                 config_path = hermes_home / "config.yaml"
                 fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
                 with os.fdopen(fd, "w", encoding="utf-8") as stream:

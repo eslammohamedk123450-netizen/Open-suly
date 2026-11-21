@@ -118,7 +118,7 @@ class HTTPSRuntimeLeaseProvider:
             raise RuntimeProvisionerError("runtime_provisioner_invalid_response")
         return value
 
-    def acquire(self, task_id: str, engine_run_id: str, engine_id: str, *, files: list[dict[str, Any]] | None = None) -> RuntimeLease:
+    def acquire(self, task_id: str, engine_run_id: str, engine_id: str, *, files: list[dict[str, Any]] | None = None, skills: list[dict[str, Any]] | None = None) -> RuntimeLease:
         try:
             task, run = UUID(task_id), UUID(engine_run_id)
         except (TypeError, ValueError, AttributeError) as exc:
@@ -157,6 +157,34 @@ class HTTPSRuntimeLeaseProvider:
                     raise ValueError("runtime_workspace_digest_mismatch")
                 safe_files.append({"path": path_value, "content": content, "sha256": digest})
             payload["files"] = safe_files
+        if skills is not None:
+            if engine_id != "hermes-agent" or not isinstance(skills, list) or len(skills) > 30:
+                raise ValueError("runtime_skill_snapshot_invalid")
+            total_skill_bytes = 0
+            safe_skills: list[dict[str, Any]] = []
+            for item in skills:
+                if not isinstance(item, dict) or set(item) != {"name", "content_utf8", "sha256", "content_bytes"}:
+                    raise ValueError("runtime_skill_snapshot_invalid")
+                name, body = item.get("name"), item.get("content_utf8")
+                digest, byte_count = item.get("sha256"), item.get("content_bytes")
+                if not isinstance(name, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", name):
+                    raise ValueError("runtime_skill_name_invalid")
+                if not isinstance(body, str) or not isinstance(byte_count, int) or isinstance(byte_count, bool):
+                    raise ValueError("runtime_skill_content_invalid")
+                encoded = body.encode("utf-8")
+                if len(encoded) != byte_count or len(encoded) > 262144:
+                    raise ValueError("runtime_skill_content_invalid")
+                actual_digest = hashlib.sha256(encoded).hexdigest()
+                if not isinstance(digest, str) or actual_digest != digest:
+                    raise ValueError("runtime_skill_digest_mismatch")
+                total_skill_bytes += len(encoded)
+                if total_skill_bytes > 1024 * 1024:
+                    raise ValueError("runtime_skill_snapshot_too_large")
+                safe_skills.append({
+                    "name": name, "content_utf8": body,
+                    "sha256": actual_digest, "content_bytes": len(encoded),
+                })
+            payload["skills"] = safe_skills
         try:
             with self._client.stream("POST", "/v1/runtimes", json=payload) as response:
                 data = self._json(response, frozenset({201}))

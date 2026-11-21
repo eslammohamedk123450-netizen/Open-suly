@@ -93,6 +93,15 @@ class FileSnapshot(BaseModel):
     sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
+class SkillSnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9][a-z0-9_-]{0,63}$")
+    content_utf8: str = Field(max_length=262144)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_bytes: int = Field(ge=0, le=262144)
+
+
 class CreateRuntime(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -101,6 +110,7 @@ class CreateRuntime(BaseModel):
     engine_id: str = "opencode"
     runtime_profile: str | None = None
     files: list[FileSnapshot] = Field(default_factory=list, max_length=200)
+    skills: list[SkillSnapshot] = Field(default_factory=list, max_length=30)
 
 
 class ExecuteRequest(BaseModel):
@@ -318,6 +328,16 @@ async def create_runtime(request: Request, authorization: str | None = Header(de
         raise HTTPException(422, "runtime_profile_required")
     if body.engine_id == "opencode" and body.runtime_profile is not None:
         raise HTTPException(422, "runtime_profile_not_applicable")
+    total_skill_bytes = 0
+    for skill in body.skills:
+        encoded = skill.content_utf8.encode("utf-8")
+        if len(encoded) != skill.content_bytes or hashlib.sha256(encoded).hexdigest() != skill.sha256:
+            raise HTTPException(422, "runtime_skill_digest_mismatch")
+        total_skill_bytes += len(encoded)
+        if total_skill_bytes > 1024 * 1024:
+            raise HTTPException(413, "runtime_skill_snapshot_too_large")
+    if body.skills and body.engine_id != "hermes-agent":
+        raise HTTPException(422, "runtime_skills_require_hermes")
     try:
         manager = _get_manager(body.engine_id)
     except RuntimeError as exc:
@@ -329,6 +349,7 @@ async def create_runtime(request: Request, authorization: str | None = Header(de
             engine_id=body.engine_id,
             runtime_profile=body.runtime_profile,
             files=[item.model_dump(exclude_none=True) for item in body.files],
+            skills=[item.model_dump() for item in body.skills],
             access_token_factory=_derive_runtime_access_token,
         )
     except (ValueError, RuntimeErrorSafe) as exc:
