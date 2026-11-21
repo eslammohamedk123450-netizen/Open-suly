@@ -224,9 +224,10 @@ class FakeEngineRunStore:
 class FakeRuntimeBroker:
     def __init__(self):
         self.acquired = []
+        self.acquired_files = []
         self.released = []
 
-    def acquire(self, task_id, engine_run_id, engine_id):
+    def acquire(self, task_id, engine_run_id, engine_id, *, files=None):
         from types import SimpleNamespace
         lease = SimpleNamespace(
             task_id=task_id,
@@ -235,6 +236,7 @@ class FakeRuntimeBroker:
             runtime_id="00000000-0000-0000-0000-000000000055",
         )
         self.acquired.append(lease)
+        self.acquired_files.append(files)
         return lease
 
     def release(self, lease):
@@ -323,6 +325,63 @@ def test_hermes_prompt_context_is_bounded_by_current_request_size(monkeypatch):
     result = runtime_module._hermes_prompt_with_conversation_context(step, "x" * 19_900)
     assert len(result) <= 20_000
     assert result.endswith("x" * 19_900)
+
+
+def test_hermes_project_workspace_is_materialized_in_its_task_runtime(monkeypatch):
+    import hashlib
+    import app.worker_runtime as runtime_module
+    from types import SimpleNamespace
+    from app.services.tool_registry import ToolExecutionContext
+
+    class Query:
+        def __init__(self, table): self.table_name = table
+        def select(self, *_args): return self
+        def eq(self, *_args): return self
+        def order(self, *_args, **_kwargs): return self
+        def limit(self, *_args): return self
+        def execute(self):
+            if self.table_name == "tasks":
+                return SimpleNamespace(data=[{
+                    "project_id": "00000000-0000-0000-0000-000000000066",
+                    "conversation_id": None,
+                    "created_at": "2026-11-21T10:00:00Z",
+                }])
+            if self.table_name == "projects":
+                return SimpleNamespace(data=[{"id": "00000000-0000-0000-0000-000000000066"}])
+            if self.table_name == "project_files":
+                return SimpleNamespace(data=[{
+                    "path": "README.md",
+                    "content": "# SULY Project",
+                    "size_bytes": 13,
+                    "updated_at": "2026-11-21T09:00:00Z",
+                }])
+            raise AssertionError("unexpected table")
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def table(self, name): return Query(name)
+
+    store = FakeEngineRunStore()
+    broker = FakeRuntimeBroker()
+    monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: Client())
+    monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True,
+        hermes_agent_enabled=True,
+        hermes_agent_timeout_seconds=90.0,
+    ))
+    monkeypatch.setattr(runtime_module, "run_agent_turn", lambda *_args, **_kwargs: {
+        "engine": "hermes-agent", "content": "project inspected",
+    })
+    result = runtime_module.hermes_agent_turn(
+        make_step({"operation": "hermes.agent.turn", "prompt": "Inspect this project"}),
+        ToolExecutionContext(engine_run_store=store, runtime_broker=broker),
+    )
+    assert result["content"] == "project inspected"
+    assert broker.acquired_files == [[{
+        "path": "README.md",
+        "content": "# SULY Project",
+        "sha256": hashlib.sha256(b"# SULY Project").hexdigest(),
+    }]]
 
 
 def test_hermes_agent_task_calls_bridge_only_after_approval(monkeypatch):
