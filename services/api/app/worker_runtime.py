@@ -511,6 +511,9 @@ def opencode_task_run(step: ClaimedStep, context: ToolExecutionContext | None = 
             user_id=str(step.user_id), project_id=project_id, task_id=str(step.task_id),
             engine_run_id=str(engine_run_id), prompt=prompt.strip(), title=title.strip(),
             timeout_seconds=runtime_budget, cancel_event=cancel_event,
+            on_runtime_acquired=lambda lease: run_store.attach_runtime_id(
+                engine_run_id, step, lease.runtime_id
+            ),
         )
         if cancel_event is not None and cancel_event.is_set():
             run_store.finish(engine_run_id, step, "cancelled")
@@ -766,9 +769,33 @@ def main() -> None:
                 except Exception:
                     return False
 
+            def stop_opencode_claim(claim) -> bool:
+                # OpenCode execution is isolated per task attempt. Releasing its
+                # recovered runtime tears down the whole process tree, including
+                # a prompt that outlived the worker/API process.
+                if claim.runtime_id is None or claim.task_id is None:
+                    return False
+                try:
+                    lease = runtime_broker.recover(
+                        str(claim.runtime_id),
+                        str(claim.task_id),
+                        str(claim.run_id),
+                        engine_id="opencode",
+                    )
+                    return runtime_broker.release(lease) is True
+                except Exception:
+                    logger.warning(
+                        "OpenCode runtime stop reconciliation did not confirm for run %s",
+                        claim.run_id,
+                    )
+                    return False
+
             reconciler = EngineRunReconciler(
                 run_store,
-                claim_handlers={"hermes-agent": stop_hermes_claim},
+                claim_handlers={
+                    "hermes-agent": stop_hermes_claim,
+                    "opencode": stop_opencode_claim,
+                },
             )
     WorkerRuntime(
         worker,
