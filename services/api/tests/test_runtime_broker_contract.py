@@ -367,7 +367,7 @@ class ExecutableProvider(FakeProvider):
     def acquire(self, task_id, engine_run_id, engine_id, *, files=None):
         return super().acquire(task_id, engine_run_id, engine_id)
 
-    def run_task(self, lease, *, prompt, title="SULY task", on_session_created=None):
+    def run_task(self, lease, *, prompt, title="SULY task", timeout_seconds=900, on_session_created=None):
         session_id = "sesABC123"
         if on_session_created is not None:
             on_session_created(lease, session_id)
@@ -396,7 +396,7 @@ def test_failed_execution_releases_runtime_immediately():
     lease = make_lease()
 
     class FailingProvider(ExecutableProvider):
-        def run_task(self, lease, *, prompt, title="SULY task", on_session_created=None):
+        def run_task(self, lease, *, prompt, title="SULY task", timeout_seconds=900, on_session_created=None):
             raise RuntimeError("engine failed")
 
     provider = FailingProvider([lease])
