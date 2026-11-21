@@ -48,9 +48,9 @@ Commit تحديث هذا السجل: يتم ربطه بعد إنشائه.
 طريقة التقدير: milestone-based وليس نسبة عدد الملفات؛ احتساب تقدم Core Control Plane وEngine Lifecycle وHermes adapter جزئيًا، مع اعتبار intake engines وscale/reliability وproduction package والاختبارات staging/runtime غير مكتملة. لا تُعتبر capability مكتملة دون اختبار/تشغيل مناسب. يعاد حساب النسبة عند كل checkpoint بناء على roadmap الحالية.
 
 ## التالي
-1. استكمال انتظار CI على التغييرات الأخيرة ومراجعة أي failures.
-2. دراسة worker lease/recovery behavior وتحديد أفضل خطوة تالية: SSE event handling أو orphan-run reconciliation.
-3. تنفيذها مع tests وArabic learning note، ثم تحديث roadmap والسجل.
+1. تأكيد نتائج CI على أحدث commit بعد إصلاح أخطاء syntax وعقد runtime؛ لا تُسجل نجاحًا قبل اكتمال الـruns.
+2. بعد CI أخضر، استكمال usage/credits metering للمهام والمحركات مع idempotency ومنع التنفيذ عند نفاد الرصيد، دون تفعيل أي محرك.
+3. مراجعة lease/recovery وعمليات Apply/Reject واختبارات cross-user على قاعدة disposable قبل أي طلب Staging.
 
 
 ## جلسة تطوير مباشرة — 2026-11-20 (Configuration readiness endpoint)
@@ -596,3 +596,59 @@ undefined
 - كان هناك CI failures خلال تطوير UI/endpoint، وتم إصلاحها؛ checkpoint #1059 و#1077 أعطيا نتائج green. لا نُخفي المحاولات الفاشلة السابقة، لكنها لا تمثل HEAD بعد الإصلاح.
 - **إغلاق نطاق الكود الأساسي: مكتمل.** لا يزال Staging/Live integration غير مختبر: worker وOpenCode افتراضيًا disabled؛ لا اتصال حقيقي بالProvisioner، لا migrations/deploy، لا live runtime. كذلك usage/credits metering للمهام البرمجية غير موجود حتى الآن ويجب أن يسبق أي تشغيل مدفوع/مفتوح.
 - لا نعتبر ذلك إطلاق Beta أو Production. القرار المتبقي: Staging provisioning/migrations وcredits model ومراجعة egress/limits/cancel/teardown/recovery وAndroid/Web acceptance بعد موافقة صريحة.
+
+
+## جلسة إصلاح CI وتشديد إعداد Hermes — 2026-11-21
+
+### مراجعة البداية
+- تمت مراجعة main من جديد قبل التعديل؛ HEAD عند بدء الجلسة: f3afbd9d098ed4ff7c80b1cd8141660c25c6930b.
+- تمت مراجعة AGENTS.md والـroadmap وسجل التطوير وملفات Worker/Hermes/OpenCode/Runtime Provisioner وآخر 12 commit وGitHub Actions.
+- Repository baseline checks run 44925526767 على HEAD السابق اكتمل بنجاح.
+- Platform CI run 44925526678 فشل في Compile API بسبب IndentationError في worker_runtime.py:356؛ واجهة العميل اجتازت TypeScript وExpo compatibility وWeb export.
+- OpenCode upstream verification run 44925526728 كشف ثلاثة أسباب مستقلة:
+  1. اختبار runtime provisioner توقع platform_toolsets.api_server فارغًا، لكن إعداد Hermes كان يفعّل terminal وfile، خلافًا لتعليق الكود ودليل التشغيل. هذا انحراف أمني فعلي وليس اختبارًا يجب تجاوزه.
+  2. ستة اختبارات OpenCode executor استخدمت fake Broker لا يطبق release_attempt الموجود بالفعل في عقد TaskScopedRuntimeBroker.
+  3. فشل الاختبارات منع خطوات بناء/تشغيل OpenCode upstream اللاحقة في ذلك run؛ لا تُعد هذه الخطوات ناجحة.
+
+### التغييرات المنفذة
+- حُذف تعريف الدالة المكرر والفارغ _hermes_project_workspace_files في services/api/app/worker_runtime.py، مع الإبقاء على تنفيذها الأصلي مرة واحدة.
+- أُعيد إعداد Hermes task profile إلى platform_toolsets.api_server: [] في services/runtime-provisioner/app/docker_runtime.py. بذلك يتطابق التنفيذ مع default-deny المقصود ومع README واختبار runtime الموجودين؛ لم نخفّض الاختبار أو نسمح بأدوات terminal/file.
+- استُكمل fake Broker في services/api/tests/test_opencode_task_executor.py بعقد release_attempt، وأضيف assertion يثبت طلب تحرير runtime بعد حفظ change set القابلة للمراجعة.
+- لم يتم تعديل أي ملف upstream أو تغيير revision أو ترخيص.
+
+### Commits
+- 352800efe8400ae07d4373b41ec6406b5a173603 — إصلاح syntax في Worker واستكمال عقد release في OpenCode test double.
+- fcea64cce7ff1c140542ca716686c14ed01dcf8a — تعطيل platform toolsets في Hermes runtime profile افتراضيًا.
+
+### الاختبارات وCI
+- لا يوجد ادعاء بتشغيل pytest محليًا؛ التعديل تم عبر GitHub، والتحقق التنفيذي المطلوب هو CI.
+- نتائج CI المذكورة أعلاه تخص HEAD السابق قبل الإصلاح.
+- نتائج CI الخاصة بالـcommits الجديدة لم تُؤكد بعد عند كتابة هذا السجل؛ يجب فحص Platform CI وRuntime Provisioner/OpenCode verification وRepository baseline على أحدث HEAD، وعدم اعتبار أي run queued أو skipped نجاحًا.
+- اختبار runtime الموجود بالفعل يثبت أن api_server فارغ؛ واختبارات OpenCode الآن تستخدم واجهة release المطابقة للعقد الحقيقي.
+
+### القدرات الحالية وحدودها
+- Core API وtask planning/worker contracts وowner-scoped project/task data وengine-run lifecycle موجودة في الكود، مع migrations ملتزمة بالمستودع فقط.
+- تكامل OpenCode البرمجي الأساسي وواجهة task/review/apply موجودان؛ لا يعني ذلك تشغيل محرك فعلي للمستخدم.
+- Hermes adapter وcatalog/skills/memory/session/tool-approval wiring موجودة جزئيًا في مسار SULY؛ لكن runtime لا يزال غير مفعّل، وأدوات upstream platform مغلقة افتراضيًا.
+- Runtime Provisioner يحتوي على قيود container/network/body/identity، لكن لا توجد حتى الآن بوابة egress task-aware مثبتة أو تحقق عزل على Docker host/Staging حقيقي.
+- Worker وHermes وOpenCode وموفرو النماذج تظل disabled افتراضيًا.
+
+### المرحلة والقرارات المؤجلة
+- المرحلة A: أساس control plane مكتوب؛ مراجعة/تطبيق migrations واختبارات Postgres/Supabase disposable ما زالت مطلوبة.
+- المرحلة B: مسارات lifecycle/reconciliation مكتوبة جزئيًا؛ إثبات lease races وrecovery وexternal teardown على Staging غير مكتمل.
+- المرحلة C: Hermes adapter متصل بالكود؛ العزل والتشغيل الآمن والـegress واختبار model/runtime غير مكتملة.
+- المرحلة D: OpenCode code path موجود؛ التكامل الحي مع provisioner وcredits metering والقبول الفعلي على Android/Web لم تُثبت.
+- المرحلتان E/F (reliability/scale/production package) ما زالتا مفتوحتين.
+- لا migrations على قاعدة الإنتاج أو Staging، لا deploy، لا workers/agents/runtimes حية، لا خدمات مدفوعة، ولا secrets جديدة.
+- قرار مؤجل: بناء egress proxy task-aware مع DNS pinning وredirect enforcement وhost firewall attestation؛ إبقاء الشبكة الداخلية بلا egress هو الخيار الآمن حاليًا.
+- قرار مؤجل: تصميم usage/credits ledger وpartial billing/idempotency قبل أي تفعيل لمحركات قد تستهلك موارد أو تكلفة.
+
+### تقدير التقدم
+- لقطة roadmap عند بداية الجلسة: 51/120 بند checklist مكتملًا (نحو 43% من عناصر القائمة). هذه نسبة عدّ checkbox فقط، وليست نسبة جاهزية المنتج؛ البنود غير متساوية في الوزن وبعض المكتمل منها كود دون إثبات تشغيل.
+- يظل تقدير Controlled Beta/Production Readiness المحافظ نحو 20% وفق المنهج milestone-weighted الموثق في هذا الملف؛ لا نرفعه قبل إغلاق Staging وDB وruntime/security وcredits وdeployment gates.
+- لا يغيّر إصلاح CI وحده تقدير الجاهزية.
+
+### نقطة متابعة الجلسة القادمة
+1. افحص أحدث main HEAD وكل CI runs المرتبطة به؛ تأكد من نجاح compile وAPI tests وprovisioner tests وOpenCode upstream build/smoke وclient web export.
+2. أصلح أي regression جديد بأصغر تغيير آمن، ثم حدّث هذا السجل بنتائج CI الفعلية.
+3. بعد CI أخضر، ابدأ تصميم/اختبارات usage وcredits للمهام، مع منع أي تشغيل عند غياب grant/رصيد صالح، دون تشغيل worker أو engine حي.

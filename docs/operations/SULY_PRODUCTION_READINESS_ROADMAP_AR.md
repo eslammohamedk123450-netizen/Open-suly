@@ -103,13 +103,13 @@ For every engine:
 - Each added/modified file includes a short Arabic module guide where appropriate.
 - Do not mark work complete based only on generated code; CI, tests, review, and runtime evidence are required.
 
-## Current known blockers (2026-11-20)
-- Supabase engine_runs migration and reconciliation migration committed, not applied to live DB.
-- Worker and Hermes are disabled by default.
-- Hermes Compose source pin must be aligned with audited immutable revision.
-- Compose is development scaffold only; no production sandbox or egress limits yet.
-- No production API/worker deployment; no model provider configured.
-- CI for latest commits must be observed to completion; pending runs are not passing evidence.
+## Current known blockers (2026-11-21)
+- Supabase engine_runs and reconciliation migrations are committed but have not been applied to any live database; disposable PostgreSQL validation and explicit Staging approval are still required.
+- Worker, Hermes, OpenCode and model providers remain disabled by default.
+- Runtime profile code is restrictive, but production Docker host isolation, process-tree teardown after crashes, and task-aware egress proxy/host firewall enforcement are not verified.
+- No production API/worker deployment or live model provider is configured.
+- Latest CI on HEAD f3afbd9d098ed4ff7c80b1cd8141660c25c6930b exposed Worker syntax, Hermes toolset-default, and OpenCode test-double contract failures; commits 352800efe8400ae07d4373b41ec6406b5a173603 and fcea64cce7ff1c140542ca716686c14ed01dcf8a contain fixes. Their CI results must be confirmed before marking this repair complete.
+- OpenCode coding usage/credits metering, idempotent partial billing, and budget enforcement remain prerequisites before enabling user execution.
 
 ## Definition of ready for controlled beta
 - all schema migrations reviewed and applied to staging only
@@ -489,3 +489,17 @@ For every engine:
 - أضيفت اختبارات لقيم opt-in المختلفة، والقيم غير الصالحة، ورفض التشغيل قبل إنشاء أي Docker network/container. تم تحديث دليل التشغيل والضوابط الإلزامية.
 - هذا hard gate فقط؛ لا ينفذ egress proxy ولا يثبت العزل على Docker host حقيقي. لا يتم تشغيل OpenCode أو Worker ولا نشر أو تطبيق migrations. يظل مسارا runtime isolation وBrowser Use egress مفتوحين حتى تنفيذ proxy واختبارات شبكة فعلية.
 - يجب ربط حالة الاختبارات بنتيجة CI الفعلية للـcommit الذي يحمل هذا التغيير؛ لا تُعد هذه المراجعة إثبات تشغيل runtime.
+
+
+## Session checkpoint — 2026-11-21 (CI repair and Hermes default-deny)
+
+- Starting main HEAD: f3afbd9d098ed4ff7c80b1cd8141660c25c6930b; reviewed current roadmap, progress log, repository instructions, recent commits, relevant source/tests, and latest CI.
+- Repository baseline run 44925526767 passed on the starting HEAD. Platform CI 44925526678 failed API compilation because worker_runtime.py contained a duplicate function declaration with an empty body; client typecheck, Expo compatibility and Web export passed.
+- OpenCode upstream verification 44925526728 exposed: (a) Hermes runtime config unexpectedly exposed terminal/file platform toolsets despite the intended empty allowlist; (b) six OpenCode executor tests used a fake broker without the real release_attempt contract. The failing tests prevented later upstream build/smoke steps in that run.
+- Fixes committed directly to main:
+  - 352800efe8400ae07d4373b41ec6406b5a173603: remove duplicate Worker declaration; make OpenCode fake Broker implement release_attempt; assert cleanup is requested after reviewable change-set persistence.
+  - fcea64cce7ff1c140542ca716686c14ed01dcf8a: set Hermes platform_toolsets.api_server to an empty list, matching the existing security test and runtime-provisioner README.
+- No upstream source was edited; no revision/license changed.
+- The CI evidence above predates the fixes. New CI must complete successfully before this checkpoint is treated as verified; no local pytest execution is claimed.
+- Safety unchanged: no migration applied, no deployment, no live worker/agent/Hermes/OpenCode/provider, no paid service, no new secret.
+- Next: verify all CI runs on the new HEAD, repair regressions, then implement the usage/credits gate for task execution without activating workers or engines.
