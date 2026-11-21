@@ -22,6 +22,7 @@ class CreateTaskRequest(BaseModel):
     title: str | None = Field(default=None, max_length=200)
     idempotency_key: str = Field(min_length=8, max_length=128)
     project_id: UUID | None = None
+    conversation_id: UUID | None = None
 
 
 class TaskPlanStep(BaseModel):
@@ -123,9 +124,23 @@ def create_task(
                 if not owned_project:
                     raise HTTPException(status_code=404, detail="Project not found.")
 
+            if request.conversation_id is not None:
+                owned_conversation = (
+                    client.table("conversations")
+                    .select("id")
+                    .eq("id", str(request.conversation_id))
+                    .eq("user_id", user.id)
+                    .limit(1)
+                    .execute()
+                    .data
+                )
+                if not owned_conversation:
+                    raise HTTPException(status_code=404, detail="Conversation not found.")
+
             payload = {
                 "user_id": user.id,
                 "project_id": str(request.project_id) if request.project_id else None,
+                "conversation_id": str(request.conversation_id) if request.conversation_id else None,
                 "title": title,
                 "request": clean_request,
                 "idempotency_key": request.idempotency_key,
