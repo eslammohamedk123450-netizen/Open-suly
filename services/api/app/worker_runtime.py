@@ -491,7 +491,7 @@ def build_tool_registry() -> ToolRegistry:
         name="ai.respond",
         description="Generate one bounded response through the configured SULY AI provider",
         permission_scope="ai.provider.run",
-        allowed_input_fields=frozenset({"prompt", "runtime_budget_seconds"}),
+        allowed_input_fields=frozenset({"prompt"}),
         required_input_fields=frozenset({"prompt"}),
         max_input_bytes=20_100,
         handler=ai_respond,
