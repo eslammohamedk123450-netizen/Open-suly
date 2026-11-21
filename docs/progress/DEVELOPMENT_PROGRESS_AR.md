@@ -548,3 +548,14 @@ undefined
 - CI API tests على commit `5aa8266b`: **601 passed, 5 warnings**. Platform CI #1014: API tests passed؛ TypeScript/Web export قيد التنفيذ. Repository baseline #1032 نجح.
 - OpenCode verification #170: isolated runtime primitive tests نجحت؛ provenance/Bun install نجحا، upstream server typecheck كان قيد التنفيذ، Docker image build وsmoke test في الانتظار. لا تشغيل runtime أو agent حي خارج CI.
 - Latest HEAD: `5aa8266b2fc5a375be60b63b4a3e8a5811e58d15`.
+
+
+## جلسة متابعة — 2026-11-21 (OpenCode upstream smoke verified + explicit disable switch)
+
+- بدأنا من main HEAD `5b48f1315ec66ef2df2e9b68c681ee04db56ce2c` بعد مراجعة roadmap، development log، ملفات OpenCode/runtime، وGitHub Actions.
+- تحققت نتائج CI المرتبطة بـOpenCode verification #1014 (run ID `44879150324`) على commit `5aa8266b2fc5a375be60b63b4a3e8a5811e58d15`: job isolated runtime primitives وjob pinned upstream/server workspace كلاهما **success**. في job upstream نجح provenance verification، bridge/protocol tests، Bun frozen install، upstream server typecheck، Docker build، وauthenticated `GET /api/info` smoke test داخل CI. هذه الاختبارات لم تنشئ runtime لخدمة حقيقية ولا تفعّل المحرك في SULY.
+- اكتشفنا أن runtime broker كان يتفعّل تلقائيًا إذا توفرت إعدادات provisioner الثلاثة. أضفنا إعداد `OPENCODE_ENABLED=false` افتراضيًا، وجعلنا startup يضبط broker/provider على `None` ويخرج مبكرًا عندما flag غير فعال؛ وجود credentials/URL لا يكفي وحده.
+- أضفنا test `services/api/tests/test_opencode_runtime_config.py` للتحقق أن الإعدادات المكتملة لا تفعّل broker عند flag=false.
+- هذا تعديل دفاعي: لا يضيف تشغيل prompts أو workers أو user-facing engine start route، ولا يجعل OpenCode متاحًا. التطبيق ما زال يحتاج wiring آمن لمهام المستخدم، runtime provider durable، integration/staging tests، review approvals وworkspace apply.
+- لا يمكننا الادعاء أن الاختبار الجديد نفذ محليًا في هذه الجلسة؛ ينتظر CI بعد commit.
+- التقدير لم يتغير: اكتمال OpenCode **بنية/كود تجريبي فقط وليس end-user engine**. لا تشغيل live أو deploy أو migration.
