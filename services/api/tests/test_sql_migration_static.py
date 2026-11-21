@@ -7,8 +7,8 @@ import re
 
 ROOT = Path(__file__).resolve().parents[3]
 MIGRATIONS = ROOT / "supabase" / "migrations"
-_DOLLAR_TAG = re.compile(r"\\$[A-Za-z_][A-Za-z0-9_]*\\$|\\$\\$")
-_SINGLE_DOLLAR_BODY = re.compile(r"(?m)^as \\$(?!\\$)|^\\$;\\s*$")
+_DOLLAR_TAG = re.compile(r"\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$")
+_SINGLE_DOLLAR_BODY = re.compile(r"(?m)^as \$(?!\$)|^\$;\s*$")
 
 
 def test_all_migration_dollar_quote_tags_are_balanced():
