@@ -86,7 +86,7 @@ class HermesToolGateway:
             "user_id": owner,
             "approval_id": rows[0]["id"],
             "permission_scope": scope,
-            "event_type": "granted",
+            "event_type": "tool_invocation_authorized",
             "actor_user_id": owner,
             "metadata": {
                 "action": "tool_invocation_authorized",
