@@ -594,7 +594,7 @@ The profile ID is an authenticated contract with the trusted provisioner, not cr
 
 - Platform CI API tests at commit `60127ae64f308f6344a2fb2f1ece78e0c4e52c30`: **672 passed, 5 warnings**.
 - Repository baseline checks for that commit: **passed**.
-- Client typecheck/web export was still running when this checkpoint was recorded.
+- Client typecheck/web export for that commit: **passed**.
 - Tests cover profile request/response and rejection of unprofiled Hermes leases; they do not verify a live container's actual toolset/network policy.
 
 ### Updated capability state
