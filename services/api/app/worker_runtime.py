@@ -212,6 +212,42 @@ def _hermes_prompt_with_conversation_context(step: ClaimedStep, prompt: str) -> 
     )
 
 
+def _hermes_project_workspace_files(step: ClaimedStep) -> list[dict[str, str]] | None:
+    """Create a bounded, owner-scoped project snapshot for one isolated Hermes runtime."""
+    client = get_supabase_admin_client()
+    if client is None or not callable(getattr(client, "table", None)):
+        return None
+    try:
+        with client:
+            task_rows = (
+                client.table("tasks")
+                .select("project_id")
+                .eq("id", str(step.task_id))
+                .eq("user_id", str(step.user_id))
+                .limit(1)
+                .execute()
+                .data
+            )
+            if not task_rows or not task_rows[0].get("project_id"):
+                return None
+            from app.services.project_workspace_store import ProjectWorkspaceStore
+            snapshot = ProjectWorkspaceStore(client).snapshot(
+                user_id=str(step.user_id),
+                project_id=str(task_rows[0]["project_id"]),
+            )
+    except Exception as exc:
+        logger.warning("Hermes project workspace snapshot failed for task %s", step.task_id)
+        raise RuntimeError("hermes_project_workspace_unavailable") from exc
+    return [
+        {
+            "path": item["path"],
+            "content": item["content"],
+            "sha256": item["sha256"],
+        }
+        for item in snapshot["files"]
+    ]
+
+
 def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = None) -> dict[str, Any]:
     # نتحقق من المدخلات قبل إنشاء أي سجل تشغيل خارجي.
     prompt = step.input.get("prompt")
@@ -265,9 +301,16 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
         return persisted
 
     try:
-        runtime_lease = runtime_broker.acquire(
-            str(step.task_id), str(run_id), "hermes-agent"
-        )
+        workspace_files = _hermes_project_workspace_files(step)
+        if workspace_files is None:
+            runtime_lease = runtime_broker.acquire(
+                str(step.task_id), str(run_id), "hermes-agent"
+            )
+        else:
+            runtime_lease = runtime_broker.acquire(
+                str(step.task_id), str(run_id), "hermes-agent",
+                files=workspace_files,
+            )
     except Exception as exc:
         run_store.finish(run_id, step, "failed", "hermes_runtime_acquire_failed")
         raise RuntimeError("hermes_task_runtime_acquire_failed") from exc
