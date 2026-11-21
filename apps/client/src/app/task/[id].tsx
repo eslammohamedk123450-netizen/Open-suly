@@ -390,13 +390,13 @@ export default function TaskDetailsScreen() {
                           {changeSets[step.output.change_set_id]!.item!.changes.map((change, changeIndex) => (
                             <View key={change.path + change.action + changeIndex} style={styles.changeCard}>
                               <Text style={styles.changePath}>{change.action === "create" ? "إنشاء" : change.action === "update" ? "تعديل" : "حذف"}: {change.path}</Text>
-                              <Text selectable style={styles.changeDiff}>{expandedDiffs[step.output.change_set_id + ":" + change.path + ":" + changeIndex] ? change.diff : change.diff.slice(0, 8000)}{change.diff.length > 8000 && !expandedDiffs[step.output.change_set_id + ":" + change.path + ":" + changeIndex] ? "\n… تم اختصار المعاينة (8KB)." : ""}</Text>
+                              <Text selectable style={styles.changeDiff}>{expandedDiffs[step.output!.change_set_id + ":" + change.path + ":" + changeIndex] ? change.diff : change.diff.slice(0, 8000)}{change.diff.length > 8000 && !expandedDiffs[step.output!.change_set_id + ":" + change.path + ":" + changeIndex] ? "\n… تم اختصار المعاينة (8KB)." : ""}</Text>
                               {change.diff.length > 8000 && (
                                 <Pressable style={styles.detailsButton} onPress={() => setExpandedDiffs((current) => ({
                                   ...current,
                                   [step.output!.change_set_id + ":" + change.path + ":" + changeIndex]: !current[step.output!.change_set_id + ":" + change.path + ":" + changeIndex],
                                 }))}>
-                                  <Text style={styles.steerText}>{expandedDiffs[step.output.change_set_id + ":" + change.path + ":" + changeIndex] ? "إخفاء باقي الفروقات" : "عرض كامل الفرق"}</Text>
+                                  <Text style={styles.steerText}>{expandedDiffs[step.output!.change_set_id + ":" + change.path + ":" + changeIndex] ? "إخفاء باقي الفروقات" : "عرض كامل الفرق"}</Text>
                                 </Pressable>
                               )}
                             </View>
