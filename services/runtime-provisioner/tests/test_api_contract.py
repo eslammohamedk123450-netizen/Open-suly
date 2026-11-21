@@ -77,8 +77,8 @@ def test_runtime_manager_factory_is_lazy_and_singleton(monkeypatch):
     created = []
 
     class FakeManager:
-        def __init__(self, *, image, workspace_root):
-            created.append((image, workspace_root, object()))
+        def __init__(self, *, image, workspace_root, engine_id):
+            created.append((image, workspace_root, engine_id, object()))
             self.marker = created[-1][2]
 
     monkeypatch.setattr(runtime_api, "DockerTaskRuntimeManager", FakeManager)
