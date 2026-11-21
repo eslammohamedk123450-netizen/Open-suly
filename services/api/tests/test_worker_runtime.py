@@ -246,7 +246,6 @@ def test_hermes_prompt_loads_only_owner_scoped_prior_conversation_messages(monke
     import app.worker_runtime as runtime_module
     from types import SimpleNamespace
 
-    task_id = str(make_step({"operation": "hermes.agent.turn", "prompt": "current request"}).task_id)
     step = make_step({"operation": "hermes.agent.turn", "prompt": "current request"})
     calls = []
 
