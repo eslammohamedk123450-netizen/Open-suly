@@ -117,9 +117,9 @@ def list_available_tools(
         hermes_available = bool(
             settings.worker_enabled
             and settings.hermes_agent_enabled
-            and settings.hermes_agent_isolation_confirmed
-            and settings.hermes_agent_base_url
-            and settings.hermes_agent_api_key
+            and settings.runtime_provisioner_url
+            and settings.runtime_provisioner_token
+            and settings.runtime_provisioner_allowed_origins
         )
         opencode_available = bool(
             settings.worker_enabled
