@@ -68,7 +68,13 @@ def _normalize_skill_catalog(payload: object) -> dict[str, object]:
         if not isinstance(raw, dict):
             continue
         name = _safe_text(raw.get("name"), _NAME_MAX)
-        if not name or name.casefold() in seen:
+        if (
+            not name
+            or name.startswith("/")
+            or chr(92) in name
+            or any(part == ".." for part in name.split("/"))
+            or name.casefold() in seen
+        ):
             continue
         seen.add(name.casefold())
         items.append({
