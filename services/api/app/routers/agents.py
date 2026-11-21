@@ -1,11 +1,16 @@
-"""Authenticated read-only catalog of SULY agent roles and availability."""
+"""Authenticated read-only catalog of SULY agent roles and Hermes capabilities."""
 from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.auth import AuthenticatedUser, get_current_user
+from app.services.hermes_catalog import (
+    HermesCatalogError,
+    HermesCatalogUnavailable,
+    get_hermes_skill_catalog,
+)
 from app.worker_runtime import build_agent_manager, build_engine_registry
 
 router = APIRouter(prefix="/v1/agents", tags=["agents"])
@@ -39,3 +44,16 @@ def list_agents(
             "engines": engines,
         })
     return {"items": items}
+
+
+@router.get("/hermes/skills")
+async def list_hermes_skills(
+    _user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Return bounded skill metadata only; never return skill source or install controls."""
+    try:
+        return await get_hermes_skill_catalog()
+    except HermesCatalogUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except HermesCatalogError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
