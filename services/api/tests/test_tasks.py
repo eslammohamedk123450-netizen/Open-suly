@@ -254,6 +254,12 @@ class _TaskDetailAdmin:
                 "event_name": "tool.started",
                 "event_seq": 1,
                 "event_timestamp": 1800000000.0,
+                "metadata": {
+                    "subagent_id": "child_01",
+                    "status": "running",
+                    "task_index": 0,
+                    "task_count": 2,
+                },
                 "received_at": "2026-11-20T12:00:00Z",
             }],
         }
@@ -278,6 +284,7 @@ def test_task_detail_includes_owner_scoped_engine_run_history(monkeypatch):
     assert body["engine_runs"][0]["status"] == "running"
     assert body["engine_events"][0]["event_name"] == "tool.started"
     assert body["engine_events"][0]["engine_run_id"] == "run-1"
+    assert body["engine_events"][0]["metadata"]["subagent_id"] == "child_01"
 
 
 def test_task_plan_rejects_unregistered_operations_before_database(monkeypatch):
