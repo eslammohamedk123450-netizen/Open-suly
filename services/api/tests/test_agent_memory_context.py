@@ -19,42 +19,57 @@ class Query:
 
 
 class Client:
-    def __init__(self, rows):
-        self.rows = rows
-    def __enter__(self): return self
-    def __exit__(self, *_args): return False
-    def table(self, name):
-        assert name == "agent_memories"
-        return Query(self.rows)
+    def table(self, _name):
+        raise AssertionError("the injected store should serve this focused unit test")
 
 
-def step():
+def step()::
     return SimpleNamespace(user_id=str(uuid4()), task_id=str(uuid4()))
 
 
 def test_suly_memory_is_injected_as_bounded_untrusted_context(monkeypatch):
     monkeypatch.setattr(worker, "get_settings", lambda: SimpleNamespace(agent_memory_enabled=True))
-    monkeypatch.setattr(worker, "get_supabase_admin_client", lambda: Client([{
-        "memory_key": "learning-style",
-        "content": "Prefer short lessons and independent practice.",
-        "tags": ["learning", "preferences"],
-    }]))
-    result = worker._suly_user_memory_context(step(), "Current request")
-    assert "<SULY_USER_MEMORY>" in result
-    assert "[learning-style; tags=learning,preferences]" in result
+    monkeypatch.setattr(worker, "get_supabase_admin_client", lambda: Client())
+
+    class MemoryStore:
+        def context_for_task(self, **kwargs):
+            assert kwargs["project_id"] is None
+            assert kwargs["conversation_id"] is None
+            return [{
+                "scope": "user",
+                "memory_key": "learning-style",
+                "content": "Prefer short lessons and independent practice.",
+            }]
+
+    result = worker._suly_user_memory_context(
+        step(), "Current request",
+        task_scope={"project_id": None, "conversation_id": None},
+        store=MemoryStore(),
+    )
+    assert "<SULY_APPROVED_MEMORY>" in result
+    assert "[user:learning-style]" in result
     assert "Prefer short lessons" in result
     assert "Current request" in result
-    assert "مرجع غير موثوق" in result
+    assert "غير موثوقة" in result
 
 
 def test_suly_memory_skips_secret_like_notes(monkeypatch):
     monkeypatch.setattr(worker, "get_settings", lambda: SimpleNamespace(agent_memory_enabled=True))
-    monkeypatch.setattr(worker, "get_supabase_admin_client", lambda: Client([{
-        "memory_key": "bad-note",
-        "content": "API_KEY=" + "a" * 32,
-        "tags": [],
-    }]))
-    assert worker._suly_user_memory_context(step(), "Current request") == "Current request"
+    monkeypatch.setattr(worker, "get_supabase_admin_client", lambda: Client())
+
+    class MemoryStore:
+        def context_for_task(self, **_kwargs):
+            return [{
+                "scope": "user",
+                "memory_key": "bad-note",
+                "content": "API_KEY=" + "a" * 32,
+            }]
+
+    assert worker._suly_user_memory_context(
+        step(), "Current request",
+        task_scope={"project_id": None, "conversation_id": None},
+        store=MemoryStore(),
+    ) == "Current request"
 
 
 def test_suly_memory_is_off_by_default_and_does_not_query_database(monkeypatch):

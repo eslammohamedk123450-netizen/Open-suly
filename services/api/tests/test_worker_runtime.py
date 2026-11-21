@@ -24,6 +24,17 @@ def make_step(input_data):
     )
 
 
+def stub_hermes_context(monkeypatch):
+    """Keep lifecycle tests independent from DB-backed context and skill queries."""
+    import app.worker_runtime as runtime_module
+
+    monkeypatch.setattr(
+        runtime_module, "_hermes_task_scope",
+        lambda _step: {"project_id": None, "conversation_id": None},
+    )
+    monkeypatch.setattr(runtime_module, "_hermes_approved_skills", lambda _step: [])
+
+
 def test_text_analyze_returns_bounded_deterministic_metrics():
     result = dispatch(make_step({"operation": "text.analyze", "text": "one two\nthree"}))
     assert result["word_count"] == 3
@@ -244,6 +255,42 @@ class FakeRuntimeBroker:
         return True
 
 
+def test_hermes_task_scope_rejects_a_task_not_owned_by_the_claimed_user(monkeypatch):
+    import app.worker_runtime as runtime_module
+
+    step = make_step({"operation": "hermes.agent.turn", "prompt": "safe"})
+    filters = []
+
+    class Query:
+        def select(self, *_args):
+            return self
+        def eq(self, key, value):
+            filters.append((key, value))
+            return self
+        def limit(self, _value):
+            return self
+        def execute(self):
+            return SimpleNamespace(data=[])
+
+    class Client:
+        def __enter__(self):
+            return self
+        def __exit__(self, *_args):
+            return False
+        def table(self, name):
+            assert name == "tasks"
+            return Query()
+
+    monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: Client())
+    with pytest.raises(PermissionError, match="hermes_task_owner_mismatch"):
+        runtime_module._hermes_task_scope(step)
+
+    assert filters == [
+        ("id", str(step.task_id)),
+        ("user_id", str(step.user_id)),
+    ]
+
+
 def test_hermes_prompt_loads_only_owner_scoped_prior_conversation_messages(monkeypatch):
     import app.worker_runtime as runtime_module
     from types import SimpleNamespace
@@ -330,6 +377,7 @@ def test_hermes_prompt_context_is_bounded_by_current_request_size(monkeypatch):
 def test_hermes_project_workspace_is_materialized_in_its_task_runtime(monkeypatch):
     import hashlib
     import app.worker_runtime as runtime_module
+    monkeypatch.setattr(runtime_module, "_hermes_approved_skills", lambda _step: [])
     from types import SimpleNamespace
     from app.services.tool_registry import ToolExecutionContext
 
@@ -386,6 +434,7 @@ def test_hermes_project_workspace_is_materialized_in_its_task_runtime(monkeypatc
 
 def test_hermes_agent_task_calls_bridge_only_after_approval(monkeypatch):
     import app.worker_runtime as runtime_module
+    stub_hermes_context(monkeypatch)
     from types import SimpleNamespace
 
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
@@ -446,6 +495,7 @@ def test_cancel_aware_dispatch_refuses_to_start_after_cancellation():
 
 def test_hermes_operation_routes_through_registry_after_approval(monkeypatch):
     import app.worker_runtime as runtime_module
+    stub_hermes_context(monkeypatch)
     from types import SimpleNamespace
 
     class ApprovedScopes:
@@ -495,6 +545,7 @@ def test_hermes_engine_stays_disabled_without_feature_flag(monkeypatch):
 
 def test_cancel_aware_dispatch_passes_event_to_hermes_adapter(monkeypatch):
     import app.worker_runtime as runtime_module
+    stub_hermes_context(monkeypatch)
     from types import SimpleNamespace
 
     cancel_event = Event()
@@ -536,6 +587,7 @@ def test_cancel_aware_dispatch_passes_event_to_hermes_adapter(monkeypatch):
 
 def test_hermes_run_is_recorded_as_succeeded(monkeypatch):
     import app.worker_runtime as runtime_module
+    stub_hermes_context(monkeypatch)
     from types import SimpleNamespace
     from app.services.tool_registry import ToolExecutionContext
 
@@ -567,6 +619,7 @@ def test_hermes_run_is_recorded_as_succeeded(monkeypatch):
 
 def test_hermes_run_is_not_marked_succeeded_when_runtime_release_is_unconfirmed(monkeypatch):
     import app.worker_runtime as runtime_module
+    stub_hermes_context(monkeypatch)
     from types import SimpleNamespace
     from app.services.tool_registry import ToolExecutionContext
 
@@ -599,6 +652,7 @@ def test_hermes_run_is_not_marked_succeeded_when_runtime_release_is_unconfirmed(
 
 def test_hermes_run_records_failure_without_raw_error(monkeypatch):
     import app.worker_runtime as runtime_module
+    stub_hermes_context(monkeypatch)
     from types import SimpleNamespace
     from app.services.tool_registry import ToolExecutionContext
 
@@ -625,6 +679,7 @@ def test_hermes_run_records_failure_without_raw_error(monkeypatch):
 
 def test_hermes_run_records_cooperative_cancellation(monkeypatch):
     import app.worker_runtime as runtime_module
+    stub_hermes_context(monkeypatch)
     from types import SimpleNamespace
     from app.services.hermes_agent import HermesAgentCancelled
     from app.services.tool_registry import ToolExecutionContext
@@ -749,6 +804,7 @@ def test_worker_keeps_every_engine_disabled_when_worker_flag_is_off(monkeypatch)
 
 def test_hermes_execution_is_routed_through_agent_manager(monkeypatch):
     import app.worker_runtime as runtime_module
+    stub_hermes_context(monkeypatch)
     from types import SimpleNamespace
     from app.services.tool_registry import ToolExecutionContext
 
@@ -867,6 +923,7 @@ def test_hermes_adapter_forwards_metadata_event_callback(monkeypatch):
 def test_hermes_agent_turn_persists_metadata_events_and_never_logs_payload(monkeypatch, caplog):
     import logging
     import app.worker_runtime as runtime_module
+    stub_hermes_context(monkeypatch)
     from types import SimpleNamespace
     from app.services.engine_contract import EngineResult
     from app.services.tool_registry import ToolExecutionContext
@@ -924,6 +981,7 @@ def test_hermes_agent_turn_persists_metadata_events_and_never_logs_payload(monke
 def test_hermes_agent_turn_logs_only_metadata_when_event_persistence_fails(monkeypatch, caplog):
     import logging
     import app.worker_runtime as runtime_module
+    stub_hermes_context(monkeypatch)
     from types import SimpleNamespace
     from app.services.engine_contract import EngineResult
     from app.services.tool_registry import ToolExecutionContext
@@ -1093,6 +1151,7 @@ def test_opencode_worker_handler_returns_review_ids_and_finishes_engine_run(monk
 
 def test_hermes_delegated_runtime_budget_reaches_native_runs_adapter(monkeypatch):
     import app.worker_runtime as runtime_module
+    stub_hermes_context(monkeypatch)
     from types import SimpleNamespace
 
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
@@ -1133,6 +1192,7 @@ def test_hermes_delegated_runtime_budget_reaches_native_runs_adapter(monkeypatch
 
 def test_hermes_rejects_runtime_budget_above_native_runs_limit(monkeypatch):
     import app.worker_runtime as runtime_module
+    stub_hermes_context(monkeypatch)
     from types import SimpleNamespace
 
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(

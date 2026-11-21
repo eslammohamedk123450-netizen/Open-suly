@@ -205,6 +205,7 @@ def test_safe_run_event_keeps_only_exact_approval_request_metadata():
     }, "run_safe_123") == {
         "event": "approval.request",
         "approval_request_id": "approval-req_123",
+        "tool_id": "terminal",
     }
     assert hermes_agent._safe_run_event({
         "event": "approval.responded",
@@ -643,6 +644,7 @@ def test_safe_approval_event_keeps_only_opaque_request_identity():
         "event": "approval.request",
         "seq": 10,
         "approval_request_id": "approval-req_123",
+        "tool_id": "terminal",
     }
 
 
