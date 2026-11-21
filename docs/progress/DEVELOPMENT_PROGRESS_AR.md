@@ -537,3 +537,14 @@ undefined
 - OpenCode verification #166: Runtime primitives نجحت، upstream provenance/Bun install/server typecheck/Docker image build نجحت، وDocker smoke-test الأصلي كان قيد التنفيذ عند آخر قراءة.
 - آخر HEAD وقت التحديث: `45aacc232cf720725c590c08aefdaf87ccaf8392`. التغييرات بعد #1006 هي توثيق فقط؛ Platform CI على commits الوثائق ما زال pending.
 - Worker workflow لم يعد له schedule؛ لا يوجد worker execution في هذا التحديث.
+
+
+## متابعة أمنية إضافية — 2026-11-21 (Bounded Runtime Gateway Requests)
+
+- اكتشفنا في مراجعة provisioner أن endpoint إنشاء runtime كان يعتمد على Pydantic field limits بعد parse كامل للـJSON، وأن endpoint `/execute` كان يقرأ JSON مباشرة دون raw body cap؛ يمكن أن يستهلك oversized extra fields ذاكرة قبل field validation.
+- جعلنا `ExecuteRequest` strict (رفض extra fields) وأضفنا 64 KiB streamed body cap قبل parsing لطلب تنفيذ task.
+- جعلنا `CreateRuntime` و`FileSnapshot` strict، وأضافنا 6 MiB streamed cap لطلب إنشاء runtime؛ helper العام يقبل حدودًا حتى 8 MiB. التحقق من service token يسبق قراءة body.
+- أضفنا tests للـoversized execute body، وoversized runtime creation body (لا يصل إلى Docker manager)، ورفض الحقول غير المتوقعة.
+- CI API tests على commit `5aa8266b`: **601 passed, 5 warnings**. Platform CI #1014: API tests passed؛ TypeScript/Web export قيد التنفيذ. Repository baseline #1032 نجح.
+- OpenCode verification #170: isolated runtime primitive tests نجحت؛ provenance/Bun install نجحا، upstream server typecheck كان قيد التنفيذ، Docker image build وsmoke test في الانتظار. لا تشغيل runtime أو agent حي خارج CI.
+- Latest HEAD: `5aa8266b2fc5a375be60b63b4a3e8a5811e58d15`.
