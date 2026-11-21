@@ -433,6 +433,11 @@ def recover_runtime(
 async def runtime_gateway(runtime_id: str, path: str, request: Request, authorization: str | None = Header(default=None)):
     row = _runtime(runtime_id, authorization[7:] if authorization and authorization.startswith("Bearer ") else None)
     if request.method == "POST" and path == "execute":
+        # The convenience /execute operation is OpenCode-specific. Hermes must
+        # use its native Runs API so run IDs, approvals, events, and cancellation
+        # remain bound to the SULY engine-run lease.
+        if row["engine_id"] != "opencode":
+            raise HTTPException(404, "route_not_allowed")
         raw_body = await _read_bounded_request_body(request, limit=65536)
         try:
             payload = ExecuteRequest.model_validate(json.loads(raw_body))
@@ -579,6 +584,8 @@ async def _bounded_opencode_json(client: httpx.AsyncClient, path: str, payload: 
 @app.post("/v1/runtime-gateway/{runtime_id}/execute")
 async def execute(runtime_id: str, body: ExecuteRequest, authorization: str | None = Header(default=None)):
     row = _runtime(runtime_id, _runtime_token_from_request(authorization))
+    if row["engine_id"] != "opencode":
+        raise HTTPException(404, "route_not_allowed")
     base = f"http://127.0.0.1:{row['host_port']}"
     auth = ("opencode", _runtime_token_from_request(authorization))
     try:
@@ -610,7 +617,10 @@ async def execute(runtime_id: str, body: ExecuteRequest, authorization: str | No
 def runtime_results(runtime_id: str, authorization: str | None = Header(default=None)):
     row = _runtime(runtime_id, _runtime_token_from_request(authorization))
     try:
-        container = _get_manager().client.containers.get(row["container_id"])
+        # Select the daemon manager for the recorded engine identity. The
+        # managers may share a Docker daemon, but the engine identity is still
+        # validated and must never silently fall back to OpenCode.
+        container = _get_manager(row["engine_id"]).client.containers.get(row["container_id"])
         stream, _stat = container.get_archive("/workspace")
         archive_parts, archive_size = [], 0
         for chunk in stream:
