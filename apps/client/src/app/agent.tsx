@@ -20,6 +20,7 @@ import {
   getAgentCatalog,
   grantAIApproval,
   grantHermesApproval,
+  grantOpenCodeApproval,
   revokeToolApproval,
   type AgentOperation,
   type AgentTaskSnapshot,
@@ -57,6 +58,8 @@ export default function AgentScreen() {
   const [aiApproved, setAiApproved] = useState(false);
   const [aiAvailable, setAiAvailable] = useState(false);
   const [hermesAvailable, setHermesAvailable] = useState(false);
+  const [opencodeAvailable, setOpencodeAvailable] = useState(false);
+  const [opencodeApproved, setOpencodeApproved] = useState(false);
   const [taskEngineAvailable, setTaskEngineAvailable] = useState(false);
   const [agentProfiles, setAgentProfiles] = useState<AgentProfile[]>([]);
   const [busy, setBusy] = useState(false);
@@ -69,12 +72,15 @@ export default function AgentScreen() {
       const items = await getAgentToolCatalog();
       const taskEngine = items.find((item) => item.name === "text.analyze");
       const hermes = items.find((item) => item.name === "hermes.agent.turn");
+      const opencode = items.find((item) => item.name === "opencode.task.run");
       setTaskEngineAvailable(Boolean(taskEngine?.available));
       const ai = items.find((item) => item.name === "ai.respond");
       setApproved(Boolean(hermes?.approved));
       setHermesAvailable(Boolean(hermes?.available));
       setAiApproved(Boolean(ai?.approved));
       setAiAvailable(Boolean(ai?.available));
+      setOpencodeApproved(Boolean(opencode?.approved));
+      setOpencodeAvailable(Boolean(opencode?.available));
       try {
         setAgentProfiles(await getAgentCatalog());
       } catch {
@@ -119,10 +125,14 @@ export default function AgentScreen() {
         await grantAIApproval();
         setAiApproved(true);
         setNotice("تم حفظ موافقتك على استخدام مزود الذكاء الاصطناعي. يمكنك إلغاء الموافقة لاحقًا.");
-      } else {
+      } else if (operation === "hermes.agent.turn") {
         await grantHermesApproval();
         setApproved(true);
         setNotice("تم حفظ موافقتك على نطاق تشغيل Hermes. يمكنك إلغاء هذه الموافقة من إعدادات الصلاحيات لاحقًا.");
+      } else {
+        await grantOpenCodeApproval();
+        setOpencodeApproved(true);
+        setNotice("تم حفظ موافقتك على نطاق تشغيل OpenCode. هذه الموافقة لا تفعّل المحرك أو العامل على الخادم.");
       }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "تعذر حفظ الموافقة.");
@@ -135,10 +145,11 @@ export default function AgentScreen() {
     setApproving(true);
     setNotice("");
     try {
-      const scope = operation === "ai.respond" ? "ai.provider.run" : "agent.hermes.run";
+      const scope = operation === "ai.respond" ? "ai.provider.run" : operation === "hermes.agent.turn" ? "agent.hermes.run" : "engine.opencode.run";
       await revokeToolApproval(scope);
       if (operation === "ai.respond") setAiApproved(false);
-      else setApproved(false);
+      else if (operation === "hermes.agent.turn") setApproved(false);
+      else setOpencodeApproved(false);
       setNotice("تم إلغاء الموافقة. لن يستطيع العامل استخدام هذه الأداة في المحاولات التالية.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "تعذر إلغاء الموافقة.");
@@ -168,6 +179,18 @@ export default function AgentScreen() {
     }
     if (operation === "hermes.agent.turn" && !approved) {
       setNotice("يجب منح موافقة صريحة على تشغيل Hermes أولًا.");
+      return;
+    }
+    if (operation === "opencode.task.run" && !projectId) {
+      setNotice("افتح الوكيل من داخل مشروع أولًا؛ OpenCode يحتاج مساحة ملفات مرتبطة بالمشروع.");
+      return;
+    }
+    if (operation === "opencode.task.run" && !opencodeAvailable) {
+      setNotice("محرك OpenCode غير مهيأ أو متوقف على الخادم. لن يتم وضع المهمة في قائمة انتظار غير قابلة للتنفيذ.");
+      return;
+    }
+    if (operation === "opencode.task.run" && !opencodeApproved) {
+      setNotice("يجب منح موافقة صريحة على تشغيل OpenCode أولًا.");
       return;
     }
     setBusy(true);
@@ -262,6 +285,10 @@ export default function AgentScreen() {
                 <Text style={[styles.modeTitle, operation === "hermes.agent.turn" && styles.gold]}>Hermes Agent</Text>
                 <Text style={styles.modeHint}>يتطلب Runtime ومزود نموذج</Text>
               </Pressable>
+              <Pressable style={[styles.mode, operation === "opencode.task.run" && styles.modeActive]} onPress={() => setOperation("opencode.task.run")}>
+                <Text style={[styles.modeTitle, operation === "opencode.task.run" && styles.gold]}>OpenCode</Text>
+                <Text style={styles.modeHint}>وكيل البرمجة • مشروع + Runtime معزول</Text>
+              </Pressable>
             </View>
 
             {operation === "ai.respond" && (
@@ -294,11 +321,27 @@ export default function AgentScreen() {
               </View>
             )}
 
+            {operation === "opencode.task.run" && (
+              <View style={styles.approvalBox}>
+                <View style={styles.approvalHeader}>
+                  <Text style={styles.label}>موافقة تشغيل OpenCode</Text>
+                  <Text style={[styles.approvalState, opencodeApproved ? styles.good : styles.warn]}>{opencodeApproved ? "مفعّلة" : "غير مفعّلة"}</Text>
+                </View>
+                <Text style={styles.modeHint}>تسمح هذه الموافقة بإنشاء مهام برمجية عبر OpenCode فقط. التنفيذ يظل متوقفًا ما لم يكن Worker وRuntime معزولًا ومفعّلين صراحة على الخادم.</Text>
+                <Text style={[styles.modeHint, opencodeAvailable ? styles.good : styles.warn]}>
+                  {opencodeAvailable ? "الخادم أعلن جاهزية OpenCode." : "OpenCode غير متاح على الخادم حاليًا."}
+                </Text>
+                <Pressable style={styles.secondaryButton} onPress={opencodeApproved ? revokeSelectedApproval : enableSelectedApproval} disabled={approving || loadingCatalog}>
+                  {approving ? <ActivityIndicator color={colors.gold} /> : <Text style={styles.secondaryText}>{opencodeApproved ? "إلغاء موافقة OpenCode" : "أوافق على تشغيل OpenCode"}</Text>}
+                </Pressable>
+              </View>
+            )}
+
             <Text style={styles.label}>وصف المهمة</Text>
             <TextInput
               value={prompt}
               onChangeText={setPrompt}
-              placeholder={operation === "text.analyze" ? "اكتب نصًا لاختبار التحليل..." : operation === "ai.respond" ? "اكتب ما تريد من SULY إنجازه..." : "اكتب ما تريد من Hermes إنجازه..."}
+              placeholder={operation === "text.analyze" ? "اكتب نصًا لاختبار التحليل..." : operation === "ai.respond" ? "اكتب ما تريد من SULY إنجازه..." : operation === "opencode.task.run" ? "اكتب مهمة البرمجة التي تريد من OpenCode تنفيذها..." : "اكتب ما تريد من Hermes إنجازه..."}
               placeholderTextColor={colors.faint}
               multiline
               textAlign="right"
@@ -307,7 +350,7 @@ export default function AgentScreen() {
               maxLength={20000}
             />
             <Text style={styles.counter}>{prompt.length.toLocaleString("en-US")} / 20,000</Text>
-            <Pressable style={[styles.primaryButton, (!prompt.trim() || busy || (operation === "text.analyze" && !taskEngineAvailable) || (operation === "hermes.agent.turn" && (!hermesAvailable || !approved)) || (operation === "ai.respond" && (!aiAvailable || !aiApproved))) && styles.disabled]} onPress={submit} disabled={!prompt.trim() || busy || (operation === "text.analyze" && !taskEngineAvailable) || (operation === "hermes.agent.turn" && (!hermesAvailable || !approved)) || (operation === "ai.respond" && (!aiAvailable || !aiApproved))}>
+            <Pressable style={[styles.primaryButton, (!prompt.trim() || busy || (operation === "text.analyze" && !taskEngineAvailable) || (operation === "hermes.agent.turn" && (!hermesAvailable || !approved)) || (operation === "ai.respond" && (!aiAvailable || !aiApproved)) || (operation === "opencode.task.run" && (!projectId || !opencodeAvailable || !opencodeApproved))) && styles.disabled]} onPress={submit} disabled={!prompt.trim() || busy || (operation === "text.analyze" && !taskEngineAvailable) || (operation === "hermes.agent.turn" && (!hermesAvailable || !approved)) || (operation === "ai.respond" && (!aiAvailable || !aiApproved)) || (operation === "opencode.task.run" && (!projectId || !opencodeAvailable || !opencodeApproved))}>
               {busy ? <ActivityIndicator color={colors.background} /> : <Text style={styles.primaryText}>إنشاء المهمة وتشغيلها</Text>}
             </Pressable>
           </View>
@@ -377,8 +420,8 @@ const styles = StyleSheet.create({
   introTitle: { color: colors.text, fontSize: 22, fontWeight: "800", textAlign: "right" },
   card: { padding: 16, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, gap: 12 },
   label: { color: colors.text, fontSize: 13, fontWeight: "700", textAlign: "right" },
-  modeRow: { flexDirection: "row", gap: 9 },
-  mode: { flex: 1, padding: 12, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background, gap: 5 },
+  modeRow: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
+  mode: { flex: 1, minWidth: 140, padding: 12, borderRadius: 13, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background, gap: 5 },
   modeActive: { borderColor: colors.gold, backgroundColor: colors.surfaceSecondary },
   modeTitle: { color: colors.text, fontSize: 12, fontWeight: "700", textAlign: "right" },
   modeHint: { color: colors.muted, fontSize: 10, lineHeight: 18, textAlign: "right" },
