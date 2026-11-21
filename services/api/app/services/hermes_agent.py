@@ -132,6 +132,47 @@ def _validate_base_url(value: str) -> str:
     return value.rstrip("/")
 
 
+
+
+
+def _runtime_credentials(
+    settings,
+    *,
+    runtime_lease: RuntimeLease | None,
+    task_id: str | None,
+    engine_run_id: str | None,
+) -> tuple[str, str]:
+    """Resolve either the legacy attested endpoint or one exact task runtime lease."""
+    if runtime_lease is None:
+        if not settings.hermes_agent_isolation_confirmed:
+            raise HermesAgentUnavailable("Hermes per-task isolation is not confirmed.")
+        if not settings.hermes_agent_base_url or not settings.hermes_agent_api_key:
+            raise HermesAgentUnavailable("Hermes agent runtime is not configured.")
+        return (
+            _validate_base_url(settings.hermes_agent_base_url),
+            settings.hermes_agent_api_key.get_secret_value(),
+        )
+
+    if not isinstance(task_id, str) or not isinstance(engine_run_id, str):
+        raise HermesAgentUnavailable("Hermes task runtime identity is missing.")
+    allowed_origins = frozenset(settings.runtime_provisioner_allowed_origins)
+    try:
+        runtime_lease.validate(
+            task_id=task_id,
+            engine_run_id=engine_run_id,
+            engine_id="hermes-agent",
+            allowed_origins=allowed_origins,
+        )
+    except (TypeError, ValueError) as exc:
+        raise HermesAgentUnavailable("Hermes task runtime lease is invalid.") from exc
+    if runtime_lease.gateway_path != f"/v1/runtime-gateway/{runtime_lease.runtime_id}":
+        raise HermesAgentUnavailable("Hermes task runtime gateway is invalid.")
+    return (
+        _validate_base_url(runtime_lease.base_url + runtime_lease.gateway_path),
+        runtime_lease.access_token,
+    )
+
+
 def run_agent_turn(
     prompt: str,
     *,
@@ -152,32 +193,12 @@ def run_agent_turn(
     settings = get_settings()
     if not settings.hermes_agent_enabled:
         raise HermesAgentUnavailable("Hermes agent runtime is disabled.")
-    if runtime_lease is None:
-        # Legacy shared endpoint remains gated by explicit operator attestation.
-        if not settings.hermes_agent_isolation_confirmed:
-            raise HermesAgentUnavailable("Hermes per-task isolation is not confirmed.")
-        if not settings.hermes_agent_base_url or not settings.hermes_agent_api_key:
-            raise HermesAgentUnavailable("Hermes agent runtime is not configured.")
-        base_url = _validate_base_url(settings.hermes_agent_base_url)
-        token = settings.hermes_agent_api_key.get_secret_value()
-    else:
-        # Preferred path: one lease, one engine, one task attempt, one isolated process.
-        allowed_origins = frozenset(settings.runtime_provisioner_allowed_origins)
-        try:
-            if not isinstance(task_id, str) or not isinstance(engine_run_id, str):
-                raise ValueError("runtime_attempt_identity_required")
-            runtime_lease.validate(
-                task_id=task_id,
-                engine_run_id=engine_run_id,
-                engine_id="hermes-agent",
-                allowed_origins=allowed_origins,
-            )
-        except (TypeError, ValueError) as exc:
-            raise HermesAgentUnavailable("Hermes task runtime lease is invalid.") from exc
-        if not runtime_lease.gateway_path:
-            raise HermesAgentUnavailable("Hermes task runtime gateway is missing.")
-        base_url = _validate_base_url(runtime_lease.base_url + runtime_lease.gateway_path)
-        token = runtime_lease.access_token
+    base_url, token = _runtime_credentials(
+        settings,
+        runtime_lease=runtime_lease,
+        task_id=task_id,
+        engine_run_id=engine_run_id,
+    )
     if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > _MAX_PROMPT_CHARS:
         raise ValueError("Hermes prompt must contain 1–20000 characters.")
     if (
@@ -394,13 +415,14 @@ def steer_agent_run(
     steer_text: str,
     *,
     timeout_seconds: float = 15.0,
+    runtime_lease: RuntimeLease | None = None,
+    task_id: str | None = None,
+    engine_run_id: str | None = None,
 ) -> bool:
     """Send bounded user guidance to one existing Hermes run; never starts a new run."""
     settings = get_settings()
-    if not settings.hermes_agent_enabled or not settings.hermes_agent_isolation_confirmed:
-        raise HermesAgentUnavailable("Hermes steering is disabled or isolation is not confirmed.")
-    if not settings.hermes_agent_base_url or not settings.hermes_agent_api_key:
-        raise HermesAgentUnavailable("Hermes agent runtime is not configured.")
+    if not settings.hermes_agent_enabled:
+        raise HermesAgentUnavailable("Hermes steering is disabled.")
     if not isinstance(upstream_run_id, str) or not _RUN_ID_PATTERN.fullmatch(upstream_run_id):
         raise ValueError("Hermes upstream run identifier is invalid.")
     if not isinstance(steer_text, str) or not steer_text.strip() or len(steer_text) > _MAX_PROMPT_CHARS:
@@ -412,8 +434,12 @@ def steer_agent_run(
     ):
         raise ValueError("Hermes steer timeout is outside the allowed range.")
 
-    base_url = _validate_base_url(settings.hermes_agent_base_url)
-    token = settings.hermes_agent_api_key.get_secret_value()
+    base_url, token = _runtime_credentials(
+        settings,
+        runtime_lease=runtime_lease,
+        task_id=task_id,
+        engine_run_id=engine_run_id,
+    )
 
     async def send_steer() -> bool:
         async with httpx.AsyncClient(
@@ -450,13 +476,14 @@ def resolve_agent_approval(
     choice: str,
     *,
     timeout_seconds: float = 15.0,
+    runtime_lease: RuntimeLease | None = None,
+    task_id: str | None = None,
+    engine_run_id: str | None = None,
 ) -> bool:
     """Resolve exactly one pending Hermes approval; persistent grants are never exposed."""
     settings = get_settings()
-    if not settings.hermes_agent_enabled or not settings.hermes_agent_isolation_confirmed:
-        raise HermesAgentUnavailable("Hermes approvals are disabled or isolation is not confirmed.")
-    if not settings.hermes_agent_base_url or not settings.hermes_agent_api_key:
-        raise HermesAgentUnavailable("Hermes agent runtime is not configured.")
+    if not settings.hermes_agent_enabled:
+        raise HermesAgentUnavailable("Hermes approvals are disabled.")
     if not isinstance(upstream_run_id, str) or not _RUN_ID_PATTERN.fullmatch(upstream_run_id):
         raise ValueError("Hermes upstream run identifier is invalid.")
     if (
@@ -475,8 +502,12 @@ def resolve_agent_approval(
     ):
         raise ValueError("Hermes approval timeout is outside the allowed range.")
 
-    base_url = _validate_base_url(settings.hermes_agent_base_url)
-    token = settings.hermes_agent_api_key.get_secret_value()
+    base_url, token = _runtime_credentials(
+        settings,
+        runtime_lease=runtime_lease,
+        task_id=task_id,
+        engine_run_id=engine_run_id,
+    )
 
     async def resolve() -> bool:
         async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds, connect=5.0)) as client:
@@ -511,13 +542,14 @@ def get_agent_approval_details(
     request_id: str,
     *,
     timeout_seconds: float = 10.0,
+    runtime_lease: RuntimeLease | None = None,
+    task_id: str | None = None,
+    engine_run_id: str | None = None,
 ) -> dict[str, str]:
     """Fetch redacted display-only approval details without persisting their text in SULY."""
     settings = get_settings()
-    if not settings.hermes_agent_enabled or not settings.hermes_agent_isolation_confirmed:
-        raise HermesAgentUnavailable("Hermes approvals are disabled or isolation is not confirmed.")
-    if not settings.hermes_agent_base_url or not settings.hermes_agent_api_key:
-        raise HermesAgentUnavailable("Hermes agent runtime is not configured.")
+    if not settings.hermes_agent_enabled:
+        raise HermesAgentUnavailable("Hermes approvals are disabled.")
     if not isinstance(upstream_run_id, str) or not _RUN_ID_PATTERN.fullmatch(upstream_run_id):
         raise ValueError("Hermes upstream run identifier is invalid.")
     if (
@@ -534,8 +566,12 @@ def get_agent_approval_details(
     ):
         raise ValueError("Hermes approval details timeout is outside the allowed range.")
 
-    base_url = _validate_base_url(settings.hermes_agent_base_url)
-    token = settings.hermes_agent_api_key.get_secret_value()
+    base_url, token = _runtime_credentials(
+        settings,
+        runtime_lease=runtime_lease,
+        task_id=task_id,
+        engine_run_id=engine_run_id,
+    )
 
     async def fetch_details() -> dict[str, str]:
         async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds, connect=5.0)) as client:
