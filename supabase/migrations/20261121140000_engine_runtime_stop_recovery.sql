@@ -177,3 +177,41 @@ grant execute on function public.claim_engine_runs_for_stop(integer,integer)
 
 comment on function public.claim_engine_runs_for_stop(integer,integer) is
   'Claims stale external engine runs with either an upstream run ID or an isolated runtime ID for cooperative stop and runtime cleanup.';
+
+
+-- The worker's reconciler uses this bounded diagnostic count before claiming stops.
+-- Count only rows with neither a legacy upstream run ID nor a task-scoped runtime ID.
+create or replace function public.count_engine_runs_missing_upstream_identity(
+  p_min_age_seconds integer default 30
+)
+returns integer
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_count integer;
+begin
+  if p_min_age_seconds is null or p_min_age_seconds not between 1 and 3600 then
+    raise exception 'invalid_missing_identity_age';
+  end if;
+
+  select count(*)::integer
+    into v_count
+    from public.engine_runs r
+   where r.status = 'stop_pending'
+     and r.upstream_run_id is null
+     and r.runtime_id is null
+     and r.started_at <= now() - make_interval(secs => p_min_age_seconds);
+
+  return v_count;
+end;
+$$;
+
+revoke all on function public.count_engine_runs_missing_upstream_identity(integer)
+  from public, anon, authenticated;
+grant execute on function public.count_engine_runs_missing_upstream_identity(integer)
+  to service_role;
+
+comment on function public.count_engine_runs_missing_upstream_identity(integer) is
+  'Counts stale stop-pending engine runs with no upstream run ID and no isolated runtime ID for operational alerting.';
