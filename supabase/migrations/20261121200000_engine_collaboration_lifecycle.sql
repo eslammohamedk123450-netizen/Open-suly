@@ -317,8 +317,7 @@ begin
 
   select coalesce(max(sequence), 0) + 1 into v_seq
     from public.engine_collaboration_events
-   where handoff_id = v_handoff.id
-   for update;
+   where handoff_id = v_handoff.id;
   insert into public.engine_collaboration_events (
     handoff_id, user_id, sequence, event_type, status, metadata
   ) values (
@@ -383,8 +382,7 @@ begin
   insert into public.engine_collaboration_events (
     handoff_id, user_id, sequence, event_type, status, metadata
   ) values (
-    p_handoff_id, p_user_id, v_seq, 'handoff.failed', 'failed',
-    jsonb_build_object('reason', 'user_rejected')
+    p_handoff_id, p_user_id, v_seq, 'review.rejected', null, '{}'::jsonb
   );
   return true;
 end;
