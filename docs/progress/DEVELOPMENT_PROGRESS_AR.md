@@ -690,3 +690,11 @@ undefined
 1. افحص Platform CI وRepository baseline وEngine runtime build على HEAD الجديد؛ شخّص فشل image-build فقط من logs فعلية، ولا تخمّن السبب.
 2. وسّع اختبارات دفتر الرصيد، ثم أضف اختبار PostgreSQL disposable للتنافسية وNULL/idempotency إن كانت بيئة CI المتاحة تسمح، دون الاتصال بقاعدة المستخدم.
 3. بعد ذلك صمّم ربط reserve/settle/release بمسار المحرك مع cost policy خادمية صريحة؛ لا تخترع أسعارًا ولا تفعّل worker/engine قبل اعتماد سياسة التكلفة واكتمال اختبارات العزل.
+
+
+### نتائج CI بعد commit `1387b8960cd48056ea236485c749bab9d9712cb4`
+- **Platform CI #1374 / run `44933680235`: نجاح كامل.** API compile نجح، واكتملت اختبارات API بنتيجة **757 passed, 5 warnings**. Client TypeScript typecheck وExpo dependency compatibility وWeb export نجحت أيضًا.
+- **Repository baseline #1392 / run `44933680367`: نجاح.** فحوص وثائق المشروع ورفض ملفات البيئة والمفاتيح الخاصة tracked نجحت.
+- **Engine runtime image build #44 / run `44933678909`: فشل.** GitHub Actions API أعاد `total_count=0` للـjobs، ولم تتوفر logs؛ لذلك لا يمكن تحديد هل الفشل في checkout أو build أو runner، ولا نعتبر بناء صور Hermes/OpenCode أو provisioner ناجحًا.
+- Combined commit status أظهر check خارجيًا `strong-gentleness - suly-api` بحالة failure. لم ننفذ deploy ولم نتصل بخدمة Railway؛ هذا status خارجي لا يغيّر نتيجة Platform CI.
+- نتيجة التحقق تخص commit `1387b8960cd48056ea236485c749bab9d9712cb4` تحديدًا. لا يوجد pytest محلي؛ إثبات الاختبارات هو run CI المذكور.

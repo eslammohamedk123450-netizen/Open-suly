@@ -515,3 +515,12 @@ For every engine:
 - لم تتغير عناصر checklist: **51/120 (43%)**. تقدير Controlled Beta/Production Readiness يظل **نحو 20%** بطريقة milestone-weighted؛ وجود ledger code لا يعني billing integration أو staging validation.
 - التالي: التحقق من CI الجديد، ثم اختبارات PostgreSQL disposable، وبعدها ربط cost/usage ledger بالـworker خلف gates مغلقة وبعد تحديد سياسة التكلفة.
 
+
+
+### CI verification update — `1387b8960cd48056ea236485c749bab9d9712cb4`
+
+- Platform CI run `44933680235` (#1374) succeeded: API compile, **757 API tests passed (5 warnings)**, client TypeScript typecheck, Expo dependency compatibility, and web export.
+- Repository baseline run `44933680367` (#1392) succeeded.
+- Engine runtime image build run `44933678909` (#44) failed, but the Actions API returned zero jobs and no logs were available. The cause remains unknown; no engine image build success is claimed.
+- The combined commit status also reports an external `strong-gentleness - suly-api` failure. No Railway deployment or live service action was performed.
+- These results are tied to commit `1387b8960cd48056ea236485c749bab9d9712cb4`; local pytest was not run.
