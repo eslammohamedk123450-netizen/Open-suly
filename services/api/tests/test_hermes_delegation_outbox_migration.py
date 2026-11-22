@@ -264,3 +264,12 @@ def test_parent_can_run_independent_dag_siblings_while_waiting_for_children():
     assert "t.status in ('ready','running') or t.status = 'waiting_children'" in sql
     assert "when t.status='waiting_children' and left(v_step.step_key,7) <> 'resume_' then 'waiting_children'" in sql
     assert "else 'running' end" in sql
+
+
+def test_collaboration_approval_and_cancellation_share_parent_first_lock_order():
+    sql = re.sub(r"\s+", " ", _parent_child_continuation_migration())
+    approval = sql[sql.index("create or replace function public.approve_engine_collaboration_handoff"):sql.index("create or replace function public.mark_task_waiting_for_collaboration")]
+    cancellation = sql[sql.index("create or replace function public.cancel_engine_collaboration_handoff"):sql.index("revoke all on function public.mark_task_waiting_for_collaboration")]
+    assert approval.index("from public.tasks where id = v_handoff.parent_task_id") < approval.index("from public.engine_collaboration_handoffs where id = p_handoff_id and user_id = p_user_id for update")
+    assert cancellation.index("from public.tasks where id = v_handoff.parent_task_id") < cancellation.index("from public.tasks where id = v_handoff.child_task_id") < cancellation.index("from public.engine_collaboration_handoffs where id = p_handoff_id and user_id = p_user_id for update")
+    assert "waiting_children','cancel_requested'" in cancellation
