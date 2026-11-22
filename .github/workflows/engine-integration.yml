@@ -47,6 +47,7 @@ jobs:
             tests/test_engine_dispatcher.py \
             tests/test_engine_collaboration.py \
             tests/test_hermes_delegation_bridge.py \
+            tests/test_hermes_delegation_outbox_migration.py \
             tests/test_hermes_tool_gateway.py \
             tests/test_worker_runtime.py \
             tests/test_engine_run_reconciler.py \
