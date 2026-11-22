@@ -29,7 +29,7 @@ create table if not exists public.engine_runtime_catalog (
   engine_id text primary key check (engine_id ~ '^[a-z][a-z0-9-]{1,62}$'),
   task_operation text not null unique check (task_operation ~ '^[a-z][a-z0-9_.-]{1,95}$'),
   capabilities text[] not null check (public.valid_engine_capabilities(capabilities)),
-  max_timeout_seconds integer not null check (max_timeout_seconds between 1 and 3600),
+  max_timeout_seconds integer not null check (max_timeout_seconds between 1 and 1800),
   max_input_bytes integer not null check (max_input_bytes between 1 and 1000000),
   max_output_bytes integer not null check (max_output_bytes between 1 and 1000000),
   requires_project boolean not null default false,
@@ -50,7 +50,7 @@ insert into public.engine_runtime_catalog (
   engine_id,task_operation,capabilities,max_timeout_seconds,max_input_bytes,max_output_bytes,
   requires_project,enabled,collaboration_enabled,upstream_repository,upstream_revision,license_id
 ) values
-  ('hermes-agent','hermes.agent.turn',array['agent.general'],300,20200,52000,false,true,true,
+  ('hermes-agent','hermes.agent.turn',array['agent.general'],300,32000,64000,false,true,true,
    'https://github.com/NousResearch/hermes-agent','2de9f51b8008a7d49a49221c184f2f11cbfc4af1','MIT'),
   ('opencode','opencode.task.run',array['code.edit','code.review','code.test','code.repository'],1800,48000,16000,true,true,true,
    'https://github.com/anomalyco/opencode','4cca18d80450a3dd6a9a4142028bde84ccb3116e','MIT')
@@ -101,7 +101,7 @@ begin
      or p_max_child_tasks is null or p_max_child_tasks not between 1 and 8
      or p_max_parallel_children is null or p_max_parallel_children not between 1 and 2
      or p_max_parallel_children > p_max_child_tasks
-     or p_max_runtime_seconds is null or p_max_runtime_seconds not between 1 and 3600
+     or p_max_runtime_seconds is null or p_max_runtime_seconds not between 1 and 1800
      or p_max_input_bytes is null or p_max_input_bytes not between 1 and 64000 then
     raise exception 'collaboration_request_invalid' using errcode = '22023';
   end if;
@@ -171,8 +171,8 @@ begin
      or v_run.engine_id = p_target_engine
      or v_source_step.output->>'engine' is distinct from v_run.engine_id
      or v_source_step.output->>'operation' is distinct from v_source_catalog.task_operation
-     or (jsonb_typeof(v_source_step.output->'handoff_context') <> 'string'
-         and jsonb_typeof(v_source_step.output->'content') <> 'string') then
+     or (jsonb_typeof(v_source_step.output->'handoff_context') is distinct from 'string'
+         and jsonb_typeof(v_source_step.output->'content') is distinct from 'string') then
     raise exception 'collaboration_source_output_invalid' using errcode = '55000';
   end if;
   if v_target_catalog.requires_project and v_task.project_id is null then
@@ -391,7 +391,7 @@ begin
     if not found
        or v_source_step.output->>'engine' is distinct from v_handoff.source_engine
        or v_source_step.output->>'operation' is distinct from v_source_catalog.task_operation
-       or jsonb_typeof(v_source_step.output->'handoff_context') <> 'string' then
+       or jsonb_typeof(v_source_step.output->'handoff_context') is distinct from 'string' then
       raise exception 'collaboration_source_output_invalid' using errcode = '55000';
     end if;
     v_source_context := left(v_source_step.output->>'handoff_context',12000);
