@@ -42,6 +42,7 @@ export default function ConversationScreen() {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
   const [selectedAttachments, setSelectedAttachments] = useState<string[]>([]);
+  const [pendingMessageId, setPendingMessageId] = useState<string | null>(null);
   const activeRequest = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -53,6 +54,7 @@ export default function ConversationScreen() {
     setProjectId(null);
     setProjectFiles([]);
     setSelectedAttachments([]);
+    setPendingMessageId(null);
     getConversation(id).then(async (conversation) => {
       if (!active || !conversation.project_id) return;
       setProjectId(conversation.project_id);
@@ -69,14 +71,16 @@ export default function ConversationScreen() {
       const lastUserMessage = [...rows].reverse().find((row) => row.role === "user");
       const hasReply = lastUserMessage && rows.some((row) => row.role === "assistant" && row.metadata?.in_reply_to === lastUserMessage.id);
       if (lastUserMessage && !hasReply) {
+        setPendingMessageId(lastUserMessage.id);
         try {
           const controller = new AbortController();
           activeRequest.current = controller;
           const reply = await requestAssistantReplyStream(id, lastUserMessage.id, { signal: controller.signal, onDelta: (part) => { if (active) setStreamingText((current) => current + part); } });
           if (active) setMessages((current) => current.some((row) => row.id === reply.id) ? current : [...current, reply]);
+          if (active) setPendingMessageId(null);
           if (active) setStreamingText("");
         } catch (e) {
-          if (active && !(e instanceof Error && e.name === "AbortError")) setEngineNotice(e instanceof Error ? e.message : "محرك الردود غير متاح حاليًا.");
+          if (active) setEngineNotice(e instanceof Error && e.name === "AbortError" ? "تم إيقاف الرد. يمكنك استكماله وقتما تريد." : e instanceof Error ? e.message : "محرك الردود غير متاح حاليًا.");
           if (active) setStreamingText("");
         } finally {
           activeRequest.current = null;
@@ -101,20 +105,47 @@ export default function ConversationScreen() {
     activeRequest.current = controller;
     try {
       const saved = await sendUserMessage(id, content, selectedAttachments);
+      setPendingMessageId(saved.id);
       setMessages((current) => [...current, saved]);
       setSelectedAttachments([]);
       try {
         const reply = await requestAssistantReplyStream(id, saved.id, { signal: controller.signal, onDelta: (part) => setStreamingText((current) => current + part) });
         setMessages((current) => current.some((row) => row.id === reply.id) ? current : [...current, reply]);
+        setPendingMessageId(null);
         setStreamingText("");
       } catch (replyError) {
-        if (!(replyError instanceof Error && replyError.name === "AbortError")) setEngineNotice(replyError instanceof Error ? replyError.message : "تم حفظ الرسالة، لكن الرد غير متاح حاليًا.");
+        setEngineNotice(replyError instanceof Error && replyError.name === "AbortError" ? "تم إيقاف الرد. يمكنك استكماله وقتما تريد." : replyError instanceof Error ? replyError.message : "تم حفظ الرسالة، لكن الرد غير متاح حاليًا.");
         setStreamingText("");
       }
     } catch (e) {
       setDraft(content);
       setError(e instanceof Error ? e.message : "تعذر حفظ الرسالة.");
     } finally { activeRequest.current = null; setSending(false); }
+  };
+
+
+  const retryReply = async () => {
+    if (!pendingMessageId || sending) return;
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    setSending(true);
+    setStreamingText("");
+    setEngineNotice("");
+    try {
+      const reply = await requestAssistantReplyStream(id, pendingMessageId, {
+        signal: controller.signal,
+        onDelta: (part) => setStreamingText((current) => current + part),
+      });
+      setMessages((current) => current.some((row) => row.id === reply.id) ? current : [...current, reply]);
+      setPendingMessageId(null);
+      setStreamingText("");
+    } catch (e) {
+      setEngineNotice(e instanceof Error && e.name === "AbortError" ? "تم إيقاف الرد. يمكنك استكماله وقتما تريد." : e instanceof Error ? e.message : "تعذر استكمال الرد.");
+      setStreamingText("");
+    } finally {
+      activeRequest.current = null;
+      setSending(false);
+    }
   };
 
   return (
@@ -150,6 +181,11 @@ export default function ConversationScreen() {
           {!!engineNotice && (
             <View style={styles.noticeBox}>
               <Text style={styles.engineNotice}>{engineNotice}</Text>
+              {!!pendingMessageId && !sending && (
+                <Pressable style={styles.permissionButton} onPress={() => void retryReply()}>
+                  <Text style={styles.permissionText}>استكمال الرد</Text>
+                </Pressable>
+              )}
               {engineNotice.includes("موافقة صريحة") && (
                 <Pressable style={styles.permissionButton} onPress={() => router.push("/agent")}>
                   <Text style={styles.permissionText}>فتح مساحة الوكيل لإدارة الموافقة</Text>
