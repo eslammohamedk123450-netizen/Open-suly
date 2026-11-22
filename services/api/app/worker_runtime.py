@@ -12,17 +12,17 @@ import re
 import signal
 from time import monotonic
 from threading import Event
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 from uuid import UUID
 
 from app.core.config import get_settings
 from app.core.supabase import get_supabase_admin_client
 from app.services.ai_gateway import generate_reply
-from app.services.engine_contract import EngineRequest, EngineResult
+from app.services.engine_contract import EngineAdapter, EngineRequest, EngineResult
 from app.services.engine_registry import EngineRegistry
 from app.services.engine_dispatcher import EngineDispatcher
 from app.services.agent_manager import AgentManager
-from app.services.engine_catalog import build_engine_registry as build_pinned_engine_registry
+from app.services.engine_catalog import EngineManifest, build_engine_registry as build_pinned_engine_registry
 from app.services.agent_catalog import build_agent_manager as build_catalog_agent_manager
 from app.services.hermes_agent import HermesAgentCancelled, respond_run_approval, run_agent_turn, stop_agent_run
 from app.services.hermes_skill_policy import HermesSkillApprovalStore
@@ -196,6 +196,8 @@ def build_engine_registry(
     on_session_created: Callable[[str], bool | None] | None = None,
     runtime_lease: RuntimeLease | None = None,
     opencode_adapter: OpenCodeEngineAdapter | None = None,
+    additional_manifests: tuple[EngineManifest, ...] = (),
+    additional_runtime_overrides: Mapping[str, tuple[bool, EngineAdapter | None]] | None = None,
 ) -> EngineRegistry:
     """Build pinned engines with only explicitly configured live adapters enabled."""
     settings = get_settings()
@@ -205,10 +207,17 @@ def build_engine_registry(
         cancel_event, idempotency_key=idempotency_key, on_run_started=on_run_started,
         on_event=on_event, on_session_created=on_session_created, runtime_lease=runtime_lease,
     )
-    return build_pinned_engine_registry({
+    runtime_overrides: dict[str, tuple[bool, EngineAdapter | None]] = {
         "hermes-agent": (hermes_enabled, hermes_adapter),
         "opencode": (opencode_enabled, opencode_adapter),
-    })
+    }
+    for engine_id, override in (additional_runtime_overrides or {}).items():
+        if engine_id in runtime_overrides:
+            raise ValueError("additional_engine_override_cannot_replace_builtin")
+        runtime_overrides[engine_id] = override
+    return build_pinned_engine_registry(
+        runtime_overrides, additional_manifests=additional_manifests,
+    )
 
 def build_agent_manager(engines: EngineRegistry) -> AgentManager:
     """Use the canonical SULY role catalogue against the live engine allow-list."""
