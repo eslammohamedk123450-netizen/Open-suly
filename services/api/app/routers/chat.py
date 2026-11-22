@@ -12,6 +12,7 @@ from app.core.config import get_settings
 from app.core.rate_limit import rate_limit
 from app.core.supabase import get_supabase_admin_client
 from app.services.tool_approvals import ToolApprovalStore
+from app.services.project_workspace_store import contains_secret_material
 from app.services.ai_gateway import (
     AIProviderError,
     AIProviderNotConfigured,
@@ -70,6 +71,8 @@ def _build_prompt_messages(
         content = row.get("content")
         if role not in ("user", "assistant") or not isinstance(content, str):
             continue
+        if contains_secret_material(content):
+            content = "[تم حجب محتوى يشبه سرًا حفاظًا على الأمان]"
         bounded_content = content[-min(8000, remaining_chars):]
         context_messages.append({"role": role, "content": bounded_content})
         remaining_chars -= len(bounded_content)
@@ -86,6 +89,8 @@ def _extractive_history_summary(messages: list[dict[str, Any]], target_index: in
         role = row.get("role")
         content = row.get("content")
         if role not in ("user", "assistant") or not isinstance(content, str):
+            continue
+        if contains_secret_material(content):
             continue
         normalized = " ".join(content.split())
         if not normalized:
@@ -113,8 +118,6 @@ def _load_chat_memory_context(
         raise HTTPException(status_code=503, detail="SULY memory storage is not configured.")
     try:
         from app.services.hermes_state_store import HermesStateStore
-        from app.services.project_workspace_store import contains_secret_material
-
         with admin:
             user_rows = (
                 admin.table("agent_memories")
@@ -558,8 +561,7 @@ def add_user_message(
                 ) or []
                 if len(files) != len(request.attachments):
                     raise HTTPException(status_code=404, detail="One or more attached files were not found.")
-                from app.services.project_workspace_store import contains_secret_material
-                total_chars = 0
+                        total_chars = 0
                 for file in files:
                     file_content = file.get("content")
                     if not isinstance(file_content, str) or contains_secret_material(file_content):
