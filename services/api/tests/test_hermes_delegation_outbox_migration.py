@@ -273,6 +273,9 @@ def test_collaboration_approval_and_cancellation_share_parent_first_lock_order()
     assert approval.index("from public.tasks where id = v_handoff.parent_task_id") < approval.index("from public.engine_collaboration_handoffs where id = p_handoff_id and user_id = p_user_id for update")
     assert cancellation.index("from public.tasks where id = v_handoff.parent_task_id") < cancellation.index("from public.tasks where id = v_handoff.child_task_id") < cancellation.index("from public.engine_collaboration_handoffs where id = p_handoff_id and user_id = p_user_id for update")
     assert "waiting_children','cancel_requested'" in cancellation
+    assert "Refresh after acquiring the parent lock" in cancellation
+    assert "v_child.status = 'completed'" in cancellation
+    assert "owner_cancelled_pending_review" in cancellation
 
 
 def test_all_new_collaboration_and_opencode_plpgsql_bodies_have_balanced_dollar_quotes():
