@@ -11,7 +11,7 @@ export type Conversation = {
   updated_at: string;
 };
 
-export type MessageRole = "user" | "assistant" | "system" | "tool";
+export type MessageRole = "user" | "assistant" | "system" | "tool" | "agent" | "error";
 
 export type ChatMessage = {
   id: string;
