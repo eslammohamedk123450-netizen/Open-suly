@@ -537,28 +537,50 @@ async def stream_response_to_message(
             return
 
         chunks: list[str] = []
+        usage_summary: dict[str, int] | None = None
+
+        def capture_usage(value: dict[str, int]) -> None:
+            nonlocal usage_summary
+            usage_summary = value
+
         try:
-            async for fragment in stream_reply(prompt):
+            async for fragment in stream_reply(prompt, on_usage=capture_usage):
                 chunks.append(fragment)
                 yield "event: delta\ndata: " + json.dumps({"text": fragment}, ensure_ascii=False) + "\n\n"
 
             answer = "".join(chunks).strip()
             if not answer:
                 raise AIProviderError("The provider returned an empty stream.")
-            inserted = (
-                admin.table("messages").insert({
-                    "conversation_id": str(request.conversation_id),
-                    "user_id": user.id,
-                    "role": "assistant",
-                    "content": answer,
-                    "metadata": {
-                        "in_reply_to": str(request.message_id),
-                        "provider": settings.ai_provider,
-                        "model": settings.ai_model,
-                        "streamed": True,
-                    },
-                }).execute().data
-            )
+            try:
+                inserted = (
+                    admin.table("messages").insert({
+                        "conversation_id": str(request.conversation_id),
+                        "user_id": user.id,
+                        "role": "assistant",
+                        "content": answer,
+                        "metadata": {
+                            "in_reply_to": str(request.message_id),
+                            "provider": settings.ai_provider,
+                            "model": settings.ai_model,
+                            "streamed": True,
+                            **({"usage": usage_summary} if usage_summary is not None else {}),
+                        },
+                    }).execute().data
+                )
+            except Exception:
+                logger.exception("streamed_assistant_reply_persist_failed")
+                inserted = []
+            if not inserted:
+                existing_after_race = (
+                    admin.table("messages").select("*")
+                    .eq("conversation_id", str(request.conversation_id))
+                    .eq("user_id", user.id)
+                    .eq("role", "assistant")
+                    .contains("metadata", {"in_reply_to": str(request.message_id)})
+                    .limit(1).execute().data
+                )
+                if existing_after_race:
+                    inserted = existing_after_race
             if not inserted:
                 raise RuntimeError("assistant_message_not_persisted")
             yield "event: complete\ndata: " + json.dumps({"message": inserted[0]}, ensure_ascii=False) + "\n\n"
