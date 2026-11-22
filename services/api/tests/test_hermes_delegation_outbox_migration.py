@@ -120,3 +120,18 @@ def test_parent_cancellation_and_duplicate_child_terminal_triggers_remain_single
     assert "where h.child_task_id = new.id" in sql
     assert "h.status in ('approved','running')" in sql
     assert "from public.engine_collaboration_events" in sql
+
+
+def test_parent_resume_step_is_claimed_only_after_its_exact_run_barrier_is_clear():
+    sql = re.sub(r"\s+", " ", _parent_child_continuation_migration())
+    assert "create or replace function public.claim_task_step(" in sql
+    assert "t.status = 'waiting_children'" in sql
+    assert "left(s.step_key,7) = 'resume_'" in sql
+    assert "r.id::text = s.input->>'continuation_of_run_id'" in sql
+    assert "r.status = 'succeeded'" in sql
+    assert "o.parent_run_id::text = s.input->>'continuation_of_run_id'" in sql
+    assert "h.parent_run_id::text = s.input->>'continuation_of_run_id'" in sql
+    assert "set status='running'" in sql
+    assert "and cancel_requested_at is null" in sql
+    assert "pg_advisory_xact_lock" in sql
+    assert "set status = 'ready'" not in sql
