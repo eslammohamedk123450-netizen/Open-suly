@@ -1,6 +1,6 @@
 # OpenCode upstream engine
 
-This directory pins the **complete upstream OpenCode repository** as a Git submodule at `upstream/`. The source is not reimplemented or flattened into SULY's FastAPI process.
+SULY pins the **complete upstream OpenCode repository** as a Git submodule at `upstream/`. It is built as a separate runtime image and dispatched through SULY's task-scoped engine adapter; it is not flattened into the FastAPI process and is not called as a hosted AI service.
 
 ## Provenance
 
@@ -9,69 +9,45 @@ This directory pins the **complete upstream OpenCode repository** as a Git submo
 - Upstream package version at the audited revision: `2.3.0`
 - License: MIT (the original `LICENSE` is retained in the submodule)
 - Upstream commit signature: verified by GitHub at import time
-- Pin rationale: this is the immutable revision already reviewed in `docs/architecture/OPENCODE_INTEGRATION_AUDIT.md`. Do not silently advance to the moving `dev` branch.
+- Pin rationale: immutable revision audited in `docs/architecture/OPENCODE_INTEGRATION_AUDIT.md`. Do not silently advance to the moving `dev` branch.
 
-## Get the original source
+## Build the original source
 
 From the SULY repository root:
 
 ```bash
 git submodule update --init --recursive engines/opencode/upstream
-```
-
-Verify the pin:
-
-```bash
 git -C engines/opencode/upstream rev-parse HEAD
 ```
 
-It must equal the commit above. The submodule contains the original monorepo, including its server, core, AI/provider integrations, CLI, protocol/schema, plugin system, browser plugin, TUI, skills, tests, build scripts, and original documentation.
+The result must equal the pinned commit above. The upstream monorepo includes the original server, core, AI/provider integrations, CLI, protocol/schema, plugin system, browser plugin, TUI, skills, tests, build scripts, and documentation.
 
-## Runtime boundary
+The upstream workspace uses Bun `1.4.4`. Build from the upstream repository root with its own lockfile and workspace scripts; copying only `packages/server` is incomplete. The dedicated CI workflow verifies provenance, runs the SULY adapter contracts, typechecks the original server, and builds the isolated runtime image. The live Docker server smoke test is gated behind `SULY_ENABLE_ENGINE_RUNTIME_SMOKE=true` for the later external acceptance phase.
 
-The source import is a **source-inclusion milestone**, not a claim that OpenCode is already serving SULY users. The upstream server has a broad filesystem, shell, PTY, MCP, plugin, and credential surface. It must remain disabled until SULY provisions a separate per-task-attempt sandbox and broker.
+## Runtime and security boundary
 
-SULY remains authoritative for user identity, tenant ownership, task/lease state, approvals, audit, usage, and secrets. Never pass Supabase service credentials or arbitrary host paths into OpenCode. Do not expose the upstream server directly to the mobile/web client.
+The upstream server has a broad filesystem, shell, PTY, MCP, plugin, and credential surface. SULY therefore provisions one isolated runtime per task attempt and routes requests only through that attempt's authenticated runtime lease. The API worker does not receive a Docker socket, and the upstream server is never exposed directly to mobile/web clients.
 
-## Build/runtime notes
+SULY remains authoritative for user identity, tenant ownership, project snapshots, task/lease state, tool permissions, approvals, audit, usage, and secrets. Never pass Supabase service credentials or arbitrary host paths into OpenCode. Keep the engine disabled until the runtime provisioner and per-task isolation controls are deployed and verified.
 
-The pinned upstream monorepo uses Bun (declared as `bun@1.4.4`) and a workspace of packages. Its server package depends on other upstream workspace packages, so copying only `packages/server` is not a complete engine. Build and run it from the upstream repository root using its own lockfile and workspace scripts, in a dedicated image.
+## SULY task adapter
 
-The upstream repository is large. Keep submodule checkout out of the normal SULY client/API CI path; build the engine in its own job/image when the sandbox implementation is ready.
+- `OpenCodeTaskExecutor` snapshots only the authenticated owner's bounded project workspace and starts the original OpenCode server through the attempt-scoped runtime broker.
+- The durable run/session store records owner/project/task/engine-run/runtime identity. Permission requests are reduced to sanitized metadata and bound to the exact run/session/lease.
+- Permission decisions are limited to `once` or `reject`; permanent `always` grants are not representable. SULY approvals remain authoritative.
+- SSE is treated as volatile progress, not a durable task ledger. Only allowlisted event metadata is persisted; prompts, reasoning, tool arguments, terminal output, filesystem paths, and raw event envelopes are discarded.
+- The executor validates changed-file paths and SHA-256 digests, then stores a reviewable change set against the captured project revision. Applying is a separate owner action and the database apply function rejects stale revisions.
+- Applying an initial change set queues one durable post-apply review step against the updated workspace. That review is read-only; any proposed fixes become a new change set and still require owner approval. The review step is marked with its source change-set ID so it cannot recursively enqueue more reviews.
+- When OpenCode is a delegated child, its handoff remains active while a change set awaits owner decision and through the post-apply review. The parent receives the final applied/rejected/stale outcome before it resumes. Cancellation prevents a pending change set from being applied.
 
-## Update policy
+## Upstream update policy
 
 Any upstream update requires:
 1. Review the new commit and security advisories.
 2. Re-run license and dependency review.
 3. Update the gitlink pin and `UPSTREAM.json` together.
-4. Re-run adapter, isolation, and engine smoke tests.
+4. Re-run adapter, isolation, and engine build checks.
 
+## Verification boundary
 
-## SULY HTTP bridge checkpoint
-
-- `services/api/app/services/opencode_http.py` is a narrow async HTTP transport for one already-validated task-attempt runtime lease.
-- It uses HTTPS only, Basic auth in the Authorization header, TLS verification, no environment proxy inheritance, no redirects, bounded timeouts/connections/response size, and a small explicit route allowlist.
-- Initial operations are health, create-session (with catch-all ask permissions), and bounded skill/provider catalog metadata. It deliberately does not expose prompt execution, shell, PTY, MCP, plugins, filesystem APIs, arbitrary paths, or session deletion.
-- This is not a runtime provisioner and does not make OpenCode available to users. The engine remains disabled until durable session ownership, worker/lease checks, permission UI, safe prompt/output reduction, and a concrete isolated runtime provider are implemented.
-
-## Session-scoped permission transport checkpoint
-
-The API bridge now supports:
-- Listing pending permission requests for one validated upstream session.
-- Reducing each request through the SULY protocol contract, which checks the exact session ID and drops upstream message/metadata/source fields.
-- Replying to one exact session/request pair using only `once` or `reject`; permanent `always` grants are not representable.
-- Rejecting malformed IDs, cross-session payloads, redirects, unexpected statuses, and oversized response bodies.
-
-This is still only a transport capability. A production caller must first load the durable SULY session-to-task/run/lease mapping, verify current ownership and active lease immediately before every request, and persist the approval decision/audit event. No API route currently exposes this transport to end users, and no prompt execution or runtime provisioning is enabled.
-
-
-## Session-filtered event transport checkpoint
-
-- `OpenCodeHTTPClient.iter_safe_events()` consumes the upstream `GET /api/event` SSE stream only through the task-attempt runtime lease.
-- The upstream stream is server-wide and volatile. This adapter is therefore valid only when the provisioner guarantees one OpenCode server/data directory per task attempt; it is not safe against a shared multi-tenant OpenCode process.
-- Each event is reduced by `opencode_contract.safe_event_metadata()` and must match the expected session ID. Only allowlisted lifecycle event names and bounded permission request/reply identifiers are returned.
-- Prompt text, reasoning, tool arguments, terminal output, filesystem paths, plugin/MCP payloads, and raw event envelopes are discarded.
-- Event count and per-event byte limits are enforced. Redirects, wrong content types, oversized events, and transport errors fail closed.
-- SSE is not a durable ledger. SULY must persist accepted lifecycle checkpoints itself and reconcile task state from the durable worker/task store after reconnects.
-- Contract tests cover cross-session event dropping, sensitive-field reduction, unknown event dropping, invalid permission event IDs, redirects, content-type mismatch, and size/parameter bounds.
+Repository CI covers adapter contracts, owner-scoped lifecycle APIs, permission transport, change-set validation, cancellation guards, the runtime provisioner contract/security tests, and upstream typecheck/image build where triggered. Static SQL invariant tests do not prove PostgreSQL execution. No hosted runtime, real model inference, production Supabase migration, cross-tenant isolation acceptance, or full live task execution is claimed in this code-completion phase; these belong to the later non-production/external acceptance test.
