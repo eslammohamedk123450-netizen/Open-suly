@@ -67,3 +67,44 @@ jobs:
           cp services/api/.env.example .env
           docker compose --env-file .env -f deploy/docker-compose.server.yml config --quiet
           rm -f .env
+
+      - name: Run built API container smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --rm --name suly-api-ci -p 127.0.0.1:18080:8000 \
+            -e APP_ENV=development \
+            -e SUPABASE_URL= \
+            -e SUPABASE_PUBLISHABLE_KEY= \
+            -e SUPABASE_SECRET_KEY= \
+            suly-api:ci
+          cleanup() { docker stop suly-api-ci >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          python - <<'PY'
+          import json
+          import time
+          import urllib.error
+          import urllib.request
+          base = "http://127.0.0.1:18080"
+          deadline = time.monotonic() + 45
+          while time.monotonic() < deadline:
+              try:
+                  with urllib.request.urlopen(base + "/health", timeout=2) as response:
+                      assert response.status == 200
+                      assert json.load(response)["status"] == "ok"
+                      assert response.headers.get("X-Content-Type-Options") == "nosniff"
+                  break
+              except Exception:
+                  time.sleep(1)
+          else:
+              raise SystemExit("API container did not become healthy")
+          try:
+              urllib.request.urlopen(base + "/ready", timeout=2)
+          except urllib.error.HTTPError as response:
+              assert response.code == 503
+              payload = json.load(response)
+              assert payload["status"] == "not_ready"
+              assert "server-secret" not in json.dumps(payload)
+          else:
+              raise SystemExit("Readiness must fail closed without Supabase configuration")
+          PY
