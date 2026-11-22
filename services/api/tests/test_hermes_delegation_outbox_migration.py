@@ -293,9 +293,9 @@ def test_all_new_collaboration_and_opencode_plpgsql_bodies_have_balanced_dollar_
 def test_opencode_apply_guard_serializes_with_parent_child_cancellation():
     sql = re.sub(r"\s+", " ", _opencode_post_apply_migration())
     guard = sql[sql.index("create or replace function public.guard_opencode_change_set_apply_after_cancellation"):sql.index("drop trigger if exists opencode_changeset_guard_cancelled_task")]
-    parent_lock = guard.index("from public.tasks t where t.id = v_parent_task_id for share")
-    child_lock = guard.index("from public.tasks t where t.id = v_task_id for share")
-    handoff_lock = guard.index("from public.engine_collaboration_handoffs h where h.child_task_id = v_task_id order by h.created_at desc limit 1 for share")
+    parent_lock = guard.index("from public.tasks t where t.id = v_parent_task_id and t.user_id = new.user_id for share")
+    child_lock = guard.index("from public.tasks t where t.id = v_task_id and t.user_id = new.user_id for share")
+    handoff_lock = guard.index("from public.engine_collaboration_handoffs h where h.child_task_id = v_task_id and h.user_id = new.user_id order by h.created_at desc limit 1 for share")
     assert parent_lock < child_lock < handoff_lock
     assert "for share" in guard
     assert "v_parent_status in ('cancel_requested','cancelled','failed')" in guard
