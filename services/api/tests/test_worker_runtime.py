@@ -1469,3 +1469,70 @@ def test_hermes_and_opencode_apply_engine_specific_utf8_prompt_budgets():
     opencode_source = inspect.getsource(runtime_module.opencode_task_run)
     assert "_bound_utf8_text(prompt, 28_000)" in hermes_source
     assert "_bound_utf8_text(prompt, 44_000)" in opencode_source
+
+
+def test_parent_continuation_loads_only_owner_scoped_safe_dag_outputs(monkeypatch):
+    from types import SimpleNamespace
+    import app.worker_runtime as runtime_module
+
+    class Query:
+        def __init__(self):
+            self.filters = {}
+        def select(self, _columns): return self
+        def eq(self, key, value):
+            self.filters[key] = value
+            return self
+        def neq(self, key, value):
+            self.filters[f"not_{key}"] = value
+            return self
+        def order(self, *_args, **_kwargs): return self
+        def limit(self, _value): return self
+        def execute(self):
+            return SimpleNamespace(data=[{
+                "step_key": "prior-work",
+                "step_order": 0,
+                "status": "completed",
+                "error_code": None,
+                "output": {"content": "prior result", "api_key": "must-not-leak"},
+            }])
+
+    class Client:
+        def __init__(self): self.query = Query()
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def table(self, _name): return self.query
+
+    client = Client()
+    monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: client)
+    step = make_step({
+        "operation": "hermes.agent.turn",
+        "prompt": "continue the parent task",
+        "continuation_of_run_id": "00000000-0000-0000-0000-000000000005",
+    })
+    result = runtime_module._parent_dag_result_context(step, "continue the parent task")
+    assert "SULY_PARENT_DAG_RESULTS_V1" in result
+    assert "prior result" in result
+    assert "must-not-leak" not in result
+    assert client.query.filters["task_id"] == str(step.task_id)
+    assert client.query.filters["user_id"] == str(step.user_id)
+    assert client.query.filters["not_step_key"] == step.step_key
+
+
+def test_parent_dag_context_is_used_by_both_hermes_and_opencode_continuations():
+    import inspect
+    import app.worker_runtime as runtime_module
+
+    assert "_parent_dag_result_context(step, prompt)" in inspect.getsource(runtime_module.hermes_agent_turn)
+    assert "_parent_dag_result_context(step, prompt)" in inspect.getsource(runtime_module.opencode_task_run)
+
+
+def test_parent_dag_context_rejects_malformed_continuation_run_id():
+    import app.worker_runtime as runtime_module
+
+    step = make_step({
+        "operation": "hermes.agent.turn",
+        "prompt": "continue",
+        "continuation_of_run_id": "not-a-uuid",
+    })
+    with pytest.raises(ValueError, match="parent_continuation_run_id_invalid"):
+        runtime_module._parent_dag_result_context(step, "continue")
