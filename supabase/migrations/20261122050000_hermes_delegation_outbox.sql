@@ -25,12 +25,16 @@ create table if not exists public.hermes_delegation_outbox (
   constraint hermes_delegation_outbox_payload_check check (
     jsonb_typeof(payload) = 'object'
     and payload->>'schema_version' = '1'
-    and jsonb_typeof(payload->'delegations') = 'array'
-    and jsonb_array_length(payload->'delegations') between 1 and 8
+    and case
+      when jsonb_typeof(payload->'delegations') = 'array'
+      then jsonb_array_length(payload->'delegations') between 1 and 8
+      else false
+    end
     and octet_length(payload::text) <= 64000
   ),
   constraint hermes_delegation_outbox_lease_check check (
     (lease_token is null) = (lease_expires_at is null)
+    and (lease_token is null) = (lease_owner is null)
   )
 );
 
@@ -52,7 +56,6 @@ declare
   v_run_id uuid;
   v_run public.engine_runs%rowtype;
   v_item jsonb;
-  v_key text;
 begin
   if new.status <> 'completed' or old.status = 'completed'
      or new.input->>'operation' is distinct from 'hermes.agent.turn'
@@ -64,8 +67,11 @@ begin
      or new.output->>'engine' is distinct from 'hermes-agent'
      or jsonb_typeof(new.output->'delegation_plan') <> 'object'
      or new.output->'delegation_plan'->>'schema_version' <> '1'
-     or jsonb_typeof(new.output->'delegation_plan'->'delegations') <> 'array'
-     or jsonb_array_length(new.output->'delegation_plan'->'delegations') not between 1 and 8
+     or case
+       when jsonb_typeof(new.output->'delegation_plan'->'delegations') = 'array'
+       then jsonb_array_length(new.output->'delegation_plan'->'delegations') not between 1 and 8
+       else true
+     end
      or octet_length((new.output->'delegation_plan')::text) > 64000 then
     raise exception 'hermes_delegation_plan_invalid' using errcode = '22023';
   end if;
@@ -172,8 +178,8 @@ begin
        or (o.status = 'processing' and o.lease_expires_at < now())
      )
    order by o.created_at
-   for update skip locked
-   limit 1;
+   limit 1
+   for update skip locked;
   if not found then return; end if;
 
   return query
@@ -220,8 +226,6 @@ language plpgsql
 security invoker
 set search_path = ''
 as $$
-declare
-  v_attempt integer;
 begin
   if p_plan_id is null or p_lease_token is null
      or p_error_code is null or p_error_code !~ '^[a-z0-9_]{1,80}$' then
