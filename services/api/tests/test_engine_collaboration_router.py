@@ -62,6 +62,7 @@ class FakeQuery:
                 "id": str(HANDOFF_ID), "parent_task_id": str(TASK_ID),
                 "user_id": USER_ID, "status": "pending_approval",
                 "target_engine": "opencode", "capability": "code.review",
+                "review_decision": "re_review_applied",
                 "created_at": "2026-11-21T00:00:00Z",
             }] if self.filters.get("user_id") == USER_ID else []
         elif self.table_name == "engine_collaboration_events":
@@ -213,6 +214,9 @@ def test_list_handoffs_groups_metadata_events_by_handoff(monkeypatch):
 
     assert len(result["items"]) == 1
     assert result["items"][0]["events"][0]["event_type"] == "handoff.created"
+    assert result["items"][0]["review_decision"] == "re_review_applied"
+    handoff_select = next(call[1] for call in client.table_calls if call[0] == "engine_collaboration_handoffs")
+    assert "review_decision" in handoff_select
     assert all(call[2].get("user_id") == USER_ID for call in client.table_calls)
 
 
