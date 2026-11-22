@@ -117,7 +117,7 @@ def credit_db(credit_test_dsn):
 
 
 def _seed_run(connection, user_id, task_id, run_id, engine_id="opencode"):
-    connection.execute("insert into auth.users (id) values (%s)", (user_id,))
+    connection.execute("insert into auth.users (id) values (%s) on conflict (id) do nothing", (user_id,))
     connection.execute(
         "insert into public.tasks (id,user_id,status,cancel_requested_at) values (%s,%s,'running',null)",
         (task_id, user_id),
@@ -257,17 +257,20 @@ def test_concurrent_reservations_cannot_overdraw_available_credits(credit_db, cr
     _grant(credit_db, user_id, 100, "grant:race:001")
 
     def attempt(index):
+        connection = psycopg.connect(credit_test_dsn)
         try:
-            with psycopg.connect(credit_test_dsn) as connection:
+            with connection.transaction():
                 reservation = connection.execute(
                     "select public.reserve_engine_credits(%s,%s,%s,%s,%s,%s)",
                     (user_id, task_ids[index], run_ids[index], "opencode", 70, f"reserve:race:00{index+1}"),
                 ).fetchone()[0]
-                return ("reserved", str(reservation))
+            return ("reserved", str(reservation))
         except Exception as exc:
             if "insufficient_engine_credits" in str(exc):
                 return ("insufficient", None)
             raise
+        finally:
+            connection.close()
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         results = list(executor.map(attempt, (0, 1)))
