@@ -59,3 +59,12 @@ jobs:
       - name: Build dedicated worker image without publishing
         working-directory: services/api
         run: docker build --file Dockerfile.worker --tag suly-worker:ci .
+
+      - name: Verify worker image imports and remains disabled by default
+        run: |
+          set +e
+          output="$(docker run --rm suly-worker:ci 2>&1)"
+          status=$?
+          set -e
+          test "$status" -eq 1
+          echo "$output" | grep -q "Worker disabled."
