@@ -33,7 +33,7 @@ def test_migration_version_prefixes_are_unique_and_ordered():
 
 
 def test_engine_credit_ledger_is_owner_readable_and_server_written():
-    source = (MIGRATIONS / "20261121250000_credit_ledger_foundation.sql").read_text(encoding="utf-8")
+    source = (MIGRATIONS / "20261122111632_credit_ledger_foundation.sql").read_text(encoding="utf-8")
     for table in ("credit_accounts", "credit_reservations", "credit_ledger"):
         assert f"alter table public.{table} enable row level security" in source
         assert f"for select to authenticated using ((select auth.uid()) = user_id)" in source
@@ -50,7 +50,7 @@ def test_engine_credit_ledger_is_owner_readable_and_server_written():
 
 
 def test_expired_credit_holds_are_not_released_while_engine_run_is_running():
-    source = (MIGRATIONS / "20261121250000_credit_ledger_foundation.sql").read_text(encoding="utf-8")
+    source = (MIGRATIONS / "20261122111632_credit_ledger_foundation.sql").read_text(encoding="utf-8")
     expiry_function = source.split(
         "create or replace function public.release_expired_engine_credit_reservations", 1
     )[1]
@@ -63,7 +63,7 @@ def test_expired_credit_holds_are_not_released_while_engine_run_is_running():
 
 def test_engine_credit_idempotency_metadata_comparisons_are_null_safe():
     """تمنع NULL في JSON metadata من تجاوز فحص إعادة استخدام مفتاح الرصيد."""
-    source = (MIGRATIONS / "20261121250000_credit_ledger_foundation.sql").read_text(encoding="utf-8")
+    source = (MIGRATIONS / "20261122111632_credit_ledger_foundation.sql").read_text(encoding="utf-8")
     assert "v_existing.metadata ->> 'reason' is distinct from p_reason" in source
     assert "v_existing.metadata ->> 'actual_credits' is distinct from p_actual_credits::text" in source
     assert not re.search(
