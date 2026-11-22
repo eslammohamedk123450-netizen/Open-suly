@@ -7,7 +7,7 @@ create table if not exists public.projects (
   description text not null default '',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (id, user_id)
+  constraint projects_id_user_unique unique (id, user_id)
 );
 -- The projects table may have been created by the earlier workspace migration,
 -- whose original definition had only the id primary key. Ensure the composite
