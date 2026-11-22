@@ -1,16 +1,41 @@
--- Reviewed engine capability catalog. This is metadata only: runtime enablement still requires
--- a live, allow-listed adapter in the worker and server-side feature configuration.
+-- Reviewed, server-only engine catalog. This records capabilities and execution contracts;
+-- an engine still needs an enabled in-process adapter and runtime configuration to execute.
+create or replace function public.valid_engine_capabilities(p_capabilities text[])
+returns boolean
+language plpgsql
+immutable
+security invoker
+set search_path = ''
+as $$
+declare
+  v_capability text;
+begin
+  if p_capabilities is null or cardinality(p_capabilities) not between 1 and 64
+     or array_position(p_capabilities, null) is not null then
+    return false;
+  end if;
+  foreach v_capability in array p_capabilities loop
+    if v_capability !~ '^[a-z][a-z0-9_.-]{1,95}$' then
+      return false;
+    end if;
+  end loop;
+  return true;
+end;
+$$;
+revoke all on function public.valid_engine_capabilities(text[]) from public, anon, authenticated;
+grant execute on function public.valid_engine_capabilities(text[]) to service_role;
+
 create table if not exists public.engine_runtime_catalog (
   engine_id text primary key check (engine_id ~ '^[a-z][a-z0-9-]{1,62}$'),
   task_operation text not null unique check (task_operation ~ '^[a-z][a-z0-9_.-]{1,95}$'),
-  capabilities text[] not null check (cardinality(capabilities) between 1 and 64),
+  capabilities text[] not null check (public.valid_engine_capabilities(capabilities)),
   max_timeout_seconds integer not null check (max_timeout_seconds between 1 and 3600),
   max_input_bytes integer not null check (max_input_bytes between 1 and 1000000),
   max_output_bytes integer not null check (max_output_bytes between 1 and 1000000),
   requires_project boolean not null default false,
   enabled boolean not null default false,
   collaboration_enabled boolean not null default false,
-  upstream_repository text not null check (upstream_repository ~ '^https://github\\.com/[^/]+/[^/]+$'),
+  upstream_repository text not null check (upstream_repository ~ '^https://github[.]com/[^/]+/[^/]+$'),
   upstream_revision text not null check (upstream_revision ~ '^[0-9a-f]{40}$'),
   license_id text not null check (char_length(license_id) between 1 and 40),
   created_at timestamptz not null default now(),
@@ -68,7 +93,8 @@ declare
   v_id uuid;
 begin
   if p_parent_task_id is null or p_parent_run_id is null or p_user_id is null
-     or p_target_engine is null or p_target_engine !~ '^[a-z][a-z0-9-]{1,62}     or p_capability is null or p_capability !~ '^[a-z][a-z0-9_.-]{1,95}$'
+     or p_target_engine is null or p_target_engine !~ '^[a-z][a-z0-9-]{1,62}$'
+     or p_capability is null or p_capability !~ '^[a-z][a-z0-9_.-]{1,95}$'
      or p_idempotency_key is null
      or length(p_idempotency_key) not between 16 and 128
      or p_idempotency_key !~ '^[A-Za-z0-9_-]+$'
@@ -151,154 +177,6 @@ begin
   end if;
   if v_target_catalog.requires_project and v_task.project_id is null then
     raise exception 'collaboration_project_required' using errcode = '22023';
-  end if;
-
-  -- Keep a delegation chain bounded to three handoff levels.
-  select (coalesce(max(h.depth),0) + 1)::smallint
-    into v_depth
-    from public.engine_collaboration_handoffs h
-   where h.child_task_id = p_parent_task_id
-     and h.user_id = p_user_id;
-  if v_depth not between 1 and 3 then
-    raise exception 'collaboration_depth_exceeded' using errcode = '22023';
-  end if;
-
-  select * into v_existing
-    from public.engine_collaboration_handoffs
-   where user_id = p_user_id and idempotency_key = p_idempotency_key
-   for update;
-  if found then
-    if v_existing.parent_task_id <> p_parent_task_id
-       or v_existing.parent_run_id <> p_parent_run_id
-       or v_existing.target_engine <> p_target_engine
-       or v_existing.capability <> p_capability
-       or v_existing.input_payload <> p_input_payload then
-      raise exception 'collaboration_idempotency_conflict' using errcode = '55000';
-    end if;
-    return v_existing.id;
-  end if;
-
-  select count(*)::integer,
-         min(h.max_child_tasks),
-         min(h.max_parallel_children)
-    into v_child_count, v_child_budget, v_parallel_budget
-    from public.engine_collaboration_handoffs h
-   where h.parent_run_id = p_parent_run_id
-     and h.user_id = p_user_id
-     and h.status <> 'rejected'
-     and (h.status <> 'cancelled' or h.child_task_id is not null);
-  v_child_budget := coalesce(v_child_budget,p_max_child_tasks);
-  v_parallel_budget := coalesce(v_parallel_budget,p_max_parallel_children);
-  if p_max_child_tasks <> v_child_budget or p_max_parallel_children <> v_parallel_budget then
-    raise exception 'collaboration_budget_mismatch' using errcode = '55000';
-  end if;
-  if v_child_count >= v_child_budget then
-    raise exception 'collaboration_child_budget_exceeded' using errcode = '54000';
-  end if;
-
-  insert into public.engine_collaboration_handoffs (
-    parent_task_id,parent_run_id,user_id,source_engine,target_engine,capability,
-    status,depth,max_child_tasks,max_parallel_children,max_runtime_seconds,
-    max_input_bytes,idempotency_key,input_payload
-  ) values (
-    p_parent_task_id,p_parent_run_id,p_user_id,v_run.engine_id,p_target_engine,p_capability,
-    'pending_approval',v_depth,p_max_child_tasks,p_max_parallel_children,
-    p_max_runtime_seconds,p_max_input_bytes,p_idempotency_key,p_input_payload
-  )
-  returning id into v_id;
-
-  insert into public.engine_collaboration_events (
-    handoff_id,user_id,sequence,event_type,status,metadata
-  ) values (
-    v_id,p_user_id,1,'handoff.created','pending',
-    jsonb_build_object('source_engine',v_run.engine_id,'target_engine',p_target_engine)
-  );
-  return v_id;
-end;
-$$;
-     or p_capability is null or p_capability !~ '^[a-z][a-z0-9_.-]{1,95}$'
-     or p_idempotency_key is null
-     or length(p_idempotency_key) not between 16 and 128
-     or p_idempotency_key !~ '^[A-Za-z0-9_-]+$'
-     or p_max_child_tasks is null or p_max_child_tasks not between 1 and 8
-     or p_max_parallel_children is null or p_max_parallel_children not between 1 and 2
-     or p_max_parallel_children > p_max_child_tasks
-     or p_max_runtime_seconds is null or p_max_runtime_seconds not between 1 and 1800
-     or (p_target_engine = 'hermes-agent' and p_max_runtime_seconds > 300)
-     or p_max_input_bytes is null or p_max_input_bytes not between 1 and 64000 then
-    raise exception 'collaboration_request_invalid' using errcode = '22023';
-  end if;
-
-  if p_input_payload is null
-     or jsonb_typeof(p_input_payload) <> 'object'
-     or (p_input_payload - array['prompt','title']) <> '{}'::jsonb
-     or jsonb_typeof(p_input_payload->'prompt') <> 'string'
-     or char_length(btrim(p_input_payload->>'prompt')) not between 1 and 20000
-     or octet_length(p_input_payload::text) > p_max_input_bytes
-     or octet_length(p_input_payload::text) > 64000 then
-    raise exception 'collaboration_payload_invalid' using errcode = '22023';
-  end if;
-  if p_input_payload ? 'title'
-     and (
-       jsonb_typeof(p_input_payload->'title') <> 'string'
-       or char_length(btrim(p_input_payload->>'title')) not between 1 and 120
-     ) then
-    raise exception 'collaboration_title_invalid' using errcode = '22023';
-  end if;
-
-  select * into v_task
-    from public.tasks
-   where id = p_parent_task_id and user_id = p_user_id
-   for update;
-  if not found then
-    raise exception 'collaboration_parent_task_not_found' using errcode = 'P0002';
-  end if;
-  if v_task.status not in ('running','completed') or v_task.cancel_requested_at is not null then
-    raise exception 'collaboration_parent_task_not_available' using errcode = '55000';
-  end if;
-
-  select * into v_run
-    from public.engine_runs
-   where id = p_parent_run_id
-     and task_id = p_parent_task_id
-     and user_id = p_user_id
-   for update;
-  if not found or v_run.status <> 'succeeded' then
-    raise exception 'collaboration_parent_run_not_successful' using errcode = '55000';
-  end if;
-
-  select * into v_source_step
-    from public.task_steps
-   where id = v_run.step_id
-     and task_id = p_parent_task_id
-     and user_id = p_user_id
-     and status = 'completed';
-  if not found or jsonb_typeof(v_source_step.output) <> 'object' then
-    raise exception 'collaboration_source_output_not_available' using errcode = '55000';
-  end if;
-  if v_run.engine_id = 'hermes-agent'
-     and (
-       v_source_step.output->>'operation' <> 'hermes.agent.turn'
-       or v_source_step.output->>'engine' <> 'hermes-agent'
-       or jsonb_typeof(v_source_step.output->'content') <> 'string'
-       or char_length(v_source_step.output->>'content') not between 1 and 52000
-     ) then
-    raise exception 'collaboration_source_output_invalid' using errcode = '55000';
-  elsif v_run.engine_id = 'opencode'
-     and v_source_step.output->>'operation' <> 'opencode.task.run' then
-    raise exception 'collaboration_source_output_invalid' using errcode = '55000';
-  end if;
-  if v_run.engine_id not in ('hermes-agent','opencode') or v_run.engine_id = p_target_engine then
-    raise exception 'collaboration_engine_pair_invalid' using errcode = '22023';
-  end if;
-
-  if p_target_engine = 'opencode' then
-    if p_capability not in ('code.edit','code.review','code.test','code.repository')
-       or v_task.project_id is null then
-      raise exception 'collaboration_target_capability_not_supported' using errcode = '22023';
-    end if;
-  elsif p_capability not in ('agent.general','research','research.summarize') then
-    raise exception 'collaboration_target_capability_not_supported' using errcode = '22023';
   end if;
 
   -- Keep a delegation chain bounded to three handoff levels.
