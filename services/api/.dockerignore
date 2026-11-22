@@ -1,0 +1,11 @@
+**
+!Dockerfile.worker
+!requirements.txt
+!app/
+!app/*.py
+!app/*/
+!app/*/*.py
+!app/*/*/
+!app/*/*/*.py
+!app/*/*/*/
+!app/*/*/*/*.py
