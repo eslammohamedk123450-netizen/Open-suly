@@ -808,5 +808,13 @@ undefined
 
 - تم تثبيت `python:3.12-slim` على manifest digest الذي استخدمه Docker بنجاح في CI (`sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b`) بدل tag متغير.
 - أضيف `.dockerignore` بقائمة سماح ضيقة لـDockerfile وrequirements وملفات Python داخل `app/` فقط؛ لا يُرسل مجلد الاختبارات أو ملفات البيئة/المستندات إلى Docker build context.
-- أضيف contract test يتحقق من digest pin وقائمة build context. سيشغل Runtime Provisioner CI الاختبار ثم يبني الصورة دون نشر.
+- أضيف contract test يتحقق من digest pin وقائمة build context. Runtime Provisioner CI run `45016583229` على commit `06b6dc9010ea134a9715f27cf925c5a6db873aa4` نجح: **72 passed, 5 warnings**، ونجح بناء صورة Provisioner من build context المقيد باستخدام base digest المثبت.
+
+### تحقق CI النهائي لصورة Provisioner — 2026-11-22
+
+- Runtime Provisioner CI `45016583229` green على `06b6dc9010ea134a9715f27cf925c5a6db873aa4`: **72 passed, 5 warnings**، compile ناجح، Docker image build ناجح مع base manifest digest المثبت و`.dockerignore` المقيد.
+- OpenCode upstream engine verification `45016583195` green: **135 passed**، تحقق من commit `4cca18d80450a3dd6a9a4142028bde84ccb3116e` وMIT، Bun frozen-lockfile، Typecheck (**0 type errors / 1,518 files**)، Docker image build و`/api/info` smoke test.
+- Platform CI `45016583322` green: **770 passed, 5 skipped, 5 warnings**؛ client typecheck وExpo compatibility وWeb export green. Repository baseline `45016583213` green.
+- `engine-runtime-build.yml` run `45016582043` فشل دون jobs أو logs؛ لا نعتبر Hermes image build متحققًا. Railway check `strong-gentleness - suly-api` فشل خارجيًا؛ لم يحدث deploy أو تعديل production.
+- هذه النتائج لا تثبت host isolation أو firewall أو SSRF/egress enforcement على مضيف فعلي، ولا tenant isolation على Docker daemon حي. لم تُطبق migrations أو staging changes، ولم يُشغّل أي provider/worker/engine.
 
