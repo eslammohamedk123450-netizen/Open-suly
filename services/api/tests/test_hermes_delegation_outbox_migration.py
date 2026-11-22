@@ -213,3 +213,10 @@ def test_continuation_prompts_are_utf8_byte_bounded_for_engine_input_contracts()
     assert "octet_length(v_prompt) > 30000" in parent
     assert "octet_length(v_prompt) > 44000" in opencode
     assert "collaboration_parent_run_already_resumed" in parent
+
+
+def test_parent_delegation_is_restricted_to_engines_with_real_continuation_adapters():
+    sql = re.sub(r"\s+", " ", _parent_child_continuation_migration())
+    assert "v_run.engine_id not in ('hermes-agent','opencode')" in sql
+    assert "v_parent_run.engine_id = 'hermes-agent'" in sql
+    assert "v_parent_run.engine_id = 'opencode' and v_parent.project_id is not null" in sql
