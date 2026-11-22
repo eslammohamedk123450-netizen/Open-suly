@@ -844,6 +844,7 @@ class WorkerRuntime:
         reconciler: EngineRunReconciler | None = None,
         reconcile_interval_seconds: int = 30,
         runtime_broker: TaskScopedRuntimeBroker | None = None,
+        delegation_outbox: HermesDelegationOutbox | None = None,
     ) -> None:
         if not 0.1 <= poll_interval_seconds <= 60:
             raise ValueError("poll interval must be between 0.1 and 60 seconds")
@@ -864,10 +865,12 @@ class WorkerRuntime:
         self.reconciler = reconciler
         self.reconcile_interval_seconds = reconcile_interval_seconds
         self.runtime_broker = runtime_broker
+        self.delegation_outbox = delegation_outbox
 
     def run(self, stop: Event) -> None:
         idle_delay = self.poll_interval_seconds
         next_reconcile_at = monotonic()
+        next_delegation_at = monotonic()
         while not stop.is_set():
             if self.reconciler is not None and monotonic() >= next_reconcile_at:
                 try:
@@ -878,6 +881,16 @@ class WorkerRuntime:
                     # لا نطبع تفاصيل استثناءات RPC أو المحرك في سجل التشغيل العام.
                     logger.error("Engine stop reconciliation iteration failed")
                 next_reconcile_at = monotonic() + self.reconcile_interval_seconds
+            if self.delegation_outbox is not None and monotonic() >= next_delegation_at:
+                try:
+                    for _ in range(4):
+                        delivery = self.delegation_outbox.process_once()
+                        if delivery == "idle":
+                            break
+                        logger.info("Hermes delegation outbox result: %s", delivery)
+                except Exception:
+                    logger.error("Hermes delegation outbox iteration failed")
+                next_delegation_at = monotonic() + self.reconcile_interval_seconds
             try:
                 result = self.worker.run_once(
                     self.handler,
@@ -1005,6 +1018,20 @@ def main() -> None:
                 },
                 runtime_broker=runtime_broker,
             )
+    delegation_outbox = None
+    if settings.hermes_agent_enabled and settings.opencode_enabled:
+        routing_agents = build_delegation_agent_manager()
+        coding_agent = routing_agents.get("coding-agent")
+        if coding_agent is not None and coding_agent.enabled:
+            delegation_outbox = HermesDelegationOutbox(
+                client=client,
+                bridge=HermesDelegationBridge(
+                    client=client,
+                    agent_manager=routing_agents,
+                ),
+                worker_id=worker_id,
+            )
+
     try:
         WorkerRuntime(
             worker,
@@ -1018,6 +1045,7 @@ def main() -> None:
             reconciler=reconciler,
             reconcile_interval_seconds=settings.engine_reconciler_interval_seconds,
             runtime_broker=runtime_broker,
+            delegation_outbox=delegation_outbox,
         ).run(stop)
     finally:
         # Close the HTTP provider on every worker exit path, including shutdown errors.
