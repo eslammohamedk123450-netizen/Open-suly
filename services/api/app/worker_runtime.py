@@ -240,6 +240,21 @@ def build_agent_manager(engines: EngineRegistry) -> AgentManager:
     return build_catalog_agent_manager(engines)
 
 
+def _bound_utf8_text(value: str, max_bytes: int) -> str:
+    """Bound engine prompt payloads by encoded bytes, not Unicode character count."""
+    if not isinstance(value, str):
+        raise ValueError("engine_prompt_must_be_text")
+    if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes < 128:
+        raise ValueError("engine_prompt_byte_limit_invalid")
+    encoded = value.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return value
+    marker = "\n[... prompt truncated by SULY engine input limit ...]"
+    marker_bytes = marker.encode("utf-8")
+    prefix = encoded[: max_bytes - len(marker_bytes)].decode("utf-8", errors="ignore").rstrip()
+    return prefix + marker
+
+
 def _hermes_prompt_with_conversation_context(step: ClaimedStep, prompt: str) -> str:
     """Load only this task owner's conversation history as bounded, non-authoritative context."""
     client = get_supabase_admin_client()
@@ -519,6 +534,8 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
     prompt = _suly_user_memory_context(step, prompt, task_scope)
     approved_skills = _hermes_approved_skills(step)
     prompt = _hermes_approved_skill_context(prompt, approved_skills)
+    # Reserve bytes for the explicit orchestration suffix and EngineRequest JSON envelope.
+    prompt = _bound_utf8_text(prompt, 28_000)
     prompt = _hermes_orchestration_protocol(prompt)
     state_client = get_supabase_admin_client()
     if state_client is None:
@@ -750,6 +767,7 @@ def opencode_task_run(step: ClaimedStep, context: ToolExecutionContext | None = 
         raise ValueError("opencode_runtime_budget_invalid")
 
     prompt = _suly_user_memory_context(step, prompt)
+    prompt = _bound_utf8_text(prompt, 44_000)
     adapter = OpenCodeEngineAdapter(step, context)
     registry = build_engine_registry(
         context.cancel_event,
