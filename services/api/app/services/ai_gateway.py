@@ -51,6 +51,22 @@ def selected_model_profile() -> dict[str, Any]:
     }
 
 
+def model_registry() -> dict[str, Any]:
+    """Return a registry containing only the model explicitly selected by the operator."""
+    profile = selected_model_profile()
+    if not profile["configured"]:
+        return {"items": [], "discovery": "server_configured_selection_only"}
+    return {
+        "items": [{
+            "id": profile["model"],
+            "provider": profile["provider"],
+            "max_output_tokens": profile["max_output_tokens"],
+            "capabilities": profile["capabilities"],
+        }],
+        "discovery": "server_configured_selection_only",
+    }
+
+
 class AIProviderNotConfigured(RuntimeError):
     """Raised when no deliberate AI provider configuration is present."""
 
