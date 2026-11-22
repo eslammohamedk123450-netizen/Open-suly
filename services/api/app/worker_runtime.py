@@ -819,6 +819,7 @@ class WorkerRuntime:
                 result = self.worker.run_once(
                     self.handler,
                     cancel_aware_handler=self.cancel_aware_handler,
+                    worker_stop_event=stop,
                 )
                 if result == "idle":
                     stop.wait(idle_delay)
@@ -941,20 +942,23 @@ def main() -> None:
                     "opencode": stop_opencode_claim,
                 },
             )
-    WorkerRuntime(
-        worker,
-        poll_interval_seconds=settings.worker_poll_interval_seconds,
-        handler=lambda step: dispatch(step, approval_store),
-        cancel_aware_handler=lambda step, cancel_event: dispatch_cancel_aware(
-            step, cancel_event, approval_store, runtime_broker
-        ),
-        reconciler=reconciler,
-        reconcile_interval_seconds=settings.engine_reconciler_interval_seconds,
-        runtime_broker=runtime_broker,
-    ).run(stop)
-    if runtime_provider is not None:
-        runtime_provider.close()
-    logger.info("Worker stopped")
+    try:
+        WorkerRuntime(
+            worker,
+            poll_interval_seconds=settings.worker_poll_interval_seconds,
+            handler=lambda step: dispatch(step, approval_store),
+            cancel_aware_handler=lambda step, cancel_event: dispatch_cancel_aware(
+                step, cancel_event, approval_store, runtime_broker
+            ),
+            reconciler=reconciler,
+            reconcile_interval_seconds=settings.engine_reconciler_interval_seconds,
+            runtime_broker=runtime_broker,
+        ).run(stop)
+    finally:
+        # أغلق اتصال الـProvisioner حتى عند خروج العامل بسبب خطأ أو إشارة إيقاف.
+        if runtime_provider is not None:
+            runtime_provider.close()
+        logger.info("Worker stopped")
 
 
 if __name__ == "__main__":
