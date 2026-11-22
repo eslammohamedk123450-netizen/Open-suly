@@ -1339,7 +1339,7 @@ def test_suly_memory_context_is_owner_scoped_bounded_and_untrusted(monkeypatch):
             }]
 
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(agent_memory_enabled=True))
-    monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: object())
+    monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: SimpleNamespace(table=lambda *_args: None))
     rendered = runtime_module._suly_user_memory_context(
         step, "continue the project",
         task_scope={"project_id": "00000000-0000-0000-0000-000000000066", "conversation_id": None},
