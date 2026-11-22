@@ -83,7 +83,7 @@ def _raise_collaboration_error(exc: Exception) -> None:
     if any(code in message for code in (
         "not_running", "not_available", "not_successful", "not_pending",
         "budget_exceeded", "budget_mismatch", "parallel_limit",
-        "idempotency_conflict", "not_cancellable", "engine_pair_invalid",
+        "idempotency_conflict", "parent_run_already_resumed", "not_cancellable", "engine_pair_invalid",
     )):
         raise HTTPException(status_code=409, detail="The collaboration state no longer permits this action.") from exc
     if any(code in message for code in (
