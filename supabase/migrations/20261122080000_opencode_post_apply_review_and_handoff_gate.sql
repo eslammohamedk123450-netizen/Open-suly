@@ -14,6 +14,7 @@ declare
   v_parent public.tasks%rowtype;
   v_step_key text;
   v_step_order integer;
+  v_dependencies jsonb;
   v_prompt text;
 begin
   if new.status is not distinct from old.status or new.status <> 'applied' then
@@ -60,12 +61,20 @@ begin
     from public.tasks t
    where t.id = v_run.task_id
      and t.user_id = new.user_id
-     and t.status = 'completed'
+     and t.status in ('completed','ready','running')
      and t.cancel_requested_at is null
    for update;
   if not found then
     return new;
   end if;
+
+  v_dependencies := (
+    select coalesce(jsonb_agg(s.step_key order by s.step_order),'[]'::jsonb)
+      from public.task_steps s
+     where s.task_id = v_parent.id
+       and s.user_id = new.user_id
+       and s.status in ('pending','ready','running')
+  );
 
   v_step_key := 'review_after_apply_' || replace(new.id::text,'-','');
   if exists (
@@ -94,7 +103,7 @@ begin
     'One durable post-apply verification pass. Any proposed fixes remain a new owner-reviewable change set.',
     (select coalesce(max(s.step_order),-1)+1 from public.task_steps s
       where s.task_id = v_parent.id and s.user_id = new.user_id),
-    '[]'::jsonb,
+    v_dependencies,
     jsonb_build_object(
       'operation','opencode.task.run',
       'project_id',v_run.project_id,
@@ -106,16 +115,18 @@ begin
   )
   on conflict (task_id,step_key) do nothing;
 
-  update public.tasks
-     set status = 'ready',
-         completed_at = null,
-         error_code = null,
-         error_message = null,
-         updated_at = now()
-   where id = v_parent.id
-     and user_id = new.user_id
-     and status = 'completed'
-     and cancel_requested_at is null;
+  if v_parent.status = 'completed' then
+    update public.tasks
+       set status = 'ready',
+           completed_at = null,
+           error_code = null,
+           error_message = null,
+           updated_at = now()
+     where id = v_parent.id
+       and user_id = new.user_id
+       and status = 'completed'
+       and cancel_requested_at is null;
+  end if;
 
   return new;
 end;
