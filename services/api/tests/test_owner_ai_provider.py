@@ -22,6 +22,9 @@ class FakeRpc:
         if self.name == "suly_ai_provider_config_set":
             self.admin.config = self.params["p_config"]
             return type("Response", (), {"data": None})()
+        if self.name == "suly_ai_provider_config_clear":
+            self.admin.config = None
+            return type("Response", (), {"data": None})()
         raise AssertionError("Unexpected RPC name")
 
 
@@ -62,11 +65,13 @@ def test_non_owner_cannot_read_or_write_provider_settings(monkeypatch):
             "model": "test-model",
             "api_key": "test-only-not-a-real-key",
         })
+        delete = client.delete("/v1/owner/ai-provider")
     finally:
         _clear_user()
 
     assert read.status_code == 403
     assert write.status_code == 403
+    assert delete.status_code == 403
     assert admin.calls == []
 
 
@@ -152,3 +157,89 @@ def test_invalid_insecure_provider_url_does_not_echo_key(monkeypatch):
 
     assert response.status_code == 422
     assert private_test_key not in response.text
+
+
+
+def test_owner_can_clear_vault_config_without_receiving_the_secret(monkeypatch):
+    private_test_key = "test-only-not-a-real-key"
+    admin = FakeAdmin({
+        "provider": "openai-compatible",
+        "base_url": "https://provider.example/v1",
+        "model": "test-model",
+        "api_key": private_test_key,
+    })
+    monkeypatch.setattr(owner_module, "get_settings", lambda: Settings(suly_owner_email="owner@example.test"))
+    monkeypatch.setattr(owner_module, "get_supabase_admin_client", lambda: admin)
+    _set_user()
+    try:
+        response = client.delete("/v1/owner/ai-provider")
+    finally:
+        _clear_user()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "configured": False,
+        "source": "none",
+        "provider": None,
+        "base_url": None,
+        "model": None,
+        "api_key_set": False,
+    }
+    assert admin.config is None
+    assert [name for name, _params in admin.calls] == [
+        "suly_ai_provider_config_clear",
+        "suly_ai_provider_config_get",
+    ]
+    assert private_test_key not in response.text
+
+
+def test_clearing_vault_config_keeps_server_environment_fallback_visible(monkeypatch):
+    admin = FakeAdmin({
+        "provider": "openai-compatible",
+        "base_url": "https://vault-provider.example/v1",
+        "model": "vault-model",
+        "api_key": "vault-test-key",
+    })
+    environment = Settings(
+        suly_owner_email="owner@example.test",
+        ai_provider="openai-compatible",
+        ai_base_url="https://environment-provider.example/v1",
+        ai_model="environment-model",
+        ai_api_key="environment-test-key",
+    )
+    monkeypatch.setattr(owner_module, "get_settings", lambda: environment)
+    monkeypatch.setattr(owner_module, "get_supabase_admin_client", lambda: admin)
+    _set_user()
+    try:
+        response = client.delete("/v1/owner/ai-provider")
+    finally:
+        _clear_user()
+
+    assert response.status_code == 200
+    assert response.json()["configured"] is True
+    assert response.json()["source"] == "environment"
+    assert response.json()["model"] == "environment-model"
+    assert "api_key" not in response.json()
+    assert "environment-test-key" not in response.text
+    assert admin.config is None
+
+
+def test_vault_clear_failure_returns_safe_error(monkeypatch):
+    class FailingRpcAdmin(FakeAdmin):
+        def rpc(self, name, params):
+            if name == "suly_ai_provider_config_clear":
+                raise RuntimeError("private database failure")
+            return super().rpc(name, params)
+
+    admin = FailingRpcAdmin({"provider": "openai-compatible"})
+    monkeypatch.setattr(owner_module, "get_settings", lambda: Settings(suly_owner_email="owner@example.test"))
+    monkeypatch.setattr(owner_module, "get_supabase_admin_client", lambda: admin)
+    _set_user()
+    try:
+        response = client.delete("/v1/owner/ai-provider")
+    finally:
+        _clear_user()
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "تعذر حذف إعداد مزود AI من Supabase Vault بأمان."
+    assert "private database failure" not in response.text

@@ -60,3 +60,11 @@ export function saveAIProviderConfig(input: {
     body: JSON.stringify(input),
   });
 }
+
+
+/** احذف إعداد Vault مع إرجاع حالة أي إعداد خادمي احتياطي. */
+export function clearAIProviderConfig(): Promise<AIProviderStatus> {
+  return request<AIProviderStatus>("/v1/owner/ai-provider", {
+    method: "DELETE",
+  });
+}

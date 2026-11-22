@@ -82,6 +82,14 @@ def store_ai_provider_config(
         raise AIProviderConfigurationUnavailable from exc
 
 
+def clear_ai_provider_config(admin: Any) -> None:
+    """احذف إعداد المزود من Vault عبر RPC مقيدة بدور الخادم فقط."""
+    try:
+        admin.rpc("suly_ai_provider_config_clear", {}).execute()
+    except Exception as exc:
+        raise AIProviderConfigurationUnavailable from exc
+
+
 def ai_settings_from_config(config: dict[str, Any]) -> Settings:
     """Build request-scoped gateway settings from the decrypted server-only value."""
     limits = get_settings()

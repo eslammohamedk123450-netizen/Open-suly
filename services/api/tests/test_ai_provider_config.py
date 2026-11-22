@@ -60,3 +60,23 @@ def test_store_uses_only_restricted_set_rpc():
     assert name == "suly_ai_provider_config_set"
     assert params["p_config"]["provider"] == "openai-compatible"
     assert params["p_config"]["api_key"] == "test-only-not-a-real-key"
+
+
+
+def test_clear_uses_only_the_restricted_vault_rpc():
+    admin = FakeAdmin({"provider": "openai-compatible"})
+    ai_provider_config.clear_ai_provider_config(admin)
+    assert admin.calls == [("suly_ai_provider_config_clear", {})]
+
+
+def test_clear_rpc_failure_is_sanitized():
+    class FailingAdmin:
+        def rpc(self, *_args, **_kwargs):
+            raise RuntimeError("private database failure")
+
+    try:
+        ai_provider_config.clear_ai_provider_config(FailingAdmin())
+    except ai_provider_config.AIProviderConfigurationUnavailable as exc:
+        assert "private database failure" not in str(exc)
+    else:
+        raise AssertionError("Vault clear failure must be surfaced as a safe configuration error")

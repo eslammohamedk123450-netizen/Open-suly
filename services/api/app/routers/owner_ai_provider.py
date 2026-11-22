@@ -16,6 +16,7 @@ from app.services.ai_provider_config import (
     AIProviderConfigurationUnavailable,
     read_ai_provider_config,
     store_ai_provider_config,
+    clear_ai_provider_config,
 )
 
 router = APIRouter(prefix="/v1/owner/ai-provider", tags=["owner-ai-provider"])
@@ -112,6 +113,26 @@ def _admin_client():
     return admin
 
 
+def _environment_status() -> AIProviderStatus:
+    """اعرض حالة إعداد الخادم دون كشف المفتاح الاحتياطي."""
+    settings = get_settings()
+    if (
+        settings.ai_provider == "openai-compatible"
+        and settings.ai_base_url
+        and settings.ai_model
+        and settings.ai_api_key
+    ):
+        return AIProviderStatus(
+            configured=True,
+            source="environment",
+            provider=settings.ai_provider,
+            base_url=settings.ai_base_url,
+            model=settings.ai_model,
+            api_key_set=True,
+        )
+    return AIProviderStatus(configured=False, source="none", api_key_set=False)
+
+
 def _status_from_config(config: dict, source: Literal["vault", "environment"]) -> AIProviderStatus:
     return AIProviderStatus(
         configured=True,
@@ -139,26 +160,7 @@ def get_ai_provider_status(
             detail="تعذر قراءة إعدادات مزود AI الآمنة حاليًا.",
         ) from exc
 
-    settings = get_settings()
-    if (
-        settings.ai_provider == "openai-compatible"
-        and settings.ai_base_url
-        and settings.ai_model
-        and settings.ai_api_key
-    ):
-        return AIProviderStatus(
-            configured=True,
-            source="environment",
-            provider=settings.ai_provider,
-            base_url=settings.ai_base_url,
-            model=settings.ai_model,
-            api_key_set=True,
-        )
-    return AIProviderStatus(
-        configured=False,
-        source="none",
-        api_key_set=False,
-    )
+    return _environment_status()
 
 
 @router.put("", response_model=AIProviderStatus)
@@ -189,3 +191,26 @@ def update_ai_provider_config(
         model=request.model,
         api_key_set=True,
     )
+
+
+
+@router.delete("", response_model=AIProviderStatus)
+def clear_ai_provider_config_for_owner(
+    _owner: AuthenticatedUser = Depends(require_app_owner),
+    _rate_limit: None = Depends(rate_limit("owner_ai_provider")),
+) -> AIProviderStatus:
+    """احذف سر Vault فقط، مع إبقاء إعداد الخادم الاحتياطي واضحًا إن وُجد."""
+    admin = _admin_client()
+    try:
+        with admin:
+            clear_ai_provider_config(admin)
+            # اقرأ بعد الحذف؛ إذا سبق طلبًا متزامنًا وأعاد إعدادًا جديدًا فلا نعرض حالة مضللة.
+            config = read_ai_provider_config(admin)
+        if config is not None:
+            return _status_from_config(config, "vault")
+    except AIProviderConfigurationUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="تعذر حذف إعداد مزود AI من Supabase Vault بأمان.",
+        ) from exc
+    return _environment_status()

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -14,6 +15,7 @@ import { router } from "expo-router";
 import { BottomNavigation } from "@/components/BottomNavigation";
 import { colors } from "@/theme/tokens";
 import {
+  clearAIProviderConfig,
   getAIProviderStatus,
   saveAIProviderConfig,
   type AIProviderStatus,
@@ -26,6 +28,7 @@ export default function AIProviderScreen() {
   const [apiKey, setApiKey] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -70,6 +73,39 @@ export default function AIProviderScreen() {
     }
   };
 
+  const performClear = async () => {
+    setError("");
+    setSuccess("");
+    setClearing(true);
+    try {
+      const nextStatus = await clearAIProviderConfig();
+      setStatus(nextStatus);
+      setApiKey("");
+      if (nextStatus.base_url) setBaseUrl(nextStatus.base_url);
+      if (nextStatus.model) setModel(nextStatus.model);
+      setSuccess(
+        nextStatus.source === "environment"
+          ? "حُذف إعداد Vault، لكن ما زال هناك إعداد مزود نشط من متغيرات الخادم."
+          : "تم حذف إعداد المزود من Vault؛ لا يوجد إعداد مزود نشط حاليًا.",
+      );
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "تعذر حذف إعداد مزود AI.");
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  const handleClear = () => {
+    Alert.alert(
+      "حذف إعداد المزود",
+      "سيُحذف المفتاح المشفر من Vault. إذا كان الخادم يحتوي إعدادًا احتياطيًا فسيظل نشطًا.",
+      [
+        { text: "إلغاء", style: "cancel" },
+        { text: "حذف الإعداد", style: "destructive", onPress: () => { void performClear(); } },
+      ],
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.page}>
@@ -99,7 +135,11 @@ export default function AIProviderScreen() {
                 <Text style={styles.statusText}>
                   {status.model || "نموذج غير محدد"} · {status.source === "vault" ? "مخزن في Vault" : "من إعداد الخادم"}
                 </Text>
-                <Text style={styles.statusHint}>للتدوير، أدخل مفتاحًا جديدًا ثم احفظ. المفتاح الحالي غير قابل للعرض.</Text>
+                <Text style={styles.statusHint}>
+                  {status.source === "vault"
+                    ? "للتدوير، أدخل مفتاحًا جديدًا ثم احفظ. المفتاح الحالي غير قابل للعرض."
+                    : "الإعداد الحالي يأتي من متغيرات الخادم، ولا يمكن حذفه من هذه الشاشة."}
+                </Text>
               </View>
             )}
 
@@ -146,12 +186,24 @@ export default function AIProviderScreen() {
             {!!success && <Text accessibilityRole="status" style={styles.success}>{success}</Text>}
 
             <Pressable
-              style={[styles.button, (loading || saving) && styles.buttonDisabled]}
-              disabled={loading || saving}
+              accessibilityRole="button"
+              style={[styles.button, (loading || saving || clearing) && styles.buttonDisabled]}
+              disabled={loading || saving || clearing}
               onPress={() => { void handleSave(); }}
             >
               <Text style={styles.buttonText}>{saving ? "جارٍ الحفظ..." : loading ? "جارٍ التحقق..." : "حفظ الإعداد المشفر"}</Text>
             </Pressable>
+            {status?.source === "vault" && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="حذف إعداد مزود الذكاء الاصطناعي من Vault"
+                style={[styles.clearButton, (loading || saving || clearing) && styles.buttonDisabled]}
+                disabled={loading || saving || clearing}
+                onPress={handleClear}
+              >
+                <Text style={styles.clearButtonText}>{clearing ? "جارٍ الحذف..." : "حذف إعداد Vault"}</Text>
+              </Pressable>
+            )}
           </ScrollView>
         </KeyboardAvoidingView>
         <BottomNavigation active="settings" />
@@ -188,4 +240,6 @@ const styles = StyleSheet.create({
   button: { minHeight: 50, borderRadius: 14, backgroundColor: colors.gold, alignItems: "center", justifyContent: "center", marginTop: 22 },
   buttonDisabled: { opacity: 0.55 },
   buttonText: { color: colors.background, fontSize: 13, fontWeight: "800" },
+  clearButton: { minHeight: 46, borderRadius: 14, borderWidth: 1, borderColor: "#A94C4C", alignItems: "center", justifyContent: "center", marginTop: 10 },
+  clearButtonText: { color: "#F08B8B", fontSize: 12, fontWeight: "700" },
 });

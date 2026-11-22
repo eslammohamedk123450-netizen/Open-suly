@@ -835,3 +835,22 @@ undefined
 - حالة التحقق: تعديلات الكود والاختبارات وملفات البناء حُفظت على `main` حتى commit `e8ed0c7b4c4946a81a3360c93d7182b02fcaba6c`. لم تتوفر في أداة GitHub نتيجة Platform CI لهذا commit بعد؛ لا يُعلن نجاح الاختبارات قبل ظهور نتيجة Actions.
 - حدود لا تزال تمنع إغلاق الجاهزية التشغيلية: لم يتم تشغيل Worker على خادم؛ لم يتم تشغيل Hermes أو OpenCode أو أي provider؛ Hermes image build لم يحصل على نتيجة CI موثوقة سابقًا (أحداث Actions رجعت jobs فارغة)؛ ولم يكتمل بعد تحقق host firewall وtask-aware egress/SSRF على مضيف إنتاج. Runtime Provisioner والـengines تظل معطلة افتراضيًا.
 - لم يتم نشر أو دمج أي خدمة خارجية، ولم تُكشف أسرار، ولم يحدث تعديل Production runtime.
+
+
+## جلسة تطوير — 2026-11-22 (إكمال دورة حذف إعداد مزود AI)
+
+- نقطة البداية: `main` HEAD `1427b4de8c21df8d7eea73f33c161607abc89eb7`؛ تمت مراجعة أحدث commits وملفات المشروع وroadmap وسجل progress وCI قبل الكتابة.
+- اكتُشف أن migration `20261122130000_suly_ai_provider_vault.sql` كانت توفر RPC مقيدة باسم `suly_ai_provider_config_clear`، لكن لم يكن لها مسار API أو إجراء في الواجهة؛ لذلك لم يكن مالك التطبيق قادرًا على حذف المفتاح المخزن من المنتج نفسه.
+- أُضيف مسار DELETE محمي بمالك موثق البريد ومحدد المعدل، يستخدم RPC الخادم فقط، ثم يعيد الحالة الآمنة بعد التحقق من الحذف. لا يعيد المفتاح ولا يكشف أخطاء قاعدة البيانات.
+- إذا وُجد إعداد احتياطي في متغيرات الخادم، يظل نشطًا وتظهر الحالة `environment`؛ حذف Vault لا يُسوّق على أنه إيقاف كامل للذكاء الاصطناعي.
+- أضيف زر حذف واضح بتأكيد destructive dialog، ويظهر فقط عندما يكون المصدر Vault؛ مع توضيح مصدر environment fallback.
+- الملفات المعدلة: router/service واختباراتهما، client API/screen، ودليل إعداد المزود.
+- الاختبارات المضافة: منع non-owner من DELETE، حذف Vault دون تسريب السر، استمرار إظهار environment fallback، sanitization لفشل RPC، واختبارات helper الخادمي.
+- حالة CI قبل هذا التغيير: Platform CI وRepository baseline على HEAD الجديد كانا queued؛ workflow `engine-runtime-build.yml` فشل على HEAD نفسه لكن Actions API أعاد `total_count=0` للـjobs ولا توجد logs تشخص السبب. كما ظهر check خارجي Railway باسم `strong-gentleness - suly-api` بحالة failure؛ لم نتصل بالخدمة ولم ننفذ deploy.
+- لم نشغل pytest أو typecheck محليًا؛ يلزم ربط النتيجة بـGitHub Actions بعد commit التغيير. لم نطبق migrations، ولم نستخدم Supabase live، ولم نفعّل provider أو worker أو engine، ولم ننشر أو نشترِ خدمة.
+- تقدير الجاهزية لا يتغير: نحو **20%** من هدف Controlled Beta/Production Readiness (milestone-weighted)؛ هذه الدفعة تكمل إدارة إعداد Vault فقط ولا تثبت provider smoke أو usage billing أو runtime isolation أو staging.
+
+### نقطة متابعة الجلسة القادمة
+1. تحقق من Platform CI وRepository baseline للـcommit الناتج، وأصلح أي regression قبل احتساب هذه الدفعة.
+2. افحص أحدث نتائج Engine runtime build وOpenCode verification؛ لا تخمّن سبب فشل run بلا jobs/logs.
+3. تابع ربط usage telemetry بدورة engine runs فقط بعد تعريف cost policy صريحة؛ لا تخترع تحويل tokens إلى credits ولا تفعّل التنفيذ.

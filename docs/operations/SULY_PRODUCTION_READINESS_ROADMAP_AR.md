@@ -588,3 +588,12 @@ For every engine:
 
 - Platform CI #1390–#1392 وRepository baseline #1408–#1410 green؛ latest docs commit `144dedf820a2` checked.
 - PostgreSQL credit integration #4: 5 passed. Engine runtime build #232 failed with empty jobs; diagnostic logs unavailable.
+
+
+## Session checkpoint — 2026-11-22 (Owner-managed AI provider removal)
+
+- The existing Vault migration already exposed a service-role-only `suly_ai_provider_config_clear` RPC, but the product had no owner API or UI action to remove the centrally stored key.
+- Added an owner-verified, rate-limited DELETE route, a server-only RPC helper, sanitized failure handling, and a client confirmation flow.
+- The response re-checks Vault and reports a server environment fallback as `source=environment`; deleting the Vault secret is not represented as disabling a provider when fallback credentials remain configured.
+- This completes the in-product Vault removal path only. Provider/model smoke remains approval-gated; no provider, worker, or engine was activated. No migration was applied and no deployment occurred.
+- Tests were added for non-owner denial, secret non-disclosure, successful Vault removal, environment fallback, and safe RPC failure. CI results must be attached to the resulting commit before this slice is treated as verified.
