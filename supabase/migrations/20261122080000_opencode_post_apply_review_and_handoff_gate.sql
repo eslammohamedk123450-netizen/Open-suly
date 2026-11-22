@@ -6,7 +6,7 @@ returns trigger
 language plpgsql
 security invoker
 set search_path = ''
-as $
+as $$
 declare
   v_task_id uuid;
   v_task_status text;
@@ -36,7 +36,7 @@ begin
 
   return new;
 end;
-$;
+$$;
 
 drop trigger if exists opencode_changeset_guard_cancelled_task on public.opencode_change_sets;
 create trigger opencode_changeset_guard_cancelled_task
