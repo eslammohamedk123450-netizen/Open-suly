@@ -9,6 +9,8 @@ set search_path = ''
 as $$
 declare
   v_task_id uuid;
+  v_parent_task_id uuid;
+  v_parent_status text;
   v_task_status text;
   v_handoff_status text;
 begin
@@ -16,13 +18,37 @@ begin
     return new;
   end if;
 
-  select r.task_id,t.status
-    into v_task_id,v_task_status
+  select r.task_id into v_task_id
     from public.opencode_task_runs r
-    join public.tasks t on t.id = r.task_id and t.user_id = r.user_id
    where r.id = new.run_id and r.user_id = new.user_id;
   if not found then
     raise exception 'opencode_task_run_not_found' using errcode = 'P0002';
+  end if;
+
+  select h.parent_task_id into v_parent_task_id
+    from public.engine_collaboration_handoffs h
+   where h.child_task_id = v_task_id and h.user_id = new.user_id
+   order by h.created_at desc
+   limit 1;
+
+  -- Match cancellation's parent -> child -> handoff lock order. This makes
+  -- the apply decision linearizable with parent/child cancellation.
+  if v_parent_task_id is not null then
+    select t.status into v_parent_status
+      from public.tasks t
+     where t.id = v_parent_task_id and t.user_id = new.user_id
+     for share;
+    if not found then
+      raise exception 'opencode_parent_task_not_found' using errcode = 'P0002';
+    end if;
+  end if;
+
+  select t.status into v_task_status
+    from public.tasks t
+   where t.id = v_task_id and t.user_id = new.user_id
+   for share;
+  if not found then
+    raise exception 'opencode_task_not_found' using errcode = 'P0002';
   end if;
 
   select h.status into v_handoff_status
@@ -33,7 +59,8 @@ begin
    limit 1
    for share;
 
-  if v_task_status in ('cancel_requested','cancelled')
+  if v_parent_status in ('cancel_requested','cancelled')
+     or v_task_status in ('cancel_requested','cancelled')
      or v_handoff_status in ('cancelled','failed') then
     raise exception 'opencode_task_cancelled' using errcode = '55000';
   end if;
