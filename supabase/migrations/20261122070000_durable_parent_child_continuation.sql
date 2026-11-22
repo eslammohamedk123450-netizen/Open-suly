@@ -906,9 +906,9 @@ begin
      and s.available_at <= now()
      and t.cancel_requested_at is null
      and (
-       t.status in ('ready','running')
+       (t.status in ('ready','running') and left(s.step_key,7) <> 'resume_')
        or (
-         t.status = 'waiting_children'
+         t.status in ('ready','running','waiting_children')
          and left(s.step_key,7) = 'resume_'
          and s.input->>'operation' in ('hermes.agent.turn','opencode.task.run')
          and exists (
