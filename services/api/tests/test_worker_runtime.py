@@ -65,6 +65,22 @@ def test_runtime_stops_without_claiming_work_after_stop_signal():
     runtime.run(stop)
 
 
+def test_worker_runtime_passes_shutdown_signal_to_active_step():
+    observed = {}
+    stop = Event()
+
+    class OneIterationWorker:
+        def run_once(self, _handler, *, cancel_aware_handler=None, worker_stop_event=None):
+            observed["stop_event"] = worker_stop_event
+            stop.set()
+            return "completed"
+
+    runtime = WorkerRuntime(OneIterationWorker())
+    runtime.run(stop)
+
+    assert observed["stop_event"] is stop
+
+
 def test_runtime_rejects_unsafe_poll_intervals():
     with pytest.raises(ValueError):
         WorkerRuntime(object(), poll_interval_seconds=0)
