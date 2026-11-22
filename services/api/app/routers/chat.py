@@ -75,7 +75,17 @@ def _build_prompt_messages(
             continue
         if contains_secret_material(content):
             content = "[تم حجب محتوى يشبه سرًا حفاظًا على الأمان]"
-        bounded_content = content[-min(8000, remaining_chars):]
+        content_limit = min(8000, remaining_chars)
+        if len(content) > content_limit:
+            head_size = max(1, content_limit * 3 // 4)
+            tail_size = max(0, content_limit - head_size)
+            bounded_content = (
+                content[:head_size]
+                + "\\n[… تم اختصار الجزء الأوسط للحفاظ على حدود السياق …]\\n"
+                + (content[-tail_size:] if tail_size else "")
+            )
+        else:
+            bounded_content = content
         context_messages.append({"role": role, "content": bounded_content})
         remaining_chars -= len(bounded_content)
     prompt.extend(reversed(context_messages))
