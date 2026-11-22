@@ -81,6 +81,7 @@ For every engine:
 - [ ] quota/usage ledger exactness and partial billing
 - [x] Read-only credits summary API + client history view (user-token/RLS, disabled by default)
 - [x] Disposable PostgreSQL credit-ledger integration: grant/reserve/settle/release/expiry, concurrency, RLS
+- [ ] Capture OpenAI-compatible/Ollama token usage in chat metadata and display in client (no billing)
 - [ ] Redis only where needed; document failure behavior
 - [ ] structured logs with redaction, metrics, traces, alerting
 - [ ] object storage quotas, signed URLs, retention
@@ -563,3 +564,11 @@ For every engine:
 - Platform CI #1385/run `45000017691` نجح: **764 passed, 5 skipped, 5 warnings**؛ TypeScript/Expo/Web export نجحت. Repository baseline #1403/run `45000017591` نجح.
 - فشل أول run #1/#2 قبل الإصلاح في fixtures (engine ID mismatch وauth user FK). تم تشخيصها من logs وإصلاحها؛ لا نخفي المحاولات الفاشلة.
 - إعادة عد checklist: **60/155 (39%)**. Production readiness milestone-weighted تظل **نحو 20%**؛ tests لا تعني تطبيق migrations على staging أو تفعيل credits في المحركات.
+
+
+## Chat token telemetry — 2026-11-22
+
+- AI Gateway now optionally normalizes OpenAI-compatible `prompt_tokens/completion_tokens` and Ollama `prompt_eval_count/eval_count` into input/output/total counts, bounded and validated; missing/invalid usage is omitted.
+- Chat stores token counts in assistant message metadata only when the provider reports them; client shows the counts. No token estimation, monetary cost, credits charge, or usage ledger.
+- Commit `5e41f6753be9` Platform CI #1387 failed only on client TypeScript due a malformed JSX time tag; API tests were green. Fix landed in `d033fd274bfc`; its Platform CI #1388 API job passed **770 tests** while client job was still running. UI total-count polish is commit `075a90ab1b2d`; CI #1389 was still in progress.
+- Recount after adding this unchecked item: **60/156 (39%)**. Controlled Beta/Production readiness remains **~20%**; telemetry is not billing and no AI provider is enabled.

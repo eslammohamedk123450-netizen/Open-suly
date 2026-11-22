@@ -745,3 +745,20 @@ undefined
 1. افحص CI على أحدث commit documentation.
 2. لا تربط reserve/settle بالworker قبل تصميم policy usage واضحة؛ لا تختر أسعارًا أو token-to-credit conversion.
 3. تابع vertical slice مستقل وآمن (usage telemetry، أو مراجعة orchestration) مع الاختبارات.
+
+
+## جلسة تطوير — 2026-11-22 (قياس tokens للchat دون فوترة)
+
+- Commits:
+  - `5e41f6753be9` — AI Gateway optional usage callback; chat stores provider counts in assistant metadata; client displays usage.
+  - `d033fd274bfc` — إصلاح markup/null-safe metadata بعد اكتشاف typecheck failure.
+  - `075a90ab1b2d` — توضيح Arabic usage display وإظهار الإجمالي.
+- Counts normalized only from provider-reported usage: OpenAI-compatible `prompt_tokens/completion_tokens`, Ollama `prompt_eval_count/eval_count`. Counts bounded to 0–1e9 and rejected when malformed; total computed from validated input/output. No estimation/cost mapping.
+- API test additions: standard usage, Ollama usage, 4 malformed usage variants, and chat persistence metadata. CI API job on commit d033 #1388 passed **770 tests, 5 warnings**; client typecheck was still in progress at this checkpoint. Platform CI #1387 failed due JSX syntax, which was corrected; #1389 for the latest UI commit still pending.
+- No live provider call, no key, no billing, no credits charge. 
+- Roadmap checklist: **60/156 (39%)**; controlled-beta readiness stays **~20%** until engine lifecycle usage metering and staging readiness.
+
+### Follow-up
+1. Confirm client typecheck and web export for d033/075.
+2. Document this telemetry behavior in provider setup.
+3. Continue with engine usage source normalization or other next safe vertical slice; do not invent prices or credits conversion.

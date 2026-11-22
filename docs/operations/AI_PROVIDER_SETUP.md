@@ -46,3 +46,10 @@ Set `AI_PROVIDER=openai-compatible`, `AI_BASE_URL` to the provider's API base UR
 - Provider calls may be slow or resource-intensive. Use bounded timeouts and output limits, and monitor the host's memory/CPU.
 - CI uses mocked HTTP transports. A passing test suite is not a live model/provider smoke test.
 - Production readiness still requires a real authenticated end-to-end test, provider health verification, usage accounting, rate limits, and a reviewed deployment.
+
+
+## Usage token telemetry (read-only)
+
+- عند إرجاع OpenAI-compatible provider لحقل `usage` يحتوي `prompt_tokens` و`completion_tokens`، أو Ollama لحقلَي `prompt_eval_count` و`eval_count`، يحفظ chat counts bounded في assistant message metadata ويعرضها في المحادثة.
+- Counts هي أرقام provider-report فقط؛ missing/malformed usage لا يضيف metadata. إجمالي tokens يتم جمع input/output validated.
+- هذه telemetry لا تقدّر التكلفة ولا تخصم credits ولا تنشئ ledger مالي. Provider calls ما زالت تحتاج إعداد server-side وموافقة `ai.provider.run`.
