@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
@@ -6,7 +6,7 @@ import { colors } from "@/theme/tokens";
 /** واجهة المحادثة تعرض بيانات usage التي أرسلها مزود الخدمة دون تقدير سعر أو خصم credits. */
 import { useAuth } from "@/providers/AuthProvider";
 import { listMessages, sendUserMessage, type ChatMessage } from "@/lib/conversations";
-import { requestAssistantReply } from "@/lib/chat-api";
+import { requestAssistantReplyStream } from "@/lib/chat-api";
 
 function tokenUsage(metadata: ChatMessage["metadata"] | null | undefined): { input_tokens: number; output_tokens: number; total_tokens: number } | null {
   if (!metadata || typeof metadata !== "object") return null;
@@ -30,10 +30,15 @@ export default function ConversationScreen() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [engineNotice, setEngineNotice] = useState("");
+  const [streamingText, setStreamingText] = useState("");
+  const activeRequest = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!user) { setMessages([]); setLoading(false); return; }
     let active = true;
+    activeRequest.current?.abort();
+    activeRequest.current = null;
+    setStreamingText("");
     setMessages([]);
     setError("");
     setEngineNotice("");
@@ -45,16 +50,22 @@ export default function ConversationScreen() {
       const hasReply = lastUserMessage && rows.some((row) => row.role === "assistant" && row.metadata?.in_reply_to === lastUserMessage.id);
       if (lastUserMessage && !hasReply) {
         try {
-          const reply = await requestAssistantReply(id, lastUserMessage.id);
+          const controller = new AbortController();
+          activeRequest.current = controller;
+          const reply = await requestAssistantReplyStream(id, lastUserMessage.id, { signal: controller.signal, onDelta: (part) => { if (active) setStreamingText((current) => current + part); } });
           if (active) setMessages((current) => current.some((row) => row.id === reply.id) ? current : [...current, reply]);
+          if (active) setStreamingText("");
         } catch (e) {
-          if (active) setEngineNotice(e instanceof Error ? e.message : "محرك الردود غير متاح حاليًا.");
+          if (active && !(e instanceof Error && e.name === "AbortError")) setEngineNotice(e instanceof Error ? e.message : "محرك الردود غير متاح حاليًا.");
+          if (active) setStreamingText("");
+        } finally {
+          activeRequest.current = null;
         }
       }
     })
       .catch((e) => { if (active) setError(e instanceof Error ? e.message : "تعذر تحميل المحادثة."); })
       .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+    return () => { active = false; activeRequest.current?.abort(); activeRequest.current = null; };
   }, [id, user]);
 
   const send = async () => {
@@ -65,19 +76,24 @@ export default function ConversationScreen() {
     setSending(true);
     setError("");
     setEngineNotice("");
+    setStreamingText("");
+    const controller = new AbortController();
+    activeRequest.current = controller;
     try {
       const saved = await sendUserMessage(id, content);
       setMessages((current) => [...current, saved]);
       try {
-        const reply = await requestAssistantReply(id, saved.id);
+        const reply = await requestAssistantReplyStream(id, saved.id, { signal: controller.signal, onDelta: (part) => setStreamingText((current) => current + part) });
         setMessages((current) => current.some((row) => row.id === reply.id) ? current : [...current, reply]);
+        setStreamingText("");
       } catch (replyError) {
-        setEngineNotice(replyError instanceof Error ? replyError.message : "تم حفظ الرسالة، لكن الرد غير متاح حاليًا.");
+        if (!(replyError instanceof Error && replyError.name === "AbortError")) setEngineNotice(replyError instanceof Error ? replyError.message : "تم حفظ الرسالة، لكن الرد غير متاح حاليًا.");
+        setStreamingText("");
       }
     } catch (e) {
       setDraft(content);
       setError(e instanceof Error ? e.message : "تعذر حفظ الرسالة.");
-    } finally { setSending(false); }
+    } finally { activeRequest.current = null; setSending(false); }
   };
 
   return (
@@ -104,6 +120,7 @@ export default function ConversationScreen() {
             </View>
             );
           })}
+          {!!streamingText && <View style={styles.assistantMessage}><Text style={styles.assistantText}>{streamingText}</Text><Text style={styles.time}>SULY · يكتب الآن</Text></View>}
           {!!error && <Text style={styles.error}>{error}</Text>}
           {!!engineNotice && (
             <View style={styles.noticeBox}>
@@ -118,9 +135,15 @@ export default function ConversationScreen() {
         </ScrollView>
         <View style={styles.composer}>
           <TextInput value={draft} onChangeText={setDraft} placeholder="اكتب رسالتك..." placeholderTextColor={colors.faint} style={styles.input} multiline textAlign="right" textAlignVertical="center" />
-          <Pressable style={[styles.sendButton, (!draft.trim() || sending) && styles.disabled]} onPress={send} disabled={!draft.trim() || sending}>
-            {sending ? <ActivityIndicator color={colors.background} /> : <Text style={styles.sendText}>↑</Text>}
-          </Pressable>
+          {sending ? (
+            <Pressable style={[styles.sendButton, styles.stopButton]} onPress={() => activeRequest.current?.abort()} accessibilityLabel="إيقاف الرد">
+              <Text style={styles.sendText}>■</Text>
+            </Pressable>
+          ) : (
+            <Pressable style={[styles.sendButton, !draft.trim() && styles.disabled]} onPress={send} disabled={!draft.trim()} accessibilityLabel="إرسال الرسالة">
+              <Text style={styles.sendText}>↑</Text>
+            </Pressable>
+          )}
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -140,5 +163,5 @@ const styles = StyleSheet.create({
   noticeBox: { alignItems: "center", gap: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   engineNotice: { color: colors.faint, fontSize: 10, textAlign: "center", marginTop: 8 }, permissionButton: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 9, borderWidth: 1, borderColor: colors.goldDark }, permissionText: { color: colors.gold, fontSize: 10, fontWeight: "700" }, error: { color: "#F08B8B", fontSize: 11, textAlign: "center" },
   composer: { width: "100%", maxWidth: 760, alignSelf: "center", padding: 12, flexDirection: "row", alignItems: "flex-end", gap: 9, borderTopWidth: 1, borderTopColor: colors.border }, input: { flex: 1, minHeight: 48, maxHeight: 130, borderRadius: 15, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, color: colors.text, paddingHorizontal: 13, paddingVertical: 12, fontSize: 13 },
-  sendButton: { width: 46, height: 46, borderRadius: 15, backgroundColor: colors.gold, alignItems: "center", justifyContent: "center" }, sendText: { color: colors.background, fontSize: 25, fontWeight: "900" }, disabled: { opacity: 0.45 },
+  sendButton: { width: 46, height: 46, borderRadius: 15, backgroundColor: colors.gold, alignItems: "center", justifyContent: "center" }, stopButton: { backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.goldDark }, sendText: { color: colors.background, fontSize: 25, fontWeight: "900" }, disabled: { opacity: 0.45 },
 });
