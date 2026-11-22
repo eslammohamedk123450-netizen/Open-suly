@@ -17,6 +17,8 @@ from app.services.ai_gateway import (
     AIProviderNotConfigured,
     AIProviderTimeout,
     generate_reply,
+    provider_capabilities,
+    selected_model_profile,
     stream_reply,
 )
 
@@ -173,6 +175,17 @@ def _inject_target_attachments(
 class ChatRespondRequest(BaseModel):
     conversation_id: UUID
     message_id: UUID
+
+
+@router.get("/capabilities")
+def get_chat_capabilities(
+    _user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Expose safe provider/model capability metadata to authenticated clients."""
+    return {
+        "providers": provider_capabilities(),
+        "selected_model": selected_model_profile(),
+    }
 
 
 @router.post("/respond")
