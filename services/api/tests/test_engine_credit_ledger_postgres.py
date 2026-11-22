@@ -281,18 +281,38 @@ def test_concurrent_reservations_cannot_overdraw_available_credits(credit_db, cr
     ).fetchone()[0] == 1
 
 
-def test_authenticated_rls_reads_only_own_account_and_cannot_write_or_grant(credit_db):
+def test_authenticated_rls_reads_only_own_rows_and_cannot_write_or_grant(credit_db):
     user_id, other = str(uuid4()), str(uuid4())
-    credit_db.execute("insert into auth.users (id) values (%s),(%s)", (user_id, other))
+    task_id, run_id = str(uuid4()), str(uuid4())
+    _seed_run(credit_db, user_id, task_id, run_id)
+    credit_db.execute("insert into auth.users (id) values (%s)", (other,))
     _grant(credit_db, user_id, 25, "grant:rls:001")
     _grant(credit_db, other, 75, "grant:rls:002")
+    reservation_id = _reserve(
+        credit_db, user_id, task_id, run_id, "opencode", 10, "reserve:rls:001",
+    )
+    credit_db.execute("update public.engine_runs set status='succeeded' where id=%s", (run_id,)
+    )
+    _service_rpc(
+        credit_db, "select public.settle_engine_credits(%s,%s,%s,%s)",
+        (user_id, reservation_id, 5, "settle:rls:001"),
+    )
     with credit_db.transaction():
         credit_db.execute("set local role authenticated")
         credit_db.execute("select set_config('request.jwt.claim.sub', %s, true)", (user_id,))
-        visible = credit_db.execute(
+        visible_accounts = credit_db.execute(
             "select user_id,available_credits from public.credit_accounts order by user_id"
         ).fetchall()
-        assert [(str(row[0]), row[1]) for row in visible] == [(user_id, 25)]
+        visible_reservations = credit_db.execute(
+            "select user_id,status from public.credit_reservations"
+        ).fetchall()
+        visible_ledger = credit_db.execute(
+            "select user_id,transaction_type from public.credit_ledger order by created_at"
+        ).fetchall()
+        assert [(str(row[0]), row[1]) for row in visible_accounts] == [(user_id, 20)]
+        assert [(str(row[0]), row[1]) for row in visible_reservations] == [(user_id, "settled")]
+        assert [str(row[0]) for row in visible_ledger] == [user_id, user_id, user_id]
+        assert sorted(row[1] for row in visible_ledger) == ["grant", "reserve", "settle"]
 
     with pytest.raises(Exception, match="permission denied|row-level security"):
         with credit_db.transaction():

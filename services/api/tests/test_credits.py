@@ -196,6 +196,7 @@ def test_credit_summary_returns_bounded_owner_only_projection(monkeypatch):
             "credit_accounts", "credit_reservations", "credit_ledger",
         ]
         assert all(("user_id", USER_ID) in query.filters for query in client.queries)
+        assert all("metadata" not in query.columns.lower() and "task_id" not in query.columns.lower() for query in client.queries)
         assert [query.limit_value for query in client.queries] == [1, 25, 50]
     finally:
         cleanup()
