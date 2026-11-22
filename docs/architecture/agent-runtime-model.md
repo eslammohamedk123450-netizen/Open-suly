@@ -78,22 +78,38 @@ The approval RPC accepts additional sibling approvals while the parent is in
 that state. Terminal handoff and outbox transitions re-check the complete
 barrier; once all sibling handoffs and deliveries are terminal, SULY inserts a
 single idempotent continuation step keyed by the original parent engine run.
-The continuation contains bounded owner-scoped child step outputs and handoff
-statuses as explicitly untrusted context, then returns the parent task to
-`ready` for ordinary worker claiming. Hermes and OpenCode continuation
-operations are supported by their existing task adapters. Parent cancellation
+The parent remains `waiting_children` until `claim_task_step` rechecks that exact
+run's outbox and handoff barrier, then atomically claims the continuation and
+moves the parent to `running`. The continuation contains bounded owner-scoped
+child step outputs, review decisions, and handoff statuses as explicitly
+untrusted context. Hermes and OpenCode continuation operations are supported
+by their existing task adapters. Parent cancellation
 prevents resumption, and the existing cancellation cascade requests child
 cancellation. The child terminal synchronizer is reduced to one trigger to
 avoid duplicate writers.
 
 The continuation step is durable database state, not worker memory: a worker
 restart does not lose the resume request. Its unique task/step key makes the
-insert idempotent, and the final readiness update rechecks pending outbox and
-handoff rows to avoid resuming while sibling work is still active. Static
+insert idempotent, and the worker claim transaction rechecks pending outbox and
+handoff rows to avoid resuming while sibling work is still active. Parent
+cancellation remains available while waiting and prevents continuation claims. Static
 migration invariants are covered in CI. Database execution, concurrent
 transaction behavior, hosted runtime startup, and real engine acceptance
 remain part of the separately deferred non-production/external acceptance
 test; CI is not represented as proof of those external behaviors.
+
+
+OpenCode change sets now have a complete owner-gated apply/re-review path.
+Applying an initial change set atomically queues one durable post-apply review
+step against the actual updated project snapshot. The review prompt is
+read-only; any proposed fixes are returned as a fresh change set and still
+require owner approval. A review step is marked with its source change-set ID,
+so applying its own result cannot recursively enqueue infinite review steps.
+For OpenCode child tasks, the collaboration handoff remains running while a
+change set is awaiting owner decision and through the post-apply review; the
+parent is resumed only after the final review change set is applied, rejected,
+or becomes stale. The decision is persisted in the handoff and included in the
+parent's continuation context.
 
 ## External acceptance test boundary
 
