@@ -16,6 +16,7 @@ import stat
 import tarfile
 import tempfile
 import time
+import unicodedata
 from threading import Lock
 from io import BytesIO
 from pathlib import Path, PurePosixPath
@@ -30,6 +31,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.docker_runtime import (
     DockerTaskRuntimeManager,
     RuntimeErrorSafe,
+    _contains_secret_material,
     _ensure_private_directory,
     validate_egress_disabled,
 )
@@ -698,6 +700,51 @@ async def execute(runtime_id: str, body: ExecuteRequest, authorization: str | No
 
 
 @app.get("/v1/runtimes/{runtime_id}/results")
+_RESULT_BLOCKED_PARTS = {
+    ".git", "node_modules", ".ssh", ".aws", ".azure", ".gcloud",
+    ".docker", ".kube", ".gnupg", ".env", ".npmrc", ".pypirc",
+    ".netrc", ".pgpass", "credentials", "credentials.json",
+    "id_rsa", "id_ed25519", "id_ecdsa", "service-account.json",
+    "dockerconfig.json", "secrets",
+}
+_RESULT_BLOCKED_SUFFIXES = (".pem", ".key", ".p12", ".pfx", ".jks", ".keystore")
+_WINDOWS_DEVICE_NAME = re.compile(r"^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$", re.IGNORECASE)
+
+
+def _safe_runtime_result_path(raw_name: str) -> str | None:
+    """Return a portable workspace-relative path, or omit unsafe archive names."""
+    if not isinstance(raw_name, str) or not raw_name or len(raw_name.encode("utf-8")) > 1024:
+        return None
+    if "\\" in raw_name or unicodedata.normalize("NFC", raw_name) != raw_name:
+        return None
+    if any(unicodedata.category(char) in {"Cc", "Cf", "Cs"} for char in raw_name):
+        return None
+    raw_parts = raw_name.split("/")
+    if raw_name.startswith("/") or any(part in {"", ".", ".."} for part in raw_parts):
+        return None
+    if re.match(r"^[A-Za-z]:", raw_name):
+        return None
+    parts = raw_parts[1:] if raw_parts[0] == "workspace" else raw_parts
+    if not parts:
+        return None
+    for part in parts:
+        if (
+            len(part.encode("utf-8")) > 255
+            or ":" in part
+            or part.endswith((".", " "))
+            or _WINDOWS_DEVICE_NAME.fullmatch(part.split(".", 1)[0])
+        ):
+            return None
+        lowered = part.lower()
+        if (
+            lowered in _RESULT_BLOCKED_PARTS
+            or lowered.startswith(".env")
+            or lowered.endswith(_RESULT_BLOCKED_SUFFIXES)
+        ):
+            return None
+    return "/".join(parts)
+
+
 def runtime_results(runtime_id: str, authorization: str | None = Header(default=None)):
     row = _runtime(runtime_id, _runtime_token_from_request(authorization))
     # This endpoint exports OpenCode's reviewable workspace changeset only.
@@ -720,21 +767,22 @@ def runtime_results(runtime_id: str, authorization: str | None = Header(default=
         archive = BytesIO(b"".join(archive_parts))
         files, total = [], 0
         baseline = json.loads(row["baseline_json"] or "{}")
+        runtime_token = _derive_runtime_access_token(runtime_id, row["task_id"], row["engine_run_id"])
+        seen_paths: set[str] = set()
         with tarfile.open(fileobj=archive, mode="r:*") as tar:
             members = tar.getmembers()
             if len(members) > MAX_RESULT_FILES + 1:
                 raise HTTPException(413, "result_file_limit_exceeded")
             for member in members:
-                if member.isdir():
+                if member.isdir() or member.issym() or member.islnk() or not member.isfile():
                     continue
-                rel = PurePosixPath(member.name)
-                if rel.is_absolute() or any(part in {"", ".", ".."} for part in rel.parts):
+                result_path = _safe_runtime_result_path(member.name)
+                if result_path is None:
                     continue
-                parts = rel.parts[1:] if rel.parts and rel.parts[0] == "workspace" else rel.parts
-                if not parts or member.issym() or member.islnk() or not member.isfile():
-                    continue
-                if any(p in {"..", ".git", "node_modules"} or p.lower().startswith(".env") for p in parts):
-                    continue
+                canonical_path = result_path.casefold()
+                if canonical_path in seen_paths:
+                    raise HTTPException(502, "runtime_results_ambiguous_paths")
+                seen_paths.add(canonical_path)
                 if member.size > 1024 * 1024:
                     continue
                 extracted = tar.extractfile(member)
@@ -748,7 +796,12 @@ def runtime_results(runtime_id: str, authorization: str | None = Header(default=
                     text = data.decode("utf-8")
                 except UnicodeDecodeError:
                     continue
-                files.append({"path": "/".join(parts), "content": text,
+                # The engine can read its own runtime credential from its
+                # environment. Never return that token or secret-like files to
+                # the caller as a workspace changeset.
+                if runtime_token and runtime_token in text or _contains_secret_material(text):
+                    continue
+                files.append({"path": result_path, "content": text,
                               "sha256": hashlib.sha256(data).hexdigest()})
         current = {item["path"]: item["sha256"] for item in files}
         changed = [item for item in files if baseline.get(item["path"]) != item["sha256"]]

@@ -714,3 +714,92 @@ def test_runtime_database_fails_closed_on_legacy_duplicate_attempt_rows(tmp_path
 
     with pytest.raises(RuntimeErrorSafe, match="runtime_task_attempt_duplicate_records"):
         runtime_api._db()
+
+
+
+def _runtime_result_archive(entries):
+    import tarfile
+    from io import BytesIO
+
+    buffer = BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w") as archive:
+        for name, content in entries:
+            data = content.encode("utf-8")
+            member = tarfile.TarInfo(name)
+            member.size = len(data)
+            archive.addfile(member, BytesIO(data))
+    return buffer.getvalue()
+
+
+def _patch_runtime_results(monkeypatch, entries):
+    from types import SimpleNamespace
+
+    runtime_id = "00000000-0000-4000-8000-000000000141"
+    row = {
+        "task_id": "00000000-0000-4000-8000-000000000142",
+        "engine_run_id": "00000000-0000-4000-8000-000000000143",
+        "engine_id": "opencode",
+        "container_id": "probe-container",
+        "baseline_json": "{}",
+    }
+
+    class ArchiveContainer:
+        def get_archive(self, path):
+            assert path == "/workspace"
+            return [_runtime_result_archive(entries)], {}
+
+    container = ArchiveContainer()
+    manager = SimpleNamespace(
+        client=SimpleNamespace(
+            containers=SimpleNamespace(get=lambda _container_id: container)
+        )
+    )
+    monkeypatch.setattr(runtime_api, "_runtime", lambda *_args: row)
+    monkeypatch.setattr(runtime_api, "_get_manager", lambda *_args: manager)
+    monkeypatch.setattr(
+        runtime_api, "_derive_runtime_access_token",
+        lambda *_args: "runtime-token-should-never-be-exported",
+    )
+    return runtime_id
+
+
+def test_runtime_results_omit_unsafe_paths_and_secret_material(monkeypatch):
+    import hashlib
+
+    runtime_id = _patch_runtime_results(monkeypatch, [
+        ("workspace/src/app.py", "print('safe')"),
+        ("workspace/.ssh/id_rsa", "private key material"),
+        ("workspace/.env.local", "PASSWORD=hidden"),
+        ("workspace/credentials.json", '{"token":"hidden"}'),
+        ("workspace/secrets.txt", "token = runtime-token-should-never-be-exported"),
+        ("workspace/../escape.py", "outside"),
+        (r"workspace\\windows.txt", "windows path"),
+        ("workspace/C:/escape.txt", "alternate data stream"),
+        ("workspace/CON.txt", "reserved device"),
+    ])
+    result = runtime_api.runtime_results(
+        runtime_id, authorization="Bearer " + "x" * 48,
+    )
+    assert result["file_count"] == 1
+    assert result["changed_files"] == [{
+        "path": "src/app.py",
+        "content": "print('safe')",
+        "sha256": hashlib.sha256(b"print('safe')").hexdigest(),
+    }]
+    assert "runtime-token-should-never-be-exported" not in str(result)
+
+
+def test_runtime_results_reject_casefold_path_collisions(monkeypatch):
+    import pytest
+    from fastapi import HTTPException
+
+    runtime_id = _patch_runtime_results(monkeypatch, [
+        ("workspace/README.md", "first"),
+        ("workspace/readme.md", "second"),
+    ])
+    with pytest.raises(HTTPException) as error:
+        runtime_api.runtime_results(
+            runtime_id, authorization="Bearer " + "x" * 48,
+        )
+    assert error.value.status_code == 502
+    assert error.value.detail == "runtime_results_ambiguous_paths"
