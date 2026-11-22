@@ -94,16 +94,41 @@ def test_credit_summary_requires_authentication():
         cleanup()
 
 
-def test_credit_summary_is_disabled_without_database_queries(monkeypatch):
-    client = FakeCreditClient()
-    api = configure(monkeypatch, client, enabled=False)
+def test_credit_summary_feature_flag_blocks_client_creation(monkeypatch):
+    monkeypatch.setattr(
+        credits, "get_settings",
+        lambda: SimpleNamespace(engine_credits_enabled=False),
+    )
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id=USER_ID, email=None)
+    monkeypatch.setattr(
+        credits, "get_supabase_client",
+        lambda _token: (_ for _ in ()).throw(AssertionError("database client must not be created")),
+    )
     try:
-        response = api.get("/v1/credits")
+        response = TestClient(app).get("/v1/credits")
         assert response.status_code == 503
         assert response.json()["detail"] == "Credit ledger is disabled on this server."
-        assert client.queries == []
     finally:
         cleanup()
+
+
+def test_credit_client_uses_user_token_not_service_role(monkeypatch):
+    marker = object()
+    seen = []
+    monkeypatch.setattr(
+        credits, "get_settings",
+        lambda: SimpleNamespace(engine_credits_enabled=True),
+    )
+    monkeypatch.setattr(
+        credits, "get_supabase_client",
+        lambda token: (seen.append(token), marker)[1],
+    )
+    from fastapi.security import HTTPAuthorizationCredentials
+    result = credits.get_credit_client(
+        HTTPAuthorizationCredentials(scheme="Bearer", credentials="verified-user-token")
+    )
+    assert result is marker
+    assert seen == ["verified-user-token"]
 
 
 def test_credit_summary_returns_bounded_owner_only_projection(monkeypatch):

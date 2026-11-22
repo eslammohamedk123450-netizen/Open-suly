@@ -26,6 +26,11 @@ def get_credit_client(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> Client:
     """أنشئ عميلًا مرتبطًا بتوكن المستخدم لتطبيق RLS بدل استخدام service role."""
+    if not get_settings().engine_credits_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Credit ledger is disabled on this server.",
+        )
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
