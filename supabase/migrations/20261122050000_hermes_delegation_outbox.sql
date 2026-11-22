@@ -67,11 +67,13 @@ begin
      or new.output->>'engine' is distinct from 'hermes-agent'
      or jsonb_typeof(new.output->'delegation_plan') <> 'object'
      or new.output->'delegation_plan'->>'schema_version' <> '1'
-     or case
-       when jsonb_typeof(new.output->'delegation_plan'->'delegations') = 'array'
-       then jsonb_array_length(new.output->'delegation_plan'->'delegations') not between 1 and 8
-       else true
-     end
+     or (
+       case
+         when jsonb_typeof(new.output->'delegation_plan'->'delegations') = 'array'
+         then jsonb_array_length(new.output->'delegation_plan'->'delegations') not between 1 and 8
+         else true
+       end
+     )
      or octet_length((new.output->'delegation_plan')::text) > 64000 then
     raise exception 'hermes_delegation_plan_invalid' using errcode = '22023';
   end if;
