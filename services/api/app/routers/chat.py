@@ -130,8 +130,14 @@ async def respond_to_message(
             if existing is not None:
                 return existing
 
+            usage_summary: dict[str, int] | None = None
+
+            def capture_usage(value: dict[str, int]) -> None:
+                nonlocal usage_summary
+                usage_summary = value
+
             try:
-                answer = await generate_reply(prompt_messages)
+                answer = await generate_reply(prompt_messages, on_usage=capture_usage)
             except AIProviderNotConfigured as exc:
                 raise HTTPException(status_code=503, detail="AI provider is not configured yet.") from exc
             except AIProviderTimeout as exc:
@@ -158,6 +164,7 @@ async def respond_to_message(
                                 "in_reply_to": str(request.message_id),
                                 "provider": settings.ai_provider,
                                 "model": settings.ai_model,
+                                **({"usage": usage_summary} if usage_summary is not None else {}),
                             },
                         }
                     )

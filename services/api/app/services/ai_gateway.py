@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 
@@ -23,6 +23,29 @@ _MAX_INPUT_CHARS = 48000
 _MAX_REPLY_CHARS = 60000
 
 
+def _provider_usage(body: Any, *, is_ollama: bool) -> dict[str, int] | None:
+    """Extract only bounded token counts; do not estimate or derive monetary cost."""
+    if not isinstance(body, dict):
+        return None
+    raw_usage = body.get("usage")
+    if is_ollama:
+        input_value = body.get("prompt_eval_count")
+        output_value = body.get("eval_count")
+    else:
+        if not isinstance(raw_usage, dict):
+            return None
+        input_value = raw_usage.get("prompt_tokens")
+        output_value = raw_usage.get("completion_tokens")
+    for value in (input_value, output_value):
+        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 1_000_000_000:
+            return None
+    return {
+        "input_tokens": input_value,
+        "output_tokens": output_value,
+        "total_tokens": input_value + output_value,
+    }
+
+
 def _validate_messages(messages: list[dict[str, str]]) -> None:
     if not isinstance(messages, list) or not 1 <= len(messages) <= _MAX_MESSAGES:
         raise AIProviderError("The conversation context is outside the supported limits.")
@@ -43,6 +66,7 @@ async def generate_reply(
     messages: list[dict[str, str]],
     *,
     client: httpx.AsyncClient | None = None,
+    on_usage: Callable[[dict[str, int]], None] | None = None,
 ) -> str:
     settings = get_settings()
     provider = settings.ai_provider
@@ -110,6 +134,14 @@ async def generate_reply(
         content = content.strip()
         if len(content) > _MAX_REPLY_CHARS:
             raise AIProviderError("The AI provider response exceeded the supported limit.")
+        if on_usage is not None:
+            usage_summary = _provider_usage(body, is_ollama=is_ollama)
+            if usage_summary is not None:
+                # فشل تسجيل usage لا ينبغي أن يمنع وصول الرد النصي للمستخدم.
+                try:
+                    on_usage(usage_summary)
+                except Exception:
+                    pass
         return content
 
     try:

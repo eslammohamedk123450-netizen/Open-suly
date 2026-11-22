@@ -7,6 +7,18 @@ import { useAuth } from "@/providers/AuthProvider";
 import { listMessages, sendUserMessage, type ChatMessage } from "@/lib/conversations";
 import { requestAssistantReply } from "@/lib/chat-api";
 
+function tokenUsage(metadata: ChatMessage["metadata"]): { input_tokens: number; output_tokens: number; total_tokens: number } | null {
+  const raw = metadata.usage;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const usage = raw as Record<string, unknown>;
+  const input = usage.input_tokens;
+  const output = usage.output_tokens;
+  const total = usage.total_tokens;
+  if (![input, output, total].every((value => typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000_000))) return null;
+  if (total !== (input as number) + (output as number)) return null;
+  return { input_tokens: input as number, output_tokens: output as number, total_tokens: total as number };
+}
+
 export default function ConversationScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
@@ -80,12 +92,16 @@ export default function ConversationScreen() {
         <ScrollView contentContainerStyle={styles.messages} keyboardShouldPersistTaps="handled">
           {loading ? <ActivityIndicator color={colors.gold} /> : messages.length === 0 ? (
             <View style={styles.welcome}><Text style={styles.welcomeTitle}>ابدأ من هنا</Text><Text style={styles.welcomeText}>اكتب أول رسالة. سيتم حفظها في حسابك بشكل خاص.</Text></View>
-          ) : messages.map((message) => (
+          ) : messages.map((message) => {
+            const usage = message.role === "assistant" ? tokenUsage(message.metadata) : null;
+            return (
             <View key={message.id} style={message.role === "user" ? styles.userMessage : styles.assistantMessage}>
               <Text style={message.role === "user" ? styles.userText : styles.assistantText}>{message.content}</Text>
-              <Text style={styles.time}>{new Date(message.created_at).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" })}</Text>
+              {!!usage && <Text style={styles.usage}>Tokens · {usage.input_tokens.toLocaleString("ar-EG")} input / {usage.output_tokens.toLocaleString("ar-EG")} output</Text>}
+              <Text style={styles.time>{new Date(message.created_at).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" })}</Text>
             </View>
-          ))}
+            );
+          })}
           {!!error && <Text style={styles.error}>{error}</Text>}
           {!!engineNotice && (
             <View style={styles.noticeBox}>
@@ -118,7 +134,7 @@ const styles = StyleSheet.create({
   messages: { flexGrow: 1, padding: 18, gap: 12, width: "100%", maxWidth: 760, alignSelf: "center", justifyContent: "flex-end" },
   welcome: { alignItems: "center", padding: 28, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, welcomeTitle: { color: colors.gold, fontSize: 17, fontWeight: "800" }, welcomeText: { color: colors.muted, fontSize: 12, textAlign: "center", lineHeight: 21, marginTop: 8 },
   userMessage: { alignSelf: "flex-end", maxWidth: "88%", borderRadius: 18, borderBottomRightRadius: 5, padding: 13, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.goldDark }, assistantMessage: { alignSelf: "flex-start", maxWidth: "88%", borderRadius: 18, borderBottomLeftRadius: 5, padding: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  userText: { color: colors.text, fontSize: 13, lineHeight: 22, textAlign: "right" }, assistantText: { color: colors.muted, fontSize: 13, lineHeight: 22, textAlign: "left" }, time: { color: colors.faint, fontSize: 9, marginTop: 7, textAlign: "left" },
+  userText: { color: colors.text, fontSize: 13, lineHeight: 22, textAlign: "right" }, assistantText: { color: colors.muted, fontSize: 13, lineHeight: 22, textAlign: "left" }, time: { color: colors.faint, fontSize: 9, marginTop: 7, textAlign: "left" }, usage: { color: colors.faint, fontSize: 9, marginTop: 5, textAlign: "left" },
   noticeBox: { alignItems: "center", gap: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   engineNotice: { color: colors.faint, fontSize: 10, textAlign: "center", marginTop: 8 }, permissionButton: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 9, borderWidth: 1, borderColor: colors.goldDark }, permissionText: { color: colors.gold, fontSize: 10, fontWeight: "700" }, error: { color: "#F08B8B", fontSize: 11, textAlign: "center" },
   composer: { width: "100%", maxWidth: 760, alignSelf: "center", padding: 12, flexDirection: "row", alignItems: "flex-end", gap: 9, borderTopWidth: 1, borderTopColor: colors.border }, input: { flex: 1, minHeight: 48, maxHeight: 130, borderRadius: 15, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, color: colors.text, paddingHorizontal: 13, paddingVertical: 12, fontSize: 13 },

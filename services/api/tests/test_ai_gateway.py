@@ -117,6 +117,51 @@ def test_gateway_rejects_malformed_and_oversized_replies(monkeypatch) -> None:
     with pytest.raises(ai_gateway.AIProviderError, match="exceeded"):
         asyncio.run(run({"choices": [{"message": {"content": "x" * 60001}}]}))
 
+def test_gateway_reports_standard_openai_token_usage(monkeypatch) -> None:
+    monkeypatch.setattr(ai_gateway, "get_settings", configured_settings)
+    usage: list[dict[str, int]] = []
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": "usage reply"}}],
+            "usage": {"prompt_tokens": 17, "completion_tokens": 5, "total_tokens": 22},
+        })
+
+    async def run() -> str:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await ai_gateway.generate_reply(
+                [{"role": "user", "content": "hello"}], client=client, on_usage=usage.append
+            )
+
+    assert asyncio.run(run()) == "usage reply"
+    assert usage == [{"input_tokens": 17, "output_tokens": 5, "total_tokens": 22}]
+
+
+@pytest.mark.parametrize("raw_usage", [
+    {"prompt_tokens": True, "completion_tokens": 2},
+    {"prompt_tokens": -1, "completion_tokens": 2},
+    {"prompt_tokens": 2, "completion_tokens": "2"},
+    {"prompt_tokens": 1_000_000_001, "completion_tokens": 1},
+])
+def test_gateway_ignores_invalid_usage_without_blocking_reply(monkeypatch, raw_usage) -> None:
+    monkeypatch.setattr(ai_gateway, "get_settings", configured_settings)
+    usage: list[dict[str, int]] = []
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": "valid reply"}}], "usage": raw_usage,
+        })
+
+    async def run() -> str:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await ai_gateway.generate_reply(
+                [{"role": "user", "content": "hello"}], client=client, on_usage=usage.append
+            )
+
+    assert asyncio.run(run()) == "valid reply"
+    assert usage == []
+
+
 def test_gateway_supports_local_ollama_without_api_key(monkeypatch) -> None:
     monkeypatch.setattr(ai_gateway, "get_settings", lambda: Settings(
         ai_provider="ollama",
@@ -135,16 +180,21 @@ def test_gateway_supports_local_ollama_without_api_key(monkeypatch) -> None:
         return httpx.Response(200, json={
             "model": "qwen2.5:3b",
             "message": {"role": "assistant", "content": "  إجابة محلية  "},
+            "prompt_eval_count": 33,
+            "eval_count": 7,
             "done": True,
         })
+
+    usage: list[dict[str, int]] = []
 
     async def run() -> str:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
             return await ai_gateway.generate_reply(
-                [{"role": "user", "content": "اشرح لي"}], client=client
+                [{"role": "user", "content": "اشرح لي"}], client=client, on_usage=usage.append
             )
 
     assert asyncio.run(run()) == "إجابة محلية"
+    assert usage == [{"input_tokens": 33, "output_tokens": 7, "total_tokens": 40}]
     assert seen["url"] == "http://ollama:11434/api/chat"
     assert seen["authorization"] is None
     body = seen["body"]
