@@ -72,6 +72,8 @@ export default function SettingsScreen() {
           <View style={styles.group}>
             <SettingRow title="حماية البيانات" subtitle="إعدادات الخصوصية والتحكم في البيانات" value={privacy ? "مفعّلة" : "متوقفة"} onPress={() => setPrivacy((v) => !v)} />
             <View style={styles.separator} />
+            <SettingRow title="الرصيد والاستخدام" subtitle="رصيد المحركات وحركات credits (قراءة فقط)" onPress={() => router.push("/credits")} />
+            <View style={styles.separator} />
             <SettingRow title="الجلسات والأجهزة" subtitle="إدارة الأجهزة المتصلة" value="قريبًا" />
           </View>
 
