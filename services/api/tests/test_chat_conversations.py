@@ -195,3 +195,19 @@ def test_delete_conversation_removes_owned_row(monkeypatch):
     assert response.status_code == 200
     assert response.json() == {"deleted": True}
     assert rows == []
+
+
+
+def test_conversation_detail_requires_authentication():
+    response = client.get(
+        "/v1/chat/conversations/00000000-0000-0000-0000-000000000001"
+    )
+    assert response.status_code == 401
+
+
+def test_message_attachment_request_requires_authentication():
+    response = client.post(
+        "/v1/chat/conversations/00000000-0000-0000-0000-000000000001/messages",
+        json={"content": "Review this", "attachments": ["00000000-0000-0000-0000-000000000002"]},
+    )
+    assert response.status_code == 401
