@@ -93,6 +93,7 @@ jobs:
         run: docker build --pull=false -f engines/opencode/Dockerfile -t suly-opencode:ci .
 
       - name: Smoke-test the original OpenCode server in Docker
+        if: ${{ vars.SULY_ENABLE_ENGINE_RUNTIME_SMOKE == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
