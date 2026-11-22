@@ -36,7 +36,7 @@ jobs:
         run: npm run export:web --workspace @suly/client
 
   api:
-    name: API tests
+    name: API tests and deployable image
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -56,3 +56,6 @@ jobs:
       - name: Run API tests
         working-directory: services/api
         run: python -m pytest -q
+
+      - name: Build API container using its Dockerfile-specific context rules
+        run: docker build --pull=false -f services/api/Dockerfile -t suly-api:ci .
