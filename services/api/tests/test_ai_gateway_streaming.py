@@ -130,3 +130,36 @@ def test_provider_registry_reports_only_supported_capabilities(monkeypatch):
     assert profile["model"] == "qwen2.5:3b"
     assert profile["discovery"] == "server_configured_selection_only"
     assert "api_key" not in str(profile).lower()
+
+
+
+def test_openai_stream_extracts_final_usage_event(monkeypatch):
+    monkeypatch.setattr(
+        ai_gateway,
+        "get_settings",
+        lambda: Settings(
+            ai_provider="openai-compatible",
+            ai_base_url="https://provider.example",
+            ai_api_key="test-secret",
+            ai_model="test-model",
+        ),
+    )
+    usage = []
+    stream = (
+        'data: {"choices":[{"delta":{"content":"ok"}}]}\\n\\n'
+        'data: {"choices":[],"usage":{"prompt_tokens":14,"completion_tokens":6,"total_tokens":20}}\\n\\n'
+        'data: [DONE]\\n\\n'
+    )
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, text=stream)
+        )) as client:
+            return [part async for part in ai_gateway.stream_reply(
+                [{"role": "user", "content": "hello"}],
+                client=client,
+                on_usage=usage.append,
+            )]
+
+    assert asyncio.run(run()) == ["ok"]
+    assert usage == [{"input_tokens": 14, "output_tokens": 6, "total_tokens": 20}]
