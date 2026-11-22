@@ -15,16 +15,34 @@ begin
     return new;
   end if;
 
-  -- Lock and terminalize all not-yet-terminal handoffs before requesting child
-  -- cancellation. Approval serializes on the same parent row, closing the
-  -- approve-vs-cancel race.
+  -- Lock order is parent -> child task -> handoff. Child terminal handlers use
+  -- child -> handoff, so this order avoids a parent-cancel/child-completion
+  -- deadlock while still serializing approval and cancellation on the parent.
+  update public.tasks child
+     set status = 'cancel_requested',
+         cancel_requested_at = coalesce(child.cancel_requested_at,now()),
+         updated_at = now()
+   where child.id in (
+     select h.child_task_id
+       from public.engine_collaboration_handoffs h
+      where h.parent_task_id = new.id
+        and h.user_id = new.user_id
+        and h.status in ('approved','running')
+        and h.child_task_id is not null
+   )
+     and child.user_id = new.user_id
+     and child.status in ('ready','running','cancel_requested')
+     and child.cancel_requested_at is null;
+
   for v_handoff in
     update public.engine_collaboration_handoffs h
-       set status = 'cancelled', updated_at = now()
+       set status = 'cancelled',
+           finished_at = now(),
+           updated_at = now()
      where h.parent_task_id = new.id
        and h.user_id = new.user_id
        and h.status in ('pending_approval','approved','running')
-    returning h.id, h.child_task_id, h.user_id
+    returning h.id,h.user_id
   loop
     select coalesce(max(e.sequence),0) + 1
       into v_sequence
@@ -38,16 +56,6 @@ begin
       v_handoff.id,v_handoff.user_id,v_sequence,'handoff.cancelled','cancelled',
       jsonb_build_object('reason','parent_task_cancelled')
     );
-
-    if v_handoff.child_task_id is not null then
-      update public.tasks child
-         set status = 'cancel_requested',
-             cancel_requested_at = coalesce(child.cancel_requested_at,now())
-       where child.id = v_handoff.child_task_id
-         and child.user_id = new.user_id
-         and child.status in ('ready','running','cancel_requested')
-         and child.cancel_requested_at is null;
-    end if;
   end loop;
 
   return new;
