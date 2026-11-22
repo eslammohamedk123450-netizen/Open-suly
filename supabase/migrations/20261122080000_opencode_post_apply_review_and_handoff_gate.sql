@@ -178,6 +178,17 @@ begin
        and cancel_requested_at is null;
   end if;
 
+  insert into public.opencode_task_events(run_id,user_id,sequence,event_type,payload)
+  select v_run.id,new.user_id,coalesce(max(e.sequence),0)+1,'task.status',
+         jsonb_build_object(
+           'status','post_apply_review_queued',
+           'change_set_id',new.id,
+           'task_step_key',v_step_key
+         )
+    from public.opencode_task_events e
+   where e.run_id = v_run.id
+  on conflict (run_id,sequence) do nothing;
+
   return new;
 end;
 $$;
