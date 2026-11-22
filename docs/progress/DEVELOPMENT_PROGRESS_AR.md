@@ -844,9 +844,9 @@ undefined
 - أُضيف مسار DELETE محمي بمالك موثق البريد ومحدد المعدل، يستخدم RPC الخادم فقط، ثم يعيد الحالة الآمنة بعد التحقق من الحذف. لا يعيد المفتاح ولا يكشف أخطاء قاعدة البيانات.
 - إذا وُجد إعداد احتياطي في متغيرات الخادم، يظل نشطًا وتظهر الحالة `environment`؛ حذف Vault لا يُسوّق على أنه إيقاف كامل للذكاء الاصطناعي.
 - أضيف زر حذف واضح بتأكيد destructive dialog، ويظهر فقط عندما يكون المصدر Vault؛ مع توضيح مصدر environment fallback.
-- الملفات المعدلة: router/service واختباراتهما، client API/screen، ودليل إعداد المزود.
+- Commit التنفيذ: [`50c6d7449fab6cd98eca98c14583914985bf6925`](https://github.com/eslammohamedk123450-netizen/Open-suly/commit/50c6d7449fab6cd98eca98c14583914985bf6925). الملفات المعدلة: router/service واختباراتهما، client API/screen، ودليل إعداد المزود.
 - الاختبارات المضافة: منع non-owner من DELETE، حذف Vault دون تسريب السر، استمرار إظهار environment fallback، sanitization لفشل RPC، واختبارات helper الخادمي.
-- حالة CI قبل هذا التغيير: Platform CI وRepository baseline على HEAD الجديد كانا queued؛ workflow `engine-runtime-build.yml` فشل على HEAD نفسه لكن Actions API أعاد `total_count=0` للـjobs ولا توجد logs تشخص السبب. كما ظهر check خارجي Railway باسم `strong-gentleness - suly-api` بحالة failure؛ لم نتصل بالخدمة ولم ننفذ deploy.
+- CI على commit التنفيذ: Platform CI run `45034871809` وRepository baseline run `45034871924` كانا `queued` عند آخر فحص؛ لا نحتسبهما نجاحًا. Engine runtime build run `45034870366` انتهى `failure` مع `total_count=0` jobs، ولم تتوفر logs لتشخيص السبب. Combined status أظهر check خارجيًا `strong-gentleness - suly-api` بحالة failure؛ لم نتصل بخدمة Railway ولم ننفذ deploy.
 - لم نشغل pytest أو typecheck محليًا؛ يلزم ربط النتيجة بـGitHub Actions بعد commit التغيير. لم نطبق migrations، ولم نستخدم Supabase live، ولم نفعّل provider أو worker أو engine، ولم ننشر أو نشترِ خدمة.
 - تقدير الجاهزية لا يتغير: نحو **20%** من هدف Controlled Beta/Production Readiness (milestone-weighted)؛ هذه الدفعة تكمل إدارة إعداد Vault فقط ولا تثبت provider smoke أو usage billing أو runtime isolation أو staging.
 
