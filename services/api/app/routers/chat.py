@@ -1,8 +1,10 @@
+import json
 import logging
 from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.core.auth import AuthenticatedUser, get_current_user
@@ -15,6 +17,7 @@ from app.services.ai_gateway import (
     AIProviderNotConfigured,
     AIProviderTimeout,
     generate_reply,
+    stream_reply,
 )
 
 router = APIRouter(prefix="/v1/chat", tags=["chat"])
@@ -413,3 +416,97 @@ def delete_conversation(
         raise
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Could not delete conversation.") from exc
+
+
+
+@router.post("/respond/stream")
+async def stream_response_to_message(
+    request: ChatRespondRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+    _rate_limit: None = Depends(rate_limit("chat_respond")),
+):
+    """Stream assistant deltas as SSE and persist the completed assistant turn."""
+    admin = get_supabase_admin_client()
+    if admin is None:
+        raise HTTPException(status_code=503, detail="Server-side Supabase secret is not configured.")
+
+    settings = get_settings()
+    try:
+        if "ai.provider.run" not in ToolApprovalStore(admin).active_scopes(user.id):
+            raise HTTPException(status_code=403, detail="AI provider use requires explicit SULY approval.")
+
+        owned = (
+            admin.table("conversations").select("id")
+            .eq("id", str(request.conversation_id)).eq("user_id", user.id)
+            .limit(1).execute().data
+        )
+        if not owned:
+            raise HTTPException(status_code=404, detail="Conversation not found.")
+
+        rows = (
+            admin.table("messages")
+            .select("id,user_id,role,content,metadata,created_at,conversation_id")
+            .eq("conversation_id", str(request.conversation_id))
+            .eq("user_id", user.id)
+            .order("created_at", desc=True).limit(30).execute().data
+        )
+        messages = list(reversed(rows or []))
+        prompt = _build_prompt_messages(messages, str(request.message_id))
+        existing = next((
+            row for row in messages
+            if row.get("role") == "assistant"
+            and (row.get("metadata") or {}).get("in_reply_to") == str(request.message_id)
+        ), None)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("chat_stream_preflight_failed")
+        raise HTTPException(status_code=503, detail="Chat storage is temporarily unavailable.") from exc
+
+    async def events():
+        if existing is not None:
+            yield "event: delta\ndata: " + json.dumps({"text": existing.get("content", "")}, ensure_ascii=False) + "\n\n"
+            yield "event: complete\ndata: " + json.dumps({"message": existing}, ensure_ascii=False) + "\n\n"
+            return
+
+        chunks: list[str] = []
+        try:
+            async for fragment in stream_reply(prompt):
+                chunks.append(fragment)
+                yield "event: delta\ndata: " + json.dumps({"text": fragment}, ensure_ascii=False) + "\n\n"
+
+            answer = "".join(chunks).strip()
+            if not answer:
+                raise AIProviderError("The provider returned an empty stream.")
+            inserted = (
+                admin.table("messages").insert({
+                    "conversation_id": str(request.conversation_id),
+                    "user_id": user.id,
+                    "role": "assistant",
+                    "content": answer,
+                    "metadata": {
+                        "in_reply_to": str(request.message_id),
+                        "provider": settings.ai_provider,
+                        "model": settings.ai_model,
+                        "streamed": True,
+                    },
+                }).execute().data
+            )
+            if not inserted:
+                raise RuntimeError("assistant_message_not_persisted")
+            yield "event: complete\ndata: " + json.dumps({"message": inserted[0]}, ensure_ascii=False) + "\n\n"
+        except (AIProviderNotConfigured, AIProviderTimeout, AIProviderError) as exc:
+            logger.warning("chat_stream_provider_failed: %s", type(exc).__name__)
+            yield "event: error\ndata: " + json.dumps({"detail": "The AI provider could not complete the request."}) + "\n\n"
+        except Exception:
+            logger.exception("chat_stream_persist_failed")
+            yield "event: error\ndata: " + json.dumps({"detail": "The response could not be saved."}) + "\n\n"
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        },
+    )
