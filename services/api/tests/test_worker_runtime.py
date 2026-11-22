@@ -155,6 +155,28 @@ def test_worker_does_not_persist_raw_handler_exception_details():
     assert "Sensitive diagnostic details were not stored" in failure_args["p_error_message"]
 
 
+def test_worker_shutdown_requeues_active_step_without_committing_output():
+    rpc = _RpcSequence([
+        STEP_DATA,
+        True,
+        {"accepted": True, "step_status": "pending"},
+    ])
+    worker = TaskWorker(rpc, "shutdown-test-worker")
+    stop = Event()
+
+    def handler(_step):
+        stop.set()
+        return {"operation": "text.analyze", "word_count": 3}
+
+    result = worker.run_once(handler, worker_stop_event=stop)
+
+    assert result == "failed_or_retry_scheduled"
+    assert [call[0] for call in rpc.calls] == [
+        "claim_task_step", "renew_task_step_lease", "fail_task_step"
+    ]
+    assert rpc.calls[-1][1]["p_error_code"] == "worker_shutdown"
+
+
 def test_worker_does_not_complete_when_handler_output_is_not_object():
     rpc = _RpcSequence([
         STEP_DATA,
