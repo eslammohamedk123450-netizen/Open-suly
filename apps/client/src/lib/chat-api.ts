@@ -19,7 +19,9 @@ function responseError(payload: unknown): string {
   return "تعذر الحصول على رد من SULY الآن.";
 }
 
-export async function requestAssistantReply(conversationId: string, messageId: string): Promise<ChatMessage> {
+export async function requestAssistantReply(
+  conversationId: string, messageId: string, signal?: AbortSignal,
+): Promise<ChatMessage> {
   const token = await accessToken();
   const response = await fetch(apiBaseUrl + "/v1/chat/respond", {
     method: "POST",
@@ -28,6 +30,7 @@ export async function requestAssistantReply(conversationId: string, messageId: s
       Authorization: "Bearer " + token,
     },
     body: JSON.stringify({ conversation_id: conversationId, message_id: messageId }),
+    signal,
   });
 
   const payload = await response.json().catch(() => ({}));
@@ -67,8 +70,9 @@ export async function requestAssistantReplyStream(
   }
 
   const reader = response.body?.getReader?.();
-  if (!reader) {
-    const message = await requestAssistantReply(conversationId, messageId);
+  if (!reader || typeof TextDecoder === "undefined") {
+    if (reader) { try { await reader.cancel(); } catch { /* no streaming reader */ } }
+    const message = await requestAssistantReply(conversationId, messageId, callbacks.signal);
     callbacks.onDelta?.(message.content);
     return message;
   }
@@ -110,7 +114,7 @@ export async function requestAssistantReplyStream(
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      buffer += decoder.decode(value, { stream: true });
+      buffer = (buffer + decoder.decode(value, { stream: true })).replace(/\r\n/g, "\n");
       let boundary = buffer.indexOf("\n\n");
       while (boundary >= 0) {
         dispatch(buffer.slice(0, boundary).replace(/\r/g, ""));
