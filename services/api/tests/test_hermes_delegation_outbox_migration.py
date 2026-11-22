@@ -230,3 +230,12 @@ def test_handoff_idempotency_is_checked_before_parent_state_and_covers_all_budge
     assert start < status
     for field in ("max_child_tasks", "max_parallel_children", "max_runtime_seconds", "max_input_bytes"):
         assert f"v_existing.{field} <> p_{field}" in sql
+
+
+def test_opencode_post_apply_review_is_visible_in_the_owner_scoped_event_feed():
+    sql = re.sub(r"\s+", " ", _opencode_post_apply_migration())
+    assert "insert into public.opencode_task_events(run_id,user_id,sequence,event_type,payload)" in sql
+    assert "'task.status'" in sql
+    assert "'post_apply_review_queued'" in sql
+    assert "'task_step_key',v_step_key" in sql
+    assert "on conflict (run_id,sequence) do nothing" in sql
