@@ -85,3 +85,11 @@ def test_message_lifecycle_roles_remain_server_written():
     source = (MIGRATIONS / "20261122103000_extend_message_lifecycle_roles.sql").read_text(encoding="utf-8")
     assert "('user', 'assistant', 'system', 'tool', 'agent', 'error')" in source
     assert "Only user messages may be inserted by authenticated clients" in source
+
+
+
+def test_project_owner_unique_key_exists_before_engine_composite_foreign_keys():
+    source = (MIGRATIONS / "20261121161000_engine_workspace_lifecycle_foundation.sql").read_text(encoding="utf-8")
+    ensure_key = source.index("add constraint projects_id_user_unique unique (id, user_id)")
+    first_project_fk = source.index("references public.projects(id,user_id)")
+    assert ensure_key < first_project_fk
