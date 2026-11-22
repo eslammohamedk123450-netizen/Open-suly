@@ -61,7 +61,7 @@ begin
 
   if v_parent_status in ('cancel_requested','cancelled','failed')
      or v_task_status in ('cancel_requested','cancelled','failed')
-     or v_handoff_status in ('cancelled','failed') then
+     or (v_handoff_status is not null and v_handoff_status <> 'running') then
     raise exception 'opencode_task_cancelled' using errcode = '55000';
   end if;
 
