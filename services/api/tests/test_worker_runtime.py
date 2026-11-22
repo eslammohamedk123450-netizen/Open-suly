@@ -478,12 +478,12 @@ def test_hermes_agent_task_calls_bridge_only_after_approval(monkeypatch):
         ApprovedScopes(),
         runtime_broker=FakeRuntimeBroker(),
     )
-    assert result == {
-        "operation": "hermes.agent.turn",
-        "engine": "hermes-agent",
-        "content": "processed: safe task",
-        "handoff_context": "processed: safe task",
-    }
+    assert result["operation"] == "hermes.agent.turn"
+    assert result["engine"] == "hermes-agent"
+    assert result["content"].startswith("processed: safe task")
+    assert "SULY orchestration contract" in result["content"]
+    assert result["handoff_context"] == result["content"][:12_000]
+    assert result["engine_run_id"] == "00000000-0000-0000-0000-000000000099"
 
 
 def test_hermes_agent_operation_is_registered_with_approval_and_bounded_fields():
@@ -537,12 +537,12 @@ def test_hermes_operation_routes_through_registry_after_approval(monkeypatch):
         ApprovedScopes(),
         runtime_broker=FakeRuntimeBroker(),
     )
-    assert result == {
-        "operation": "hermes.agent.turn",
-        "engine": "hermes-agent",
-        "content": "processed: safe task",
-        "handoff_context": "processed: safe task",
-    }
+    assert result["operation"] == "hermes.agent.turn"
+    assert result["engine"] == "hermes-agent"
+    assert result["content"].startswith("processed: safe task")
+    assert "SULY orchestration contract" in result["content"]
+    assert result["handoff_context"] == result["content"][:12_000]
+    assert result["engine_run_id"] == "00000000-0000-0000-0000-000000000099"
 
 
 def test_hermes_engine_stays_disabled_without_feature_flag(monkeypatch):
@@ -598,7 +598,8 @@ def test_cancel_aware_dispatch_passes_event_to_hermes_adapter(monkeypatch):
     )
 
     assert result["content"] == "cancel-aware"
-    assert received["prompt"] == "safe task"
+    assert received["prompt"].startswith("safe task")
+    assert "SULY_ORCHESTRATION_V1" in received["prompt"]
     assert received["cancel_event"] is cancel_event
     assert received["timeout_seconds"] == 90
 
