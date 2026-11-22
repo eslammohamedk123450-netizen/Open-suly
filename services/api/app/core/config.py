@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     log_level: str = "INFO"
+    # Exact browser origins allowed to call the API; empty means same-origin only.
+    cors_allowed_origins: list[str] = Field(default_factory=list)
 
     # Supabase client credentials. Secret keys are server-only.
     supabase_url: str | None = None
@@ -24,9 +26,10 @@ class Settings(BaseSettings):
     ai_timeout_seconds: float = Field(default=45.0, ge=5.0, le=180.0)
     ai_max_output_tokens: int = Field(default=1200, ge=64, le=8192)
 
-    # Hermes Agent sidecar bridge is opt-in and disabled until its sandbox/tool policy is verified.
+    # Hermes is bundled into the per-task runtime image and invoked through its lease-bound native API.
+    # This switch enables the engine adapter only; it does not start a shared or hosted Hermes service.
     hermes_agent_enabled: bool = False
-    # Operator attestation only; this does not create isolation. Keep false until a per-task runtime manager exists.
+    # Legacy fixed-endpoint fallback only. Normal worker execution requires a validated task RuntimeLease.
     hermes_agent_isolation_confirmed: bool = False
     hermes_agent_base_url: str | None = None
     hermes_agent_api_key: SecretStr | None = None

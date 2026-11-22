@@ -1,0 +1,9 @@
+# Dockerfile-specific ignore rules for services/api/Dockerfile.
+# The repository-root .dockerignore is intentionally optimized for OpenCode
+# and excludes the application tree. This file overrides it for the API image.
+**
+!services/
+!services/api/
+!services/api/requirements.txt
+!services/api/app/
+!services/api/app/**

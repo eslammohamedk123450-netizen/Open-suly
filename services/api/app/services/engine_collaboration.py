@@ -115,8 +115,10 @@ class TaskContract:
         for name, value, low, high in bounds:
             if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
                 raise ValueError(f"collaboration_{name}_out_of_bounds")
-        if self.target_engine == "hermes-agent" and self.max_runtime_seconds > 300:
-            raise ValueError("collaboration_hermes_runtime_budget_exceeds_limit")
+        # Runtime limits are enforced by the selected engine's registry/adapter.
+        # The collaboration contract stays engine-agnostic and applies only the
+        # shared upper bound above; adding an engine must not require editing
+        # this contract.
         if self.max_parallel_children > self.max_child_tasks:
             raise ValueError("collaboration_parallelism_exceeds_child_budget")
         if self.approval_id is not None:

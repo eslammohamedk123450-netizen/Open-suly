@@ -62,6 +62,7 @@ class FakeQuery:
                 "id": str(HANDOFF_ID), "parent_task_id": str(TASK_ID),
                 "user_id": USER_ID, "status": "pending_approval",
                 "target_engine": "opencode", "capability": "code.review",
+                "review_decision": "re_review_applied",
                 "created_at": "2026-11-21T00:00:00Z",
             }] if self.filters.get("user_id") == USER_ID else []
         elif self.table_name == "engine_collaboration_events":
@@ -213,6 +214,9 @@ def test_list_handoffs_groups_metadata_events_by_handoff(monkeypatch):
 
     assert len(result["items"]) == 1
     assert result["items"][0]["events"][0]["event_type"] == "handoff.created"
+    assert result["items"][0]["review_decision"] == "re_review_applied"
+    handoff_select = next(call[1] for call in client.table_calls if call[0] == "engine_collaboration_handoffs")
+    assert "review_decision" in handoff_select
     assert all(call[2].get("user_id") == USER_ID for call in client.table_calls)
 
 
@@ -239,3 +243,11 @@ def test_create_handoff_rejects_hermes_runtime_budget_above_300_seconds(monkeypa
     assert error.value.status_code == 422
     assert client.rpc_calls == []
     assert client.table_calls == []
+
+
+def test_replayed_handoff_after_parent_resume_maps_to_conflict():
+    with pytest.raises(HTTPException) as exc:
+        collaboration._raise_collaboration_error(
+            RuntimeError("collaboration_parent_run_already_resumed")
+        )
+    assert exc.value.status_code == 409

@@ -300,17 +300,26 @@ def decide_change_set(
     except HTTPException:
         raise
     except Exception as exc:
+        cancelled = "opencode_task_cancelled" in str(exc).lower()
         if run_id is not None and applying:
             try:
+                terminal_status = "cancelled" if cancelled else "failed"
+                terminal_code = "task_cancelled" if cancelled else "change_set_decision_failed"
                 store.update_status(
-                    user_id=user.id, run_id=run_id, status="failed",
-                    error_code="change_set_decision_failed",
+                    user_id=user.id, run_id=run_id, status=terminal_status,
+                    error_code=terminal_code,
                 )
                 _append_run_event(
-                    client, user_id=user.id, run_id=run_id, event_type="task.failed",
-                    payload={"code": "change_set_decision_failed"},
+                    client, user_id=user.id, run_id=run_id,
+                    event_type="task.cancelled" if cancelled else "task.failed",
+                    payload={"code": terminal_code},
                 )
             except Exception:
                 pass
             _release_runtime_for_run(request, client, user.id, run_id)
+        if cancelled:
+            raise HTTPException(
+                status_code=409,
+                detail="This task or its parent was cancelled; the change set cannot be applied.",
+            ) from exc
         raise HTTPException(status_code=503, detail="Could not decide OpenCode change set.") from exc

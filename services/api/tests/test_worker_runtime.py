@@ -381,9 +381,17 @@ def test_hermes_prompt_context_is_bounded_by_current_request_size(monkeypatch):
 def test_hermes_project_workspace_is_materialized_in_its_task_runtime(monkeypatch):
     import hashlib
     import app.worker_runtime as runtime_module
-    monkeypatch.setattr(runtime_module, "_hermes_approved_skills", lambda _step: [])
     from types import SimpleNamespace
     from app.services.tool_registry import ToolExecutionContext
+
+    skill_body = "Review code changes for correctness and security."
+    approved_skill = {
+        "name": "suly-code-review", "content_utf8": skill_body,
+        "sha256": hashlib.sha256(skill_body.encode("utf-8")).hexdigest(),
+        "content_bytes": len(skill_body.encode("utf-8")),
+    }
+    monkeypatch.setattr(runtime_module, "_hermes_approved_skills", lambda _step: [approved_skill])
+    captured_prompt = {}
 
     class Query:
         def __init__(self, table): self.table_name = table
@@ -421,14 +429,18 @@ def test_hermes_project_workspace_is_materialized_in_its_task_runtime(monkeypatc
         hermes_agent_enabled=True,
         hermes_agent_timeout_seconds=90.0,
     ))
-    monkeypatch.setattr(runtime_module, "run_agent_turn", lambda *_args, **_kwargs: {
-        "engine": "hermes-agent", "content": "project inspected",
-    })
+    def fake_run_agent_turn(prompt, **_kwargs):
+        captured_prompt["value"] = prompt
+        return {"engine": "hermes-agent", "content": "project inspected"}
+    monkeypatch.setattr(runtime_module, "run_agent_turn", fake_run_agent_turn)
     result = runtime_module.hermes_agent_turn(
         make_step({"operation": "hermes.agent.turn", "prompt": "Inspect this project"}),
         ToolExecutionContext(engine_run_store=store, runtime_broker=broker),
     )
     assert result["content"] == "project inspected"
+    assert broker.acquired_skills == [[approved_skill]]
+    assert skill_body in captured_prompt["value"]
+    assert "<SULY_APPROVED_SKILLS>" in captured_prompt["value"]
     assert broker.acquired_files == [[{
         "path": "README.md",
         "content": "# SULY Project",
@@ -466,11 +478,12 @@ def test_hermes_agent_task_calls_bridge_only_after_approval(monkeypatch):
         ApprovedScopes(),
         runtime_broker=FakeRuntimeBroker(),
     )
-    assert result == {
-        "operation": "hermes.agent.turn",
-        "engine": "hermes-agent",
-        "content": "processed: safe task",
-    }
+    assert result["operation"] == "hermes.agent.turn"
+    assert result["engine"] == "hermes-agent"
+    assert result["content"].startswith("processed: safe task")
+    assert "SULY orchestration contract" in result["content"]
+    assert result["handoff_context"] == result["content"][:12_000]
+    assert result["engine_run_id"] == "00000000-0000-0000-0000-000000000099"
 
 
 def test_hermes_agent_operation_is_registered_with_approval_and_bounded_fields():
@@ -524,11 +537,12 @@ def test_hermes_operation_routes_through_registry_after_approval(monkeypatch):
         ApprovedScopes(),
         runtime_broker=FakeRuntimeBroker(),
     )
-    assert result == {
-        "operation": "hermes.agent.turn",
-        "engine": "hermes-agent",
-        "content": "processed: safe task",
-    }
+    assert result["operation"] == "hermes.agent.turn"
+    assert result["engine"] == "hermes-agent"
+    assert result["content"].startswith("processed: safe task")
+    assert "SULY orchestration contract" in result["content"]
+    assert result["handoff_context"] == result["content"][:12_000]
+    assert result["engine_run_id"] == "00000000-0000-0000-0000-000000000099"
 
 
 def test_hermes_engine_stays_disabled_without_feature_flag(monkeypatch):
@@ -584,7 +598,8 @@ def test_cancel_aware_dispatch_passes_event_to_hermes_adapter(monkeypatch):
     )
 
     assert result["content"] == "cancel-aware"
-    assert received["prompt"] == "safe task"
+    assert received["prompt"].startswith("safe task")
+    assert "SULY_ORCHESTRATION_V1" in received["prompt"]
     assert received["cancel_event"] is cancel_event
     assert received["timeout_seconds"] == 90
 
@@ -936,6 +951,10 @@ def test_hermes_agent_turn_persists_metadata_events_and_never_logs_payload(monke
     callbacks = {}
 
     class Registry:
+        def candidates(self, capability):
+            from types import SimpleNamespace
+            return [SimpleNamespace(engine_id="hermes-agent")] if capability == "agent.general" else []
+
         def execute(self, _engine_id, _request):
             from app.services.hermes_agent import _safe_run_event
             safe_event = _safe_run_event({
@@ -998,6 +1017,10 @@ def test_hermes_agent_turn_logs_only_metadata_when_event_persistence_fails(monke
     callbacks = {}
 
     class Registry:
+        def candidates(self, capability):
+            from types import SimpleNamespace
+            return [SimpleNamespace(engine_id="hermes-agent")] if capability == "agent.general" else []
+
         def execute(self, _engine_id, _request):
             callbacks["on_event"]({"event": "approval.request", "seq": 8})
             return EngineResult(engine_id="hermes-agent", output={
@@ -1128,6 +1151,12 @@ def test_opencode_worker_handler_returns_review_ids_and_finishes_engine_run(monk
     monkeypatch.setattr(runtime, "get_settings", lambda: SimpleNamespace(worker_enabled=True, opencode_enabled=True))
     monkeypatch.setattr(runtime, "get_supabase_admin_client", lambda: object())
     monkeypatch.setattr(runtime, "OpenCodeTaskExecutor", FakeExecutor)
+    dispatch_calls = []
+    original_dispatch_execute = runtime.EngineDispatcher.execute
+    def observe_dispatch(self, request, *, preferred_engine_ids=()):
+        dispatch_calls.append((request.capability, tuple(preferred_engine_ids)))
+        return original_dispatch_execute(self, request, preferred_engine_ids=preferred_engine_ids)
+    monkeypatch.setattr(runtime.EngineDispatcher, "execute", observe_dispatch)
     step = make_step({
         "operation": "opencode.task.run",
         "project_id": project_id,
@@ -1142,6 +1171,7 @@ def test_opencode_worker_handler_returns_review_ids_and_finishes_engine_run(monk
     ))
     assert result == {
         "operation": "opencode.task.run",
+        "engine": "opencode",
         "engine_run_id": str(engine_run_id),
         "opencode_run_id": "opencode-run",
         "session_record_id": "session-record",
@@ -1149,8 +1179,65 @@ def test_opencode_worker_handler_returns_review_ids_and_finishes_engine_run(monk
         "status": "review_ready",
         "changed_count": 2,
         "requires_review": True,
+        "handoff_context": "OpenCode prepared change set change-set with 2 changed files; human review is required.",
     }
+    assert dispatch_calls == [("code.edit", ("opencode",))]
     assert finishes == [(engine_run_id, "succeeded", None)]
+
+
+def test_opencode_adapter_preserves_cancelled_terminal_state(monkeypatch):
+    from types import SimpleNamespace
+    import app.worker_runtime as runtime
+    from app.services.tool_registry import ToolExecutionContext
+
+    cancel_event = Event()
+    finishes = []
+
+    class FakeRunStore:
+        def start(self, _step, engine):
+            assert engine == "opencode"
+            return "run-123"
+        def finish(self, run_id, _step, status, error_code=None):
+            finishes.append((run_id, status, error_code))
+            return True
+
+    class CancellingExecutor:
+        def __init__(self, **_kwargs):
+            pass
+        def execute(self, **_kwargs):
+            cancel_event.set()
+            raise RuntimeError("cancelled while OpenCode was executing")
+
+    step = make_step({
+        "operation": "opencode.task.run",
+        "project_id": "00000000-0000-0000-0000-000000000099",
+        "prompt": "Build a feature",
+    })
+    monkeypatch.setattr(runtime, "get_supabase_admin_client", lambda: object())
+    monkeypatch.setattr(runtime, "EngineRunStore", lambda _client: FakeRunStore())
+    monkeypatch.setattr(runtime, "OpenCodeTaskExecutor", CancellingExecutor)
+    adapter = runtime.OpenCodeEngineAdapter(
+        step,
+        ToolExecutionContext(
+            cancel_event=cancel_event,
+            engine_run_store=FakeRunStore(),
+            runtime_broker=object(),
+        ),
+    )
+    from app.services.engine_contract import EngineRequest
+    with pytest.raises(RuntimeError):
+        adapter.execute(EngineRequest(
+            task_id=str(step.task_id),
+            capability="code.edit",
+            input_payload={
+                "project_id": "00000000-0000-0000-0000-000000000099",
+                "prompt": "Build a feature",
+            },
+            timeout_seconds=60,
+        ))
+    assert finishes == [
+        ("run-123", "cancelled", None),
+    ]
 
 
 def test_hermes_delegated_runtime_budget_reaches_native_runs_adapter(monkeypatch):
@@ -1239,7 +1326,12 @@ def test_hermes_terminal_approval_callback_uses_suly_gateway(monkeypatch):
             return True
 
     class Registry:
+        def candidates(self, capability):
+            from types import SimpleNamespace
+            return [SimpleNamespace(engine_id="hermes-agent")] if capability == "agent.general" else []
+
         def execute(self, _engine_id, _request):
+            assert callbacks["run_started"]("run_native_approval_123") is True
             callbacks["event"]({
                 "event": "approval.request",
                 "approval_request_id": "approval_req_123456",
@@ -1255,6 +1347,7 @@ def test_hermes_terminal_approval_callback_uses_suly_gateway(monkeypatch):
 
     def registry_factory(*_args, **kwargs):
         callbacks["event"] = kwargs["on_event"]
+        callbacks["run_started"] = kwargs["on_run_started"]
         return Registry()
 
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
@@ -1285,3 +1378,161 @@ def test_hermes_terminal_approval_callback_uses_suly_gateway(monkeypatch):
     assert len(approval_responses) == 1
     assert approval_responses[0]["choice"] == "once"
     assert approval_responses[0]["request_id"] == "approval_req_123456"
+
+
+def test_suly_memory_context_is_owner_scoped_bounded_and_untrusted(monkeypatch):
+    import app.worker_runtime as runtime_module
+
+    step = make_step({"operation": "hermes.agent.turn", "prompt": "continue the project"})
+    calls = []
+
+    class MemoryStore:
+        def context_for_task(self, **kwargs):
+            calls.append(kwargs)
+            return [{
+                "scope": "project", "memory_key": "build-plan",
+                "content": "Use the existing project architecture.",
+            }]
+
+    monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(agent_memory_enabled=True))
+    monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: SimpleNamespace(table=lambda *_args: None))
+    rendered = runtime_module._suly_user_memory_context(
+        step, "continue the project",
+        task_scope={"project_id": "00000000-0000-0000-0000-000000000066", "conversation_id": None},
+        store=MemoryStore(),
+    )
+    assert calls == [{
+        "user_id": str(step.user_id),
+        "project_id": "00000000-0000-0000-0000-000000000066",
+        "conversation_id": None,
+        "max_bytes": 16 * 1024,
+    }]
+    assert "Use the existing project architecture." in rendered
+    assert "<SULY_APPROVED_MEMORY>" in rendered
+    assert "غير موثوقة" in rendered
+
+
+
+def test_hermes_adapter_extracts_structured_plan_from_native_output(monkeypatch):
+    import json
+    import app.worker_runtime as runtime_module
+    from app.services.engine_contract import EngineRequest
+
+    payload = {
+        "schema_version": 1,
+        "content": "I will ask the coding specialist to implement this.",
+        "delegation_plan": {
+            "schema_version": 1,
+            "delegations": [{
+                "agent_id": "coding-agent",
+                "capability": "code.edit",
+                "prompt": "Implement the requested change",
+                "idempotency_key": "native-hermes-plan-unique-001",
+            }],
+        },
+    }
+    raw = "SULY_ORCHESTRATION_V1\\n" + json.dumps(payload)
+    monkeypatch.setattr(runtime_module, "run_agent_turn", lambda *_args, **_kwargs: {
+        "engine": "hermes-agent", "content": raw,
+    })
+    adapter = runtime_module.HermesAgentAdapter(
+        idempotency_key="suly-run-unique-0001",
+        on_run_started=lambda _run_id: True,
+    )
+    result = adapter.execute(EngineRequest(
+        task_id="00000000-0000-0000-0000-000000000001",
+        capability="agent.general",
+        input_payload={"prompt": "Please implement this"},
+        timeout_seconds=30,
+    ))
+    assert result.output["content"] == payload["content"]
+    assert result.output["delegation_plan"]["delegations"][0]["agent_id"] == "coding-agent"
+    assert "SULY_ORCHESTRATION_V1" not in result.output["content"]
+
+
+def test_engine_prompts_are_bounded_by_utf8_bytes_without_broken_codepoints():
+    from app.worker_runtime import _bound_utf8_text
+
+    prompt = "مراجعة مشروع SULY " * 4000
+    bounded = _bound_utf8_text(prompt, 4096)
+    assert len(bounded.encode("utf-8")) <= 4096
+    assert "[... middle of prompt truncated by SULY engine input limit ...]" in bounded
+    assert bounded.endswith(prompt[-100:])
+    assert not bounded.endswith("\ufffd")
+
+
+def test_hermes_and_opencode_apply_engine_specific_utf8_prompt_budgets():
+    import inspect
+    import app.worker_runtime as runtime_module
+
+    hermes_source = inspect.getsource(runtime_module.hermes_agent_turn)
+    opencode_source = inspect.getsource(runtime_module.opencode_task_run)
+    assert "_bound_utf8_text(prompt, 28_000)" in hermes_source
+    assert "_bound_utf8_text(prompt, 44_000)" in opencode_source
+
+
+def test_parent_continuation_loads_only_owner_scoped_safe_dag_outputs(monkeypatch):
+    from types import SimpleNamespace
+    import app.worker_runtime as runtime_module
+
+    class Query:
+        def __init__(self):
+            self.filters = {}
+        def select(self, _columns): return self
+        def eq(self, key, value):
+            self.filters[key] = value
+            return self
+        def neq(self, key, value):
+            self.filters[f"not_{key}"] = value
+            return self
+        def order(self, *_args, **_kwargs): return self
+        def limit(self, _value): return self
+        def execute(self):
+            return SimpleNamespace(data=[{
+                "step_key": "prior-work",
+                "step_order": 0,
+                "status": "completed",
+                "error_code": None,
+                "output": {"content": "prior result", "api_key": "must-not-leak"},
+            }])
+
+    class Client:
+        def __init__(self): self.query = Query()
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def table(self, _name): return self.query
+
+    client = Client()
+    monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: client)
+    step = make_step({
+        "operation": "hermes.agent.turn",
+        "prompt": "continue the parent task",
+        "continuation_of_run_id": "00000000-0000-0000-0000-000000000005",
+    })
+    result = runtime_module._parent_dag_result_context(step, "continue the parent task")
+    assert "SULY_PARENT_DAG_RESULTS_V1" in result
+    assert "prior result" in result
+    assert "must-not-leak" not in result
+    assert client.query.filters["task_id"] == str(step.task_id)
+    assert client.query.filters["user_id"] == str(step.user_id)
+    assert client.query.filters["not_step_key"] == step.step_key
+
+
+def test_parent_dag_context_is_used_by_both_hermes_and_opencode_continuations():
+    import inspect
+    import app.worker_runtime as runtime_module
+
+    assert "_parent_dag_result_context(step, prompt)" in inspect.getsource(runtime_module.hermes_agent_turn)
+    assert "_parent_dag_result_context(step, prompt)" in inspect.getsource(runtime_module.opencode_task_run)
+
+
+def test_parent_dag_context_rejects_malformed_continuation_run_id():
+    import app.worker_runtime as runtime_module
+
+    step = make_step({
+        "operation": "hermes.agent.turn",
+        "prompt": "continue",
+        "continuation_of_run_id": "not-a-uuid",
+    })
+    with pytest.raises(ValueError, match="parent_continuation_run_id_invalid"):
+        runtime_module._parent_dag_result_context(step, "continue")

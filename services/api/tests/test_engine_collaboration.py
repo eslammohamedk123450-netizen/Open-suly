@@ -99,7 +99,15 @@ def test_artifact_handoff_requires_approved_media_type():
         )
 
 
-def test_hermes_handoff_rejects_runtime_budget_above_native_run_limit():
-    with pytest.raises(ValueError, match="hermes_runtime_budget_exceeds_limit"):
-        contract(source_engine="opencode", target_engine="hermes-agent", max_runtime_seconds=301).validate()
-    contract(source_engine="opencode", target_engine="hermes-agent", max_runtime_seconds=300).validate()
+def test_handoff_runtime_budget_is_engine_agnostic():
+    # Per-engine runtime ceilings belong to the selected adapter/registry.
+    # The shared collaboration contract enforces only its universal bound.
+    contract(
+        source_engine="opencode", target_engine="hermes-agent",
+        max_runtime_seconds=1_800,
+    ).validate()
+    with pytest.raises(ValueError, match="max_runtime_seconds"):
+        contract(
+            source_engine="opencode", target_engine="browser-use",
+            max_runtime_seconds=1_801,
+        ).validate()

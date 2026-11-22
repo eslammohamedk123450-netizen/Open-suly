@@ -25,6 +25,9 @@ class EngineManifest:
     license_id: str
     role: str
     capabilities: frozenset[str]
+    max_input_bytes: int = 32_000
+    max_output_bytes: int = 64_000
+    max_timeout_seconds: int = 300
 
 
 # Immutable upstream revisions inspected on 2026-11-20.
@@ -51,6 +54,9 @@ ENGINE_MANIFESTS: tuple[EngineManifest, ...] = (
         capabilities=frozenset({
             "code.edit", "code.review", "code.test", "code.repository",
         }),
+        max_input_bytes=48_000,
+        max_output_bytes=16_000,
+        max_timeout_seconds=1800,
     ),
     EngineManifest(
         engine_id="browser-use",
@@ -81,6 +87,15 @@ def validate_engine_manifests(
             raise ValueError("engine_repository_must_be_https_github")
         if not item.license_id or not item.role or not item.capabilities:
             raise ValueError("engine_manifest_metadata_required")
+        if (
+            isinstance(item.max_input_bytes, bool) or not isinstance(item.max_input_bytes, int)
+            or not 1 <= item.max_input_bytes <= 1_000_000
+            or isinstance(item.max_output_bytes, bool) or not isinstance(item.max_output_bytes, int)
+            or not 1 <= item.max_output_bytes <= 1_000_000
+            or isinstance(item.max_timeout_seconds, bool) or not isinstance(item.max_timeout_seconds, int)
+            or not 1 <= item.max_timeout_seconds <= 3600
+        ):
+            raise ValueError("engine_manifest_limits_invalid")
 
 
 def build_engine_registry(
@@ -118,6 +133,9 @@ def build_engine_registry(
             capabilities=item.capabilities,
             enabled=enabled,
             requires_approval=True,
+            max_input_bytes=item.max_input_bytes,
+            max_output_bytes=item.max_output_bytes,
+            max_timeout_seconds=item.max_timeout_seconds,
             adapter=adapter,
         ))
     return EngineRegistry(definitions)

@@ -1,7 +1,7 @@
 """Owner-scoped API for explicit, approved cross-engine task handoffs."""
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/v1/tasks", tags=["engine-collaboration"])
 class CreateEngineHandoffRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    target_engine: Literal["hermes-agent", "opencode"]
+    target_engine: str = Field(min_length=2, max_length=63, pattern=r"^[a-z][a-z0-9-]{1,62}$")
     capability: str = Field(min_length=2, max_length=96, pattern=r"^[a-z][a-z0-9_.-]{1,95}$")
     prompt: str = Field(min_length=1, max_length=20_000)
     title: str | None = Field(default=None, min_length=1, max_length=120)
@@ -83,7 +83,7 @@ def _raise_collaboration_error(exc: Exception) -> None:
     if any(code in message for code in (
         "not_running", "not_available", "not_successful", "not_pending",
         "budget_exceeded", "budget_mismatch", "parallel_limit",
-        "idempotency_conflict", "not_cancellable", "engine_pair_invalid",
+        "idempotency_conflict", "parent_run_already_resumed", "not_cancellable", "engine_pair_invalid",
     )):
         raise HTTPException(status_code=409, detail="The collaboration state no longer permits this action.") from exc
     if any(code in message for code in (
@@ -176,7 +176,7 @@ def list_task_collaboration(
                     "id,parent_task_id,child_task_id,parent_run_id,source_engine,target_engine,"
                     "capability,status,depth,max_child_tasks,max_parallel_children,"
                     "max_runtime_seconds,max_input_bytes,approved_at,started_at,"
-                    "finished_at,error_code,created_at,updated_at"
+                    "finished_at,error_code,review_decision,created_at,updated_at"
                 )
                 .eq("parent_task_id", str(task_id))
                 .eq("user_id", user.id)

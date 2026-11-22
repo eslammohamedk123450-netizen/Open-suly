@@ -8,6 +8,13 @@ on:
       - "engines/hermes/**"
       - "engines/opencode/**"
       - "services/runtime-provisioner/**"
+      - "services/api/app/worker_runtime.py"
+      - "services/api/app/services/engine_*.py"
+      - "services/api/app/services/hermes_*.py"
+      - "services/api/tests/test_engine_*.py"
+      - "services/api/tests/test_hermes_*.py"
+      - "supabase/migrations/**"
+      - ".github/workflows/engine-integration.yml"
       - ".github/workflows/engine-runtime-build.yml"
   pull_request:
     paths:
@@ -15,6 +22,13 @@ on:
       - "engines/hermes/**"
       - "engines/opencode/**"
       - "services/runtime-provisioner/**"
+      - "services/api/app/worker_runtime.py"
+      - "services/api/app/services/engine_*.py"
+      - "services/api/app/services/hermes_*.py"
+      - "services/api/tests/test_engine_*.py"
+      - "services/api/tests/test_hermes_*.py"
+      - "supabase/migrations/**"
+      - ".github/workflows/engine-integration.yml"
       - ".github/workflows/engine-runtime-build.yml"
   workflow_dispatch:
 

@@ -26,6 +26,7 @@ class EngineRunReconciler:
         *,
         stop_handlers: dict[str, StopHandler] | None = None,
         claim_handlers: dict[str, ClaimStopHandler] | None = None,
+        runtime_broker: object | None = None,
         batch_size: int = 10,
         lease_seconds: int = 60,
     ) -> None:
@@ -36,6 +37,12 @@ class EngineRunReconciler:
         self._store = store
         self._stop_handlers = dict(stop_handlers or {})
         self._claim_handlers = dict(claim_handlers or {})
+        if runtime_broker is not None and (
+            not callable(getattr(runtime_broker, "recover", None))
+            or not callable(getattr(runtime_broker, "release", None))
+        ):
+            raise TypeError("runtime_broker_recovery_contract_required")
+        self._runtime_broker = runtime_broker
         self._batch_size = batch_size
         self._lease_seconds = lease_seconds
         self._last_missing_identity_count = 0
@@ -66,6 +73,17 @@ class EngineRunReconciler:
                     confirmed = claim_handler(claim) is True
                 elif handler is not None and claim.upstream_run_id is not None:
                     confirmed = handler(claim.upstream_run_id) is True
+                elif (
+                    self._runtime_broker is not None
+                    and claim.task_id is not None
+                    and claim.runtime_id is not None
+                ):
+                    # Generic runtime-backed engines share one recovery/teardown contract.
+                    lease = self._runtime_broker.recover(
+                        str(claim.runtime_id), str(claim.task_id), str(claim.run_id),
+                        engine_id=claim.engine_id,
+                    )
+                    confirmed = self._runtime_broker.release(lease) is True
             except Exception:
                 # لا نسجل exception text؛ قد يحتوي على بيانات من المحرك الخارجي.
                 confirmed = False

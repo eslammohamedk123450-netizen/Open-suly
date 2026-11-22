@@ -37,6 +37,7 @@ Arabic-first with correct RTL, English support, a chat-first home screen, a dedi
 - [Engine adapter contract](./docs/architecture/ENGINE_ADAPTER_CONTRACT.md)
 - [Upstream engine inventory](./docs/architecture/UPSTREAM_ENGINE_INVENTORY.md)
 - [Supabase clean-slate record](./docs/operations/supabase-clean-slate.md)
+- [Server deployment readiness and secure topology](./docs/operations/SERVER_DEPLOYMENT_READINESS.md)
 - [Agent runtime local smoke test](./docs/testing/AGENT_RUNTIME_SMOKE_TEST.md)
 - [AI provider setup (Ollama and OpenAI-compatible)](./docs/operations/AI_PROVIDER_SETUP.md)
 - [Hermes integration status](./docs/architecture/HERMES_CAPABILITY_INTEGRATION_STATUS.md)

@@ -22,9 +22,6 @@ function SettingRow({ title, subtitle, value, onPress }: { title: string; subtit
 }
 
 export default function SettingsScreen() {
-  const [language, setLanguage] = useState<"العربية" | "English">("العربية");
-  const [notifications, setNotifications] = useState(true);
-  const [privacy, setPrivacy] = useState(true);
   const [authError, setAuthError] = useState("");
   const { configured, loading, user, profile, signOut } = useAuth();
 
@@ -61,16 +58,16 @@ export default function SettingsScreen() {
 
           <Text style={styles.sectionTitle}>التفضيلات</Text>
           <View style={styles.group}>
-            <SettingRow title="اللغة" subtitle="لغة واجهة التطبيق" value={language} onPress={() => setLanguage((v) => v === "العربية" ? "English" : "العربية")} />
+            <SettingRow title="اللغة" subtitle="تغيير لغة التطبيق لم يُفعّل بعد." value="العربية" />
             <View style={styles.separator} />
             <SettingRow title="المظهر" subtitle="هوية Midnight Gold" value="داكن" />
             <View style={styles.separator} />
-            <SettingRow title="الإشعارات" subtitle="تنبيهات المهام والتحديثات" value={notifications ? "مفعّلة" : "متوقفة"} onPress={() => setNotifications((v) => !v)} />
+            <SettingRow title="الإشعارات" subtitle="نظام التنبيهات لم يُفعّل بعد." value="قريبًا" />
           </View>
 
           <Text style={styles.sectionTitle}>الخصوصية والأمان</Text>
           <View style={styles.group}>
-            <SettingRow title="حماية البيانات" subtitle="إعدادات الخصوصية والتحكم في البيانات" value={privacy ? "مفعّلة" : "متوقفة"} onPress={() => setPrivacy((v) => !v)} />
+            <SettingRow title="حماية البيانات" subtitle="الحماية الأساسية مفعّلة؛ لوحة تحكم الخصوصية التفصيلية غير متاحة بعد." value="الأساسيات" />
             <View style={styles.separator} />
             <SettingRow title="الجلسات والأجهزة" subtitle="إدارة الأجهزة المتصلة" value="قريبًا" />
           </View>

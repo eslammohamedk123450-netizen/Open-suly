@@ -789,7 +789,7 @@ def request_task_cancellation(
                     })
                     .eq("id", str(task_id))
                     .eq("user_id", user.id)
-                    .in_("status", ["queued", "planning", "ready", "running", "waiting_approval"])
+                    .in_("status", ["queued", "planning", "ready", "running", "waiting_approval", "waiting_children"])
                     .execute()
                     .data
                 )

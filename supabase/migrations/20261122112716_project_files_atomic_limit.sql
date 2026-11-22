@@ -10,11 +10,24 @@ set search_path = ''
 as $$
 declare
   current_count integer;
+  v_project_id uuid;
 begin
+  -- Serialize inserts for one project so concurrent requests cannot pass
+  -- the count check at the same time (TOCTOU protection).
+  select p.id into v_project_id
+    from public.projects p
+   where p.id = new.project_id
+     and p.user_id = new.user_id
+   for update;
+  if not found then
+    raise exception 'project_not_found' using errcode = 'P0002';
+  end if;
+
   select count(*)
     into current_count
     from public.project_files
-   where project_id = new.project_id;
+   where project_id = new.project_id
+     and user_id = new.user_id;
   if current_count >= 200 then
     raise exception 'project_file_limit_reached'
       using errcode = 'P0001';

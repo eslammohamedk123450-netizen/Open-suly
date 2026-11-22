@@ -1,5 +1,7 @@
 from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from urllib.parse import urlsplit
 
 from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.config import get_settings
@@ -19,13 +21,52 @@ from app.services.runtime_provisioner_http import HTTPSRuntimeLeaseProvider
 
 settings = get_settings()
 
+
+def _validated_cors_origins(origins: list[str], app_env: str) -> list[str]:
+    """Accept only exact origins; wildcard and malformed origins fail closed."""
+    if not isinstance(origins, list):
+        raise RuntimeError("CORS_ALLOWED_ORIGINS must be a JSON array of exact origins")
+    validated: list[str] = []
+    for origin in origins:
+        if not isinstance(origin, str) or not origin or origin == "*" or origin != origin.strip():
+            raise RuntimeError("CORS_ALLOWED_ORIGINS contains an invalid origin")
+        parsed = urlsplit(origin)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.netloc
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+            or parsed.username
+            or parsed.password
+        ):
+            raise RuntimeError("CORS_ALLOWED_ORIGINS must contain origin-only URLs")
+        if app_env == "production" and parsed.scheme != "https":
+            raise RuntimeError("Production CORS origins must use HTTPS")
+        if origin.rstrip("/") in {item.rstrip("/") for item in validated}:
+            raise RuntimeError("CORS_ALLOWED_ORIGINS contains a duplicate origin")
+        validated.append(origin.rstrip("/"))
+    return validated
+
+
 app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
     description="SULY platform API",
     docs_url="/docs" if settings.app_env != "production" else None,
     redoc_url=None,
-)
+) 
+
+cors_origins = _validated_cors_origins(settings.cors_allowed_origins, settings.app_env)
+if cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-Client-Info", "apikey"],
+        max_age=600,
+    )
 
 app.include_router(agents_router)
 app.include_router(chat_router)

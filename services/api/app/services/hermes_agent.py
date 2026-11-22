@@ -1,8 +1,10 @@
-"""Lease-aware client for the pinned Hermes native Runs API.
+"""SULY adapter for the pinned native Hermes agent inside a task-scoped runtime.
 
-Hermes is a single-tenant runtime. This client remains disabled unless the
-deployment explicitly attests that a per-task isolated runtime is in use.
-SULY owns authorization, task leases, and the durable upstream run reference.
+This is not a client for a hosted Hermes SaaS service. SULY provisions one
+isolated runtime for one task attempt; that runtime contains the pinned Hermes
+engine and exposes its native Runs API only through the lease-bound gateway.
+SULY remains authoritative for identity, authorization, memory, approvals,
+leases, results, and cleanup.
 """
 from __future__ import annotations
 
