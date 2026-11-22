@@ -82,3 +82,15 @@ def test_prompt_builds_bounded_extract_summary_for_older_turns():
     assert "[المستخدم] older request 4" in summary
     assert len(summary) < 6000
     assert prompt[-1]["content"].startswith("older request 34")
+
+
+
+def test_prompt_redacts_secret_like_message_content():
+    secret_text = "API_KEY=" + "x" * 32
+    prompt = _build_prompt_messages(
+        [{"id": "u1", "role": "user", "content": secret_text}],
+        "u1",
+    )
+
+    assert "API_KEY" not in prompt[1]["content"]
+    assert "حجب محتوى يشبه سرًا" in prompt[1]["content"]
