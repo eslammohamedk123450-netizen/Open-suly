@@ -202,7 +202,8 @@ def test_opencode_apply_is_blocked_after_child_or_parent_cancellation():
     assert "guard_opencode_change_set_apply_after_cancellation" in sql
     assert "new.status not in ('applying','applied')" in sql
     assert "v_task_status in ('cancel_requested','cancelled')" in sql
-    assert "h.status in ('cancelled','failed')" in sql
+    assert "v_handoff_status in ('cancelled','failed')" in sql
+    assert "for share" in sql
     assert "raise exception 'opencode_task_cancelled'" in sql
     assert "before update of status on public.opencode_change_sets" in sql
 
