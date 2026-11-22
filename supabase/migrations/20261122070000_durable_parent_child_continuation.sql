@@ -958,7 +958,17 @@ begin
            select 1 from public.task_steps dep
             where dep.task_id=s.task_id
               and dep.step_key=d.step_key
-              and dep.status='completed'
+              and (
+                (
+                  left(s.step_key,7) <> 'resume_'
+                  and left(s.step_key,19) <> 'review_after_apply_'
+                  and dep.status='completed'
+                )
+                or (
+                  (left(s.step_key,7) = 'resume_' or left(s.step_key,19) = 'review_after_apply_')
+                  and dep.status in ('completed','failed','blocked','cancelled')
+                )
+              )
          )
      )
    order by t.created_at, s.step_order
