@@ -323,7 +323,7 @@ def _hermes_orchestration_protocol(prompt: str) -> str:
     instruction = (
         "\n\nSULY orchestration contract: Do not spawn native subagents. "
         "When specialist work is needed, return your user-facing answer and a SULY plan "
-        "using this exact format: SULY_ORCHESTRATION_V1 followed by one JSON object "
+        "start your entire response with SULY_ORCHESTRATION_V1 followed by one JSON object "
         '{"schema_version":1,"content":"answer","delegation_plan":{"schema_version":1,'
         '"delegations":[{"agent_id":"coding-agent","capability":"code.edit",'
         '"prompt":"bounded specialist task","idempotency_key":"unique-random-uuid"}]}}. '
