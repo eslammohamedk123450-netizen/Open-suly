@@ -100,11 +100,18 @@ def _load_chat_memory_context(
                 continue
             key = entry.get("memory_key")
             value = entry.get("content")
-            if not isinstance(key, str) or not isinstance(value, str):
+            if not isinstance(key, str) or value is None:
                 continue
-            if contains_secret_material(value):
+            if isinstance(value, str):
+                rendered_value = value
+            else:
+                try:
+                    rendered_value = json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+                except (TypeError, ValueError):
+                    continue
+            if contains_secret_material(rendered_value):
                 continue
-            line = f"[{entry.get('scope', 'user')}:{key}] {value.strip()}"
+            line = f"[{entry.get('scope', 'user')}:{key}] {rendered_value.strip()}"
             if not line.strip() or len(line) > remaining:
                 continue
             rendered.append(line)
