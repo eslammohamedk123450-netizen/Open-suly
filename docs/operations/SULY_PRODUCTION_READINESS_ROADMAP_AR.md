@@ -578,5 +578,11 @@ For every engine:
 
 - Platform CI #1388/run `45000436704` على commit d033 و#1389/run `45000469647` على commit 075 نجحا؛ كل منهما **770 passed, 5 skipped, 5 warnings**. client typecheck، Expo compatibility، Web export green.
 - فشل #1387 على commit 5e41 بسبب JSX tag syntax؛ API job كان green. أصلحنا markup/null metadata في d033، ثم أظهرت #1388/#1389 green.
-- Repository baseline #1406/run `45000436695` و#1407/run `45000469682` green. أحدث docs commit c434 ما زال CI #1390/#1408 pending.
+- Platform CI #1390/run `45000536420` و#1391/run `45000583307` و#1392/run `45000602027` green. Repository baseline #1408/run `45000536405` و#1409/run `45000583353` و#1410/run `45000601971` green.
 - إعادة عد checklist: **61/156 (39%)**. Readiness milestone-weighted remains **~20%**؛ provider usage counts لا تساوي cost ولا credits ولا تمنح صلاحية provider.
+
+
+### Docs CI verification
+
+- Platform CI #1390–#1392 وRepository baseline #1408–#1410 green؛ latest docs commit `144dedf820a2` checked.
+- PostgreSQL credit integration #4: 5 passed. Engine runtime build #232 failed with empty jobs; diagnostic logs unavailable.

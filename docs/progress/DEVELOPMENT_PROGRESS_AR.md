@@ -768,5 +768,13 @@ undefined
 
 - Platform CI #1388 `45000436704` و#1389 `45000469647` green: **770 passed, 5 skipped, 5 warnings**؛ client typecheck/Expo compatibility/Web export green.
 - #1387 failed بسبب malformed JSX؛ إصلاح d033 confirmed by #1388/#1389. لا نخفي failure.
-- Repository baseline #1406 `45000436695` و#1407 `45000469682` green. Latest docs commit c434 pending #1390/#1408.
+- Repository baseline #1406 `45000436695` و#1407 `45000469682` و#1408 `45000536405` و#1409 `45000583353` و#1410 `45000601971` green. Platform CI #1390 `45000536420` و#1391 `45000583307` و#1392 `45000602027` green.
 - Current checklist: **61/156 (39%)**؛ controlled beta readiness still **~20%**. No provider live or billing.
+
+
+### توثيق CI على HEAD — 2026-11-22
+
+- Platform CI #1390/#1391/#1392 success، بما في ذلك #1392 على docs HEAD `144dedf820a2`.
+- Repository baseline #1408/#1409/#1410 success.
+- Credits PostgreSQL disposable workflow #4: 5 passed.
+- Engine runtime build #232 failed with no jobs/logs; السبب غير معلوم.
