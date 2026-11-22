@@ -59,3 +59,11 @@ jobs:
 
       - name: Build API container using its Dockerfile-specific context rules
         run: docker build --pull=false -f services/api/Dockerfile -t suly-api:ci .
+
+      - name: Validate production Compose topology and environment-file paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp services/api/.env.example .env
+          docker compose --env-file .env -f deploy/docker-compose.server.yml config --quiet
+          rm -f .env
