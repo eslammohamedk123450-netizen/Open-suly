@@ -221,3 +221,12 @@ def test_parent_delegation_is_restricted_to_engines_with_real_continuation_adapt
     assert "v_run.engine_id not in ('hermes-agent','opencode')" in sql
     assert "v_parent_run.engine_id = 'hermes-agent'" in sql
     assert "v_parent_run.engine_id = 'opencode' and v_parent.project_id is not null" in sql
+
+
+def test_handoff_idempotency_is_checked_before_parent_state_and_covers_all_budgets():
+    sql = re.sub(r"\s+", " ", _parent_child_continuation_migration())
+    start = sql.index("select * into v_existing")
+    status = sql.index("if v_task.status not in ('running','completed','waiting_children')", start)
+    assert start < status
+    for field in ("max_child_tasks", "max_parallel_children", "max_runtime_seconds", "max_input_bytes"):
+        assert f"v_existing.{field} <> p_{field}" in sql
