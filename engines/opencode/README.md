@@ -22,7 +22,7 @@ git -C engines/opencode/upstream rev-parse HEAD
 
 The result must equal the pinned commit above. The upstream monorepo includes the original server, core, AI/provider integrations, CLI, protocol/schema, plugin system, browser plugin, TUI, skills, tests, build scripts, and documentation.
 
-The upstream workspace uses Bun `1.4.4`. Build from the upstream repository root with its own lockfile and workspace scripts; copying only `packages/server` is incomplete. The dedicated CI workflow verifies provenance, runs the SULY adapter contracts, typechecks the original server, and builds the isolated runtime image. The live Docker server smoke test is gated behind `SULY_ENABLE_ENGINE_RUNTIME_SMOKE=true` for the later external acceptance phase.
+The upstream workspace uses Bun `1.4.4`. Build from the upstream repository root with its own lockfile and workspace scripts; copying only `packages/server` is incomplete. The dedicated CI workflow verifies both pinned upstream revisions, runs the SULY adapter contracts, typechecks the original OpenCode server, and builds the OpenCode, Hermes, and SULY provisioner images. It does not start those images unless the separate runtime-smoke repository variable is explicitly enabled. The live Docker server smoke test is gated behind `SULY_ENABLE_ENGINE_RUNTIME_SMOKE=true` for the later external acceptance phase.
 
 ## Runtime and security boundary
 
