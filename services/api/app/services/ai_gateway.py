@@ -167,6 +167,7 @@ async def stream_reply(
     messages: list[dict[str, str]],
     *,
     client: httpx.AsyncClient | None = None,
+    on_usage: Callable[[dict[str, int]], None] | None = None,
 ):
     """Yield bounded text deltas from OpenAI-compatible SSE or Ollama NDJSON.
 
@@ -205,6 +206,7 @@ async def stream_reply(
             "temperature": 0.3,
             "max_tokens": settings.ai_max_output_tokens,
             "stream": True,
+            "stream_options": {"include_usage": True},
         }
     )
     headers = {"Content-Type": "application/json"}
@@ -234,9 +236,19 @@ async def stream_reply(
                     body = json.loads(encoded)
                 except (ValueError, TypeError) as exc:
                     raise AIProviderError("The AI provider returned an invalid stream event.") from exc
+                if not isinstance(body, dict):
+                    raise AIProviderError("The AI provider returned an invalid stream event.")
+                if on_usage is not None:
+                    usage = _provider_usage(body, is_ollama=is_ollama)
+                    if usage is not None:
+                        try:
+                            on_usage(usage)
+                        except Exception:
+                            pass
 
                 if is_ollama:
-                    fragment = (body.get("message") or {}).get("content", "")
+                    message = body.get("message") or {}
+                    fragment = message.get("content", "") if isinstance(message, dict) else ""
                 else:
                     choices = body.get("choices")
                     fragment = ""
