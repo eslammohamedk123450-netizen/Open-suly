@@ -10,6 +10,7 @@ as $$
 declare
   v_task_id uuid;
   v_task_status text;
+  v_handoff_status text;
 begin
   if new.status not in ('applying','applied') or new.status = old.status then
     return new;
@@ -24,13 +25,16 @@ begin
     raise exception 'opencode_task_run_not_found' using errcode = 'P0002';
   end if;
 
+  select h.status into v_handoff_status
+    from public.engine_collaboration_handoffs h
+   where h.child_task_id = v_task_id
+     and h.user_id = new.user_id
+   order by h.created_at desc
+   limit 1
+   for share;
+
   if v_task_status in ('cancel_requested','cancelled')
-     or exists (
-       select 1 from public.engine_collaboration_handoffs h
-        where h.child_task_id = v_task_id
-          and h.user_id = new.user_id
-          and h.status in ('cancelled','failed')
-     ) then
+     or v_handoff_status in ('cancelled','failed') then
     raise exception 'opencode_task_cancelled' using errcode = '55000';
   end if;
 
