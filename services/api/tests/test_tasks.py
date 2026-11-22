@@ -1042,3 +1042,60 @@ def test_opencode_plan_rejects_disabled_runtime_before_database(monkeypatch):
         app.dependency_overrides.clear()
     assert response.status_code == 503
     assert "not configured or enabled" in response.json()["detail"]
+
+
+class _CancelTaskQuery:
+    def __init__(self, admin, table):
+        self.admin, self.table_name = admin, table
+        self.filters = {}
+        self.status_values = None
+        self.update_payload = None
+    def select(self, *_args): return self
+    def eq(self, key, value):
+        self.filters[key] = value
+        return self
+    def limit(self, *_args): return self
+    def in_(self, key, values):
+        self.filters[key] = values
+        self.status_values = values
+        return self
+    def update(self, payload):
+        self.update_payload = payload
+        return self
+    def execute(self):
+        if self.update_payload is not None:
+            if self.admin.task["status"] not in (self.status_values or []):
+                return SimpleNamespace(data=[])
+            self.admin.task.update(self.update_payload)
+            return SimpleNamespace(data=[dict(self.admin.task)])
+        owned = (
+            self.filters.get("id") == self.admin.task["id"]
+            and self.filters.get("user_id") == "test-user"
+        )
+        return SimpleNamespace(data=[dict(self.admin.task)] if owned else [])
+
+
+class _CancelTaskAdmin:
+    def __init__(self, task):
+        self.task = task
+    def __enter__(self): return self
+    def __exit__(self, *_args): return False
+    def table(self, name): return _CancelTaskQuery(self, name)
+
+
+def test_parent_task_can_be_cancelled_while_waiting_for_delegated_children(monkeypatch):
+    admin = _CancelTaskAdmin({
+        "id": "00000000-0000-0000-0000-000000000001",
+        "user_id": "test-user",
+        "status": "waiting_children",
+        "cancel_requested_at": None,
+    })
+    monkeypatch.setattr(tasks_module, "get_supabase_admin_client", lambda: admin)
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="test-user", email=None)
+    try:
+        response = client.post("/v1/tasks/00000000-0000-0000-0000-000000000001/cancel")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200
+    assert response.json()["status"] == "cancel_requested"
+    assert response.json()["cancel_requested_at"] is not None
