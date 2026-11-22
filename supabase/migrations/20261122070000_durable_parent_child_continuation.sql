@@ -98,6 +98,14 @@ begin
   if v_task.status not in ('running','completed','waiting_children') or v_task.cancel_requested_at is not null then
     raise exception 'collaboration_parent_task_not_available' using errcode = '55000';
   end if;
+  if exists (
+    select 1 from public.task_steps s
+     where s.task_id = p_parent_task_id
+       and s.user_id = p_user_id
+       and s.step_key = 'resume_' || replace(p_parent_run_id::text,'-','')
+  ) then
+    raise exception 'collaboration_parent_run_already_resumed' using errcode = '55000';
+  end if;
 
   select * into v_run
     from public.engine_runs
@@ -951,11 +959,28 @@ begin
    where id=v_step.id
    returning * into v_step;
 
-  update public.tasks
+  update public.tasks t
      set status='running', started_at=coalesce(started_at,now())
-   where id=v_step.task_id
-     and status in ('ready','waiting_children')
-     and cancel_requested_at is null;
+   where t.id=v_step.task_id
+     and t.status in ('ready','waiting_children')
+     and t.cancel_requested_at is null
+     and (
+       left(v_step.step_key,7) <> 'resume_'
+       or (
+         not exists (
+           select 1 from public.hermes_delegation_outbox o
+            where o.task_id = t.id and o.user_id = t.user_id
+              and o.parent_run_id::text = v_step.input->>'continuation_of_run_id'
+              and o.status in ('pending','processing')
+         )
+         and not exists (
+           select 1 from public.engine_collaboration_handoffs h
+            where h.parent_task_id = t.id and h.user_id = t.user_id
+              and h.parent_run_id::text = v_step.input->>'continuation_of_run_id'
+              and h.status in ('pending_approval','approved','running')
+         )
+       )
+     );
 
   if not exists (
     select 1 from public.tasks t
@@ -964,10 +989,24 @@ begin
        and t.status = 'running'
        and t.cancel_requested_at is null
   ) then
-    update public.task_steps
-       set status='cancelled', lease_owner=null, lease_token=null,
-           lease_expires_at=null, completed_at=coalesce(completed_at,now())
-     where id=v_step.id and status='running' and lease_token=v_step.lease_token;
+    if exists (
+      select 1 from public.tasks t
+       where t.id = v_step.task_id and t.user_id = v_step.user_id
+         and t.status = 'waiting_children' and t.cancel_requested_at is null
+    ) then
+      -- A sibling handoff won the race after selection. Put the same durable
+      -- continuation back without consuming an execution attempt.
+      update public.task_steps
+         set status='pending', attempt_count=greatest(attempt_count-1,0),
+             lease_owner=null, lease_token=null, lease_expires_at=null,
+             started_at=null, available_at=now()
+       where id=v_step.id and status='running' and lease_token=v_step.lease_token;
+    else
+      update public.task_steps
+         set status='cancelled', lease_owner=null, lease_token=null,
+             lease_expires_at=null, completed_at=coalesce(completed_at,now())
+       where id=v_step.id and status='running' and lease_token=v_step.lease_token;
+    end if;
     return null;
   end if;
 
