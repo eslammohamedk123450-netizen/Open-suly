@@ -108,3 +108,25 @@ def test_stream_reply_enforces_total_output_limit(monkeypatch):
 
     with pytest.raises(ai_gateway.AIProviderError, match="exceeded"):
         asyncio.run(run())
+
+
+
+def test_provider_registry_reports_only_supported_capabilities(monkeypatch):
+    monkeypatch.setattr(
+        ai_gateway,
+        "get_settings",
+        lambda: Settings(
+            ai_provider="ollama",
+            ai_model="qwen2.5:3b",
+            ai_max_output_tokens=512,
+        ),
+    )
+    providers = ai_gateway.provider_capabilities()
+    assert set(providers) == {"openai-compatible", "ollama"}
+    assert providers["ollama"]["streaming"] is True
+    assert providers["ollama"]["requires_api_key"] is False
+    profile = ai_gateway.selected_model_profile()
+    assert profile["configured"] is True
+    assert profile["model"] == "qwen2.5:3b"
+    assert profile["discovery"] == "server_configured_selection_only"
+    assert "api_key" not in str(profile).lower()
