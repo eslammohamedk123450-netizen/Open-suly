@@ -36,3 +36,5 @@ def test_outbox_claim_and_completion_are_lease_guarded_and_retryable():
     assert "lease_expires_at > now()" in sql
     assert "available_at = now() + make_interval" in sql
     assert "attempt_count >= 8" in sql
+    assert "cancel_hermes_delegation_outbox_on_parent_cancel" in sql
+    assert "parent_task_cancelled" in sql
