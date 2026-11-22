@@ -1,6 +1,48 @@
 -- Keep approved OpenCode child work pending until the owner reviews the
 -- generated change set, then run one post-apply re-review before releasing
 -- the parent handoff. All generated code remains review-first.
+create or replace function public.guard_opencode_change_set_apply_after_cancellation()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $
+declare
+  v_task_id uuid;
+  v_task_status text;
+begin
+  if new.status not in ('applying','applied') or new.status = old.status then
+    return new;
+  end if;
+
+  select r.task_id,t.status
+    into v_task_id,v_task_status
+    from public.opencode_task_runs r
+    join public.tasks t on t.id = r.task_id and t.user_id = r.user_id
+   where r.id = new.run_id and r.user_id = new.user_id;
+  if not found then
+    raise exception 'opencode_task_run_not_found' using errcode = 'P0002';
+  end if;
+
+  if v_task_status in ('cancel_requested','cancelled')
+     or exists (
+       select 1 from public.engine_collaboration_handoffs h
+        where h.child_task_id = v_task_id
+          and h.user_id = new.user_id
+          and h.status in ('cancelled','failed')
+     ) then
+    raise exception 'opencode_task_cancelled' using errcode = '55000';
+  end if;
+
+  return new;
+end;
+$;
+
+drop trigger if exists opencode_changeset_guard_cancelled_task on public.opencode_change_sets;
+create trigger opencode_changeset_guard_cancelled_task
+  before update of status on public.opencode_change_sets
+  for each row execute function public.guard_opencode_change_set_apply_after_cancellation();
+
 create or replace function public.enqueue_opencode_post_apply_review()
 returns trigger
 language plpgsql
@@ -285,8 +327,10 @@ create trigger opencode_changeset_sync_collaboration_handoff
   after update of status on public.opencode_change_sets
   for each row execute function public.sync_opencode_change_set_handoff_terminal();
 
+revoke all on function public.guard_opencode_change_set_apply_after_cancellation() from public,anon,authenticated;
 revoke all on function public.enqueue_opencode_post_apply_review() from public,anon,authenticated;
 revoke all on function public.sync_opencode_change_set_handoff_terminal() from public,anon,authenticated;
+grant execute on function public.guard_opencode_change_set_apply_after_cancellation() to service_role;
 grant execute on function public.enqueue_opencode_post_apply_review() to service_role;
 grant execute on function public.sync_opencode_change_set_handoff_terminal() to service_role;
 
