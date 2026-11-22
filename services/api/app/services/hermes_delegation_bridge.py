@@ -6,7 +6,7 @@ the existing approval RPC is the only path that creates an executable child.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 import json
 import re
 from typing import Any
@@ -193,3 +193,40 @@ class HermesDelegationBridge:
                 # Never return partially fabricated success; the durable RPC is authoritative.
                 raise RuntimeError("hermes_delegation_persistence_failed") from exc
         return tuple(results)
+
+
+
+_ORCHESTRATION_MARKER = "SULY_ORCHESTRATION_V1\\n"
+
+
+def parse_hermes_orchestration_output(raw: object) -> tuple[str, dict[str, object] | None]:
+    """Parse the opt-in structured envelope while preserving legacy plain-text output.
+
+    The marker is mandatory: ordinary JSON/code in a user's answer is never
+    interpreted as an instruction to create child tasks.
+    """
+    if not isinstance(raw, str) or not raw.strip():
+        raise DelegationPlanError("hermes_orchestration_output_invalid")
+    if not raw.startswith(_ORCHESTRATION_MARKER):
+        return raw, None
+    try:
+        payload = json.loads(raw[len(_ORCHESTRATION_MARKER):])
+    except (ValueError, TypeError) as exc:
+        raise DelegationPlanError("hermes_orchestration_json_invalid") from exc
+    if not isinstance(payload, dict) or set(payload) != {
+        "schema_version", "content", "delegation_plan"
+    }:
+        raise DelegationPlanError("hermes_orchestration_envelope_invalid")
+    if payload.get("schema_version") != 1:
+        raise DelegationPlanError("hermes_orchestration_schema_unsupported")
+    answer = payload.get("content")
+    if not isinstance(answer, str) or not answer.strip() or len(answer) > 52_000:
+        raise DelegationPlanError("hermes_orchestration_content_invalid")
+    raw_plan = payload.get("delegation_plan")
+    if raw_plan is None:
+        return answer, None
+    plan = DelegationPlan.parse(raw_plan)
+    return answer, {
+        "schema_version": _SCHEMA_VERSION,
+        "delegations": [asdict(item) for item in plan.delegations],
+    }
