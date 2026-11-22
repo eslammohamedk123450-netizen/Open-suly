@@ -59,8 +59,8 @@ begin
    limit 1
    for share;
 
-  if v_parent_status in ('cancel_requested','cancelled')
-     or v_task_status in ('cancel_requested','cancelled')
+  if v_parent_status in ('cancel_requested','cancelled','failed')
+     or v_task_status in ('cancel_requested','cancelled','failed')
      or v_handoff_status in ('cancelled','failed') then
     raise exception 'opencode_task_cancelled' using errcode = '55000';
   end if;
