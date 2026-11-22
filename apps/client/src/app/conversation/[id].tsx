@@ -9,6 +9,13 @@ import { getConversation, listMessages, sendUserMessage, type ChatMessage } from
 import { listProjectFiles, type ProjectFile } from "@/lib/project-files";
 import { requestAssistantReplyStream } from "@/lib/chat-api";
 
+function attachmentNames(metadata: ChatMessage["metadata"] | null | undefined): string[] {
+  if (!metadata || typeof metadata !== "object" || !Array.isArray(metadata.attachments)) return [];
+  return metadata.attachments
+    .filter((item): item is { path: string } => !!item && typeof item === "object" && typeof (item as { path?: unknown }).path === "string")
+    .map((item) => item.path);
+}
+
 function tokenUsage(metadata: ChatMessage["metadata"] | null | undefined): { input_tokens: number; output_tokens: number; total_tokens: number } | null {
   if (!metadata || typeof metadata !== "object") return null;
   const raw = metadata.usage;
@@ -126,9 +133,11 @@ export default function ConversationScreen() {
             <View style={styles.welcome}><Text style={styles.welcomeTitle}>ابدأ من هنا</Text><Text style={styles.welcomeText}>اكتب أول رسالة. سيتم حفظها في حسابك بشكل خاص.</Text></View>
           ) : messages.map((message) => {
             const usage = message.role === "assistant" ? tokenUsage(message.metadata) : null;
+            const attachments = attachmentNames(message.metadata);
             return (
             <View key={message.id} style={message.role === "user" ? styles.userMessage : styles.assistantMessage}>
               <Text style={message.role === "user" ? styles.userText : styles.assistantText}>{message.content}</Text>
+              {!!attachments.length && <Text style={styles.attachmentLabel}>ملفات مرفقة: {attachments.join("، ")}</Text>}
               {!!usage && <Text style={styles.usage}>عدد الرموز · إدخال {usage.input_tokens.toLocaleString("ar-EG")} / إخراج {usage.output_tokens.toLocaleString("ar-EG")} / الإجمالي {usage.total_tokens.toLocaleString("ar-EG")}</Text>}
               <Text style={styles.time}>{new Date(message.created_at).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" })}</Text>
             </View>
