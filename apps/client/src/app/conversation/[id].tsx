@@ -134,9 +134,11 @@ export default function ConversationScreen() {
           ) : messages.map((message) => {
             const usage = message.role === "assistant" ? tokenUsage(message.metadata) : null;
             const attachments = attachmentNames(message.metadata);
+            const roleLabel = message.role === "system" ? "النظام" : message.role === "tool" ? "أداة" : message.role === "agent" ? "الوكيل" : message.role === "error" ? "خطأ" : "";
             return (
-            <View key={message.id} style={message.role === "user" ? styles.userMessage : styles.assistantMessage}>
-              <Text style={message.role === "user" ? styles.userText : styles.assistantText}>{message.content}</Text>
+            <View key={message.id} style={message.role === "user" ? styles.userMessage : message.role === "error" ? styles.errorMessage : styles.assistantMessage}>
+              {!!roleLabel && <Text style={styles.roleLabel}>{roleLabel}</Text>}
+              <Text style={message.role === "user" ? styles.userText : message.role === "error" ? styles.errorMessageText : styles.assistantText}>{message.content}</Text>
               {!!attachments.length && <Text style={styles.attachmentLabel}>ملفات مرفقة: {attachments.join("، ")}</Text>}
               {!!usage && <Text style={styles.usage}>عدد الرموز · إدخال {usage.input_tokens.toLocaleString("ar-EG")} / إخراج {usage.output_tokens.toLocaleString("ar-EG")} / الإجمالي {usage.total_tokens.toLocaleString("ar-EG")}</Text>}
               <Text style={styles.time}>{new Date(message.created_at).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" })}</Text>
@@ -202,7 +204,7 @@ const styles = StyleSheet.create({
   logo: { width: 40, height: 40, borderRadius: 13, borderWidth: 1, borderColor: colors.gold, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" }, logoText: { color: colors.gold, fontSize: 22, fontWeight: "800" },
   messages: { flexGrow: 1, padding: 18, gap: 12, width: "100%", maxWidth: 760, alignSelf: "center", justifyContent: "flex-end" },
   welcome: { alignItems: "center", padding: 28, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, welcomeTitle: { color: colors.gold, fontSize: 17, fontWeight: "800" }, welcomeText: { color: colors.muted, fontSize: 12, textAlign: "center", lineHeight: 21, marginTop: 8 },
-  userMessage: { alignSelf: "flex-end", maxWidth: "88%", borderRadius: 18, borderBottomRightRadius: 5, padding: 13, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.goldDark }, assistantMessage: { alignSelf: "flex-start", maxWidth: "88%", borderRadius: 18, borderBottomLeftRadius: 5, padding: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  userMessage: { alignSelf: "flex-end", maxWidth: "88%", borderRadius: 18, borderBottomRightRadius: 5, padding: 13, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.goldDark }, assistantMessage: { alignSelf: "flex-start", maxWidth: "88%", borderRadius: 18, borderBottomLeftRadius: 5, padding: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, errorMessage: { alignSelf: "flex-start", maxWidth: "88%", borderRadius: 18, padding: 13, backgroundColor: colors.surface, borderWidth: 1, borderColor: "#A94B4B" }, roleLabel: { color: colors.gold, fontSize: 9, fontWeight: "800", marginBottom: 5, textAlign: "right" }, errorMessageText: { color: "#F08B8B", fontSize: 13, lineHeight: 22, textAlign: "left" },
   userText: { color: colors.text, fontSize: 13, lineHeight: 22, textAlign: "right" }, assistantText: { color: colors.muted, fontSize: 13, lineHeight: 22, textAlign: "left" }, time: { color: colors.faint, fontSize: 9, marginTop: 7, textAlign: "left" }, usage: { color: colors.faint, fontSize: 9, marginTop: 5, textAlign: "left" }, attachmentLabel: { color: colors.gold, fontSize: 9, marginTop: 5, textAlign: "right" },
   noticeBox: { alignItems: "center", gap: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   engineNotice: { color: colors.faint, fontSize: 10, textAlign: "center", marginTop: 8 }, permissionButton: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 9, borderWidth: 1, borderColor: colors.goldDark }, permissionText: { color: colors.gold, fontSize: 10, fontWeight: "700" }, error: { color: "#F08B8B", fontSize: 11, textAlign: "center" },
