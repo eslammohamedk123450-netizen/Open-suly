@@ -39,7 +39,7 @@
 - [x] integration client: POST run, idempotency key, lease-guarded persisted external ID (mocked unit tests; no live runtime)
 - [ ] status polling and bounded SSE parsing
 - [x] cooperative stop + bounded terminal-state polling contract (mocked unit tests; remote process termination not live-verified)
-- [ ] per-task/tenant disposable runtime isolation
+- [ ] per-task/tenant disposable runtime isolation (host-isolated Docker bridge implementation added; real-Docker CI and deployment-host verification still required)
 - [ ] CPU, memory, process, disk, timeout bounds
 - [ ] default-deny egress / approved proxy
 - [ ] no host mounts, docker socket, inherited credentials, non-root
@@ -109,7 +109,7 @@ For every engine:
 ## Current known blockers (2026-11-21)
 - Supabase engine_runs and reconciliation migrations are committed but have not been applied to any live database; disposable PostgreSQL validation and explicit Staging approval are still required.
 - Worker, Hermes, OpenCode and model providers remain disabled by default.
-- Runtime profile code is restrictive, but production Docker host isolation, process-tree teardown after crashes, and task-aware egress proxy/host firewall enforcement are not verified.
+- Runtime task bridges now require Docker Engine 28+ `gateway_mode_ipv4=isolated` with IPv6/ICC/masquerading disabled; this removes the host-side bridge IP that a normal internal bridge retains. A real-Docker CI probe is being added to verify host-service and external-egress denial while preserving loopback gateway access. Production host-firewall policy, crash-time process-tree teardown, and task-aware SSRF/egress proxy enforcement remain separate gates.
 - No production API/worker deployment or live model provider is configured.
 - Latest CI on HEAD f3afbd9d098ed4ff7c80b1cd8141660c25c6930b exposed Worker syntax, Hermes toolset-default, and OpenCode test-double contract failures; commits 352800efe8400ae07d4373b41ec6406b5a173603 and fcea64cce7ff1c140542ca716686c14ed01dcf8a contain fixes. Their CI results must be confirmed before marking this repair complete.
 - Credit ledger foundation/RPCs have disposable PostgreSQL integration coverage, but reserve/settle/release are not wired into OpenCode/Hermes task lifecycle. Pricing/token-to-credit conversion, usage metering, idempotent partial billing, and budget enforcement remain prerequisites before enabling user execution.

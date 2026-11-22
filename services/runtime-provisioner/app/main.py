@@ -384,7 +384,11 @@ async def create_runtime(request: Request, authorization: str | None = Header(de
             skills=[item.model_dump() for item in body.skills],
             access_token_factory=_derive_runtime_access_token,
         )
-    except (ValueError, RuntimeErrorSafe) as exc:
+    except RuntimeErrorSafe as exc:
+        if str(exc) == "runtime_network_isolation_unavailable":
+            raise HTTPException(503, "runtime_network_isolation_unavailable") from exc
+        raise HTTPException(422, str(exc)) from exc
+    except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     try:
         if body.engine_id == "hermes-agent":

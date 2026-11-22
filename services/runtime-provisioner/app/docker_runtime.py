@@ -176,6 +176,37 @@ def validate_egress_disabled(value: object | None = None) -> None:
         raise RuntimeErrorSafe("runtime_egress_proxy_required")
 
 
+# Docker Engine 28 introduced the isolated gateway mode for internal bridge
+# networks. A normal internal bridge still has a host-side IP and can expose
+# host services bound to that bridge address to task containers.
+_TASK_NETWORK_OPTIONS = {
+    "com.docker.network.bridge.gateway_mode_ipv4": "isolated",
+    "com.docker.network.bridge.enable_icc": "false",
+    "com.docker.network.bridge.enable_ip_masquerade": "false",
+}
+
+
+def _create_isolated_task_network(client: Any, *, name: str, labels: dict[str, str]):
+    """Create a per-attempt bridge with no host bridge address or peer traffic.
+
+    Older Docker Engines reject the isolated gateway option; that error is
+    converted to a safe failure instead of silently downgrading to a normal
+    internal bridge.
+    """
+    try:
+        return client.networks.create(
+            name=name,
+            driver="bridge",
+            internal=True,
+            enable_ipv6=False,
+            options=dict(_TASK_NETWORK_OPTIONS),
+            check_duplicate=True,
+            labels=labels,
+        )
+    except APIError as exc:
+        raise RuntimeErrorSafe("runtime_network_isolation_unavailable") from exc
+
+
 class DockerTaskRuntimeManager:
     """Creates a fresh internal network, container, and workspace per attempt.
 
@@ -354,11 +385,10 @@ class DockerTaskRuntimeManager:
                     "/var/lib/opencode/data": "rw,nosuid,size=128m,uid=10001,gid=10001",
                     "/home/opencode/.cache": "rw,nosuid,size=128m,uid=10001,gid=10001",
                 })
-            network = self.client.networks.create(
-                name=f"suly-{runtime_id}", driver="bridge",
-                # Always internal: no proxy or destination enforcement exists yet.
-                internal=True,
-                check_duplicate=True, labels=labels,
+            network = _create_isolated_task_network(
+                self.client,
+                name=f"suly-{runtime_id}",
+                labels=labels,
             )
             container = self.client.containers.run(
                 self.image,

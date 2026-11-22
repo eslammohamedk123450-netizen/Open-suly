@@ -123,10 +123,44 @@ def test_image_must_use_a_full_sha256_digest(tmp_path):
         )
 
 
-def test_network_has_no_outbound_egress_by_default(tmp_path):
+def test_network_has_no_outbound_egress_or_host_bridge_by_default(tmp_path):
     mgr, fake = manager(tmp_path)
     mgr.create(task_id=str(uuid4()), engine_run_id=str(uuid4()), engine_id="opencode", files=[])
     assert fake.networks.kwargs["internal"] is True
+    assert fake.networks.kwargs["enable_ipv6"] is False
+    assert fake.networks.kwargs["options"] == {
+        "com.docker.network.bridge.gateway_mode_ipv4": "isolated",
+        "com.docker.network.bridge.enable_icc": "false",
+        "com.docker.network.bridge.enable_ip_masquerade": "false",
+    }
+
+
+def test_unsupported_isolated_gateway_mode_fails_closed_and_cleans_workspace(tmp_path):
+    from docker.errors import APIError
+    from app.docker_runtime import RuntimeErrorSafe
+
+    fake = FakeDocker()
+
+    class RejectingNetworks:
+        def create(self, **kwargs):
+            raise APIError("isolated gateway mode is unsupported")
+
+    fake.networks = RejectingNetworks()
+    mgr = DockerTaskRuntimeManager(
+        image="registry.example/opencode@sha256:" + "a" * 64,
+        workspace_root=str(tmp_path),
+        client=fake,
+    )
+    with pytest.raises(RuntimeErrorSafe, match="runtime_network_isolation_unavailable"):
+        mgr.create(
+            task_id=str(uuid4()),
+            engine_run_id=str(uuid4()),
+            engine_id="opencode",
+            files=[],
+        )
+
+    assert not list(tmp_path.iterdir())
+    assert not fake.containers.items
 
 
 def test_network_egress_cannot_be_enabled_by_constructor(tmp_path):

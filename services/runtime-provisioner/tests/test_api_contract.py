@@ -38,6 +38,27 @@ def test_create_rejects_other_engines():
     assert response.status_code == 422
 
 
+def test_create_returns_unavailable_when_isolated_network_mode_is_unsupported(monkeypatch):
+    from app.docker_runtime import RuntimeErrorSafe
+
+    class UnavailableManager:
+        def create(self, **kwargs):
+            raise RuntimeErrorSafe("runtime_network_isolation_unavailable")
+
+    monkeypatch.setattr(runtime_api, "_get_manager", lambda _engine_id="opencode": UnavailableManager())
+    response = client.post(
+        "/v1/runtimes",
+        headers={"Authorization": "Bearer " + "t" * 48},
+        json={
+            "task_id": "00000000-0000-4000-8000-000000000001",
+            "engine_run_id": "00000000-0000-4000-8000-000000000002",
+            "engine_id": "opencode",
+        },
+    )
+    assert response.status_code == 503
+    assert response.json()["detail"] == "runtime_network_isolation_unavailable"
+
+
 def test_create_requires_hermes_profile_and_rejects_opencode_profile():
     headers = {"Authorization": "Bearer " + "t" * 48}
     hermes_without_profile = client.post("/v1/runtimes", headers=headers, json={
