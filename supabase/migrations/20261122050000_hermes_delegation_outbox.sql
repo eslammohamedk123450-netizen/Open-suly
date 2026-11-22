@@ -55,12 +55,14 @@ declare
   v_key text;
 begin
   if new.status <> 'completed' or old.status = 'completed'
-     or new.input->>'operation' <> 'hermes.agent.turn'
+     or new.input->>'operation' is distinct from 'hermes.agent.turn'
      or not (new.output ? 'delegation_plan') then
     return new;
   end if;
 
-  if jsonb_typeof(new.output->'delegation_plan') <> 'object'
+  if new.output->>'operation' is distinct from 'hermes.agent.turn'
+     or new.output->>'engine' is distinct from 'hermes-agent'
+     or jsonb_typeof(new.output->'delegation_plan') <> 'object'
      or new.output->'delegation_plan'->>'schema_version' <> '1'
      or jsonb_typeof(new.output->'delegation_plan'->'delegations') <> 'array'
      or jsonb_array_length(new.output->'delegation_plan'->'delegations') not between 1 and 8
@@ -246,3 +248,35 @@ grant execute on function public.fail_hermes_delegation_plan(uuid,uuid,text) to 
 
 comment on table public.hermes_delegation_outbox is
   'Server-only durable outbox of validated Hermes delegation plans. Delivery retries use handoff idempotency keys.';
+
+
+create or replace function public.cancel_hermes_delegation_outbox_on_parent_cancel()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  if old.cancel_requested_at is null and new.cancel_requested_at is not null then
+    update public.hermes_delegation_outbox
+       set status = 'failed',
+           error_code = 'parent_task_cancelled',
+           lease_owner = null,
+           lease_token = null,
+           lease_expires_at = null,
+           updated_at = now()
+     where task_id = new.id
+       and user_id = new.user_id
+       and status in ('pending','processing');
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists tasks_cancel_hermes_delegation_outbox on public.tasks;
+create trigger tasks_cancel_hermes_delegation_outbox
+  after update of cancel_requested_at on public.tasks
+  for each row execute function public.cancel_hermes_delegation_outbox_on_parent_cancel();
+
+revoke all on function public.cancel_hermes_delegation_outbox_on_parent_cancel() from public,anon,authenticated;
+grant execute on function public.cancel_hermes_delegation_outbox_on_parent_cancel() to service_role;
