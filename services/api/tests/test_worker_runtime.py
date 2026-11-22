@@ -1263,6 +1263,7 @@ def test_hermes_terminal_approval_callback_uses_suly_gateway(monkeypatch):
             return [SimpleNamespace(engine_id="hermes-agent")] if capability == "agent.general" else []
 
         def execute(self, _engine_id, _request):
+            assert callbacks["run_started"]("run_native_approval_123") is True
             callbacks["event"]({
                 "event": "approval.request",
                 "approval_request_id": "approval_req_123456",
@@ -1278,6 +1279,7 @@ def test_hermes_terminal_approval_callback_uses_suly_gateway(monkeypatch):
 
     def registry_factory(*_args, **kwargs):
         callbacks["event"] = kwargs["on_event"]
+        callbacks["run_started"] = kwargs["on_run_started"]
         return Registry()
 
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
