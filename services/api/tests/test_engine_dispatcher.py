@@ -53,3 +53,18 @@ def test_dispatcher_never_selects_disabled_or_unsupported_engines():
 
     with pytest.raises(RuntimeError, match="no_enabled_engine"):
         EngineDispatcher(registry).select(capability="agent.general", preferred_engine_ids=("hermes-agent",))
+
+
+def test_pinned_opencode_manifest_declares_its_native_limits_and_capabilities():
+    from app.services.engine_catalog import build_engine_registry
+
+    registry = build_engine_registry()
+    opencode = registry.get("opencode")
+
+    assert opencode is not None
+    assert opencode.enabled is False
+    assert opencode.adapter is None
+    assert {"code.edit", "code.review", "code.test", "code.repository"} <= opencode.capabilities
+    assert opencode.max_timeout_seconds == 1800
+    assert opencode.max_input_bytes == 48_000
+    assert opencode.max_output_bytes == 16_000
