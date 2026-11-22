@@ -19,6 +19,8 @@ def test_engine_catalog_migration_is_server_only_and_provenance_pinned():
     assert "upstream_revision" in sql
     assert "license_id" in sql
     assert "valid_engine_capabilities" in sql
+    assert "false,false,true" in sql
+    assert "enabled=false" in sql
 
 
 def test_engine_collaboration_rpcs_use_catalog_not_a_two_engine_allowlist():
