@@ -9,12 +9,11 @@ are not user-facing hosted AI services.
 
 ## Agent roles
 
-- **Hermes** is the intended primary orchestration agent. The current worker
-  invokes the pinned native Hermes runtime and supplies approved skills and
-  SULY-scoped context. Native Hermes subagent/delegation toolsets are currently
-  disabled in the runtime profile; the SULY-controlled delegation bridge is a
-  remaining implementation requirement before Hermes can dispatch specialist
-  agents end-to-end.
+- **Hermes** is the primary orchestration agent. The worker invokes the pinned
+  native Hermes runtime and supplies approved skills and SULY-scoped context.
+  Hermes may return a versioned `SULY_ORCHESTRATION_V1` proposal; it must not
+  spawn native subagents. SULY validates and routes each proposal through
+  AgentManager and the durable delegation outbox.
 - **OpenCode** is the coding specialist. It receives bounded coding tasks,
   works on a task-scoped project snapshot, and returns a reviewable change set.
 - Additional agents are registered by immutable engine manifest, declared
@@ -55,12 +54,23 @@ containers; it is not the agent's brain.
 
 The repository contains pinned upstream Hermes and OpenCode submodules and
 image-build definitions. Hermes and OpenCode are provisioned as separate,
-digest-pinned task containers; they are not embedded as long-lived processes in
-the API worker. The task-scoped runtime model is implemented, but the full
-Hermes-to-SULY delegation bridge (native delegation tool interception, durable
-child-task creation, approval, result return, and parent resumption) is not yet
-closed. Do not describe Hermes as a fully operational multi-agent orchestrator
-until those paths and their integration tests are complete.
+task-scoped containers; they are not embedded as long-lived processes in the
+API worker.
+
+Completed Hermes steps can atomically enqueue a strictly validated delegation
+proposal into a server-only Supabase outbox. The outbox uses row leases,
+bounded retries, parent-cancellation handling, and stable request idempotency.
+AgentManager chooses only an enabled, registered specialist capability. SULY
+then creates durable handoffs in `pending_approval`; the outbox does not start
+the specialist runtime. The existing owner-approval RPC remains the only path
+that creates an executable child task.
+
+The following lifecycle remains open: suspend the parent while approved child
+tasks run, return the child result to Hermes, resume the parent after child
+completion, and cover those transitions with crash/recovery integration tests.
+Until those paths close, describe Hermes as a primary orchestrator with a
+working proposal-and-handoff pipeline, not as a fully closed autonomous
+multi-agent lifecycle.
 
 ## External acceptance test boundary
 
