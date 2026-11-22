@@ -56,3 +56,10 @@
 - `ENGINE_CREDITS_ENABLED` يظل `false` افتراضيًا. يجب مراجعة/تطبيق migration في بيئة disposable/staging فقط، ثم ضبط flag يدويًا بعد التحقق.
 - شاشة Expo `/credits` مربوطة من الإعدادات. لا شراء، grant، reservation، settlement، ولا تشغيل engines من الشاشة.
 - اختبارات API الجديدة عبر fake PostgREST client؛ PostgreSQL integration وlive RLS لم تُنفذ بعد.
+
+
+### CI confirmation
+
+- Platform CI #1377/#1378 passed; API suite **764 passed, 5 warnings**; client typecheck, Expo compatibility, and web export passed.
+- API tests use a fake PostgREST client. No disposable PostgreSQL integration test or live RLS verification has been run.
+- The API remains disabled by default. Do not enable it until the ledger migration is validated in an isolated DB and applied only with explicit staging approval.

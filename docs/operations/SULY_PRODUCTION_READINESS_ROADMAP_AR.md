@@ -79,7 +79,7 @@ For every engine:
 - [ ] idempotency for user requests, task admissions, billing and tool actions
 - [ ] rate limits by user/IP/capability
 - [ ] quota/usage ledger exactness and partial billing
-- [ ] Read-only credits summary API + client history view (user-token/RLS, disabled by default)
+- [x] Read-only credits summary API + client history view (user-token/RLS, disabled by default)
 - [ ] Redis only where needed; document failure behavior
 - [ ] structured logs with redaction, metrics, traces, alerting
 - [ ] object storage quotas, signed URLs, retention
@@ -542,3 +542,13 @@ For every engine:
 1. تأكد من Platform CI على commit واجهة الرصيد؛ أصلح أي regression قبل اعتماد feature.
 2. بعد ذلك أضف PostgreSQL disposable tests للـledger (concurrency/idempotency/NULL) إذا كانت CI environment تسمح، دون Supabase production.
 3. اربط reserve/settle/release بدورة engine runs خلف cost policy server-side واضحة، approval وbudget gates، مع اختبار cancel/retry/recovery قبل أي تشغيل.
+
+
+## تحقق CI — عرض credits (2026-11-22)
+
+- Platform CI #1377/run `44999376502` على commit `129efc636c10` نجح: compile + **764 API tests passed (5 warnings)** + TypeScript + Expo compatibility + Web export.
+- Platform CI #1378/run `44999424273` على commit `eee5d8a497fe` نجح بالمسارات نفسها؛ client typecheck وWeb export اكتملان.
+- Repository baseline #1395/run `44999376560` و#1396/run `44999424191` نجحا.
+- أحدث docs commit `dad1bbb8afc8`: Platform CI #1379 وRepository baseline #1397 ما زالان قيد التنفيذ وقت تحديث السجل.
+- Engine runtime image builds #217/#218/#219 فشلت مع jobs فارغة في Actions API؛ لا توجد logs أو سبب معروف. OpenCode upstream verification #316 ما زالت قيد التنفيذ على commit أسبق.
+- تم إعادة عد checklist: **59/154 (38%)**. Controlled Beta/Production Readiness لا تزال **نحو 20%**؛ API/UI read-only لا تثبت migrations/RLS على Postgres حقيقي ولا usage billing.

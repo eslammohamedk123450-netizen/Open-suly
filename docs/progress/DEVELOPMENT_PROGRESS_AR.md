@@ -709,10 +709,19 @@ undefined
   - `eee5d8a497fe540091ca9fda3221c92be4cc00be` — Expo read-only credits page and Settings navigation.
 - API projection is bounded (25 reservations / 50 ledger entries), owner-filtered, RLS-backed via user token, and excludes task IDs and free-form metadata. No writes or engine activation.
 - Client route `/credits` displays available/reserved balances, recent reservations, ledger deltas, refresh, loading/error/empty states, and a login entry. It is explicitly informational; purchases and execution are absent.
-- 7 API tests added. Local pytest was not run. Platform CI #1376 succeeded for API commit; CI #1377 (backend gate) and #1378 (client) were still running when this note was written. Repository baseline #1395 succeeded; #1396 was pending. Runtime image build failed with no jobs/logs; cause unknown. Upstream engine verification #316 pending on an earlier commit.
+- 7 API tests added. Local pytest was not run. Platform CI #1377/run `44999376502` and #1378/run `44999424273` passed: **764 API tests passed, 5 warnings**; API compile, client typecheck, Expo compatibility, and Web export passed. Repository baseline #1395/run `44999376560` and #1396/run `44999424191` passed. Engine runtime image builds #217–#219 failed with empty job responses; cause is unknown. Upstream verification #316 was pending on an earlier commit.
 - No migration applied, no deploy, no worker/runtime/provider enabled, no payments or new secret.
-- Checkbox recount from the actual roadmap file before adding the new unchecked item: **58/153 (38%)**. Controlled Beta/Production readiness remains **~20%** pending integration and staging evidence.
+- Roadmap recount after CI confirmation: **59/154 (38%)**. Controlled Beta/Production readiness remains **~20%** pending integration and staging evidence.
 
 ### Follow-up
 - Verify CI #1377/#1378; amend this checkpoint with the actual results in a later commit.
 - Continue with disposable PostgreSQL ledger integration tests or the next safe engine/credits vertical slice, without live DB access.
+
+
+### تحديث نتائج CI — 2026-11-22
+
+- Platform CI #1377 `44999376502` و#1378 `44999424273` green؛ logs الاختبارات تؤكد **764 passed, 5 warnings** في كل run. compile/typecheck/Expo/Web export كلها ناجحة.
+- Repository baseline #1395 `44999376560` و#1396 `44999424191` green.
+- أحدث documentation commit `dad1bbb8afc8` ينتظر Platform CI #1379 وRepository baseline #1397.
+- Engine runtime image builds #217–#219 failed، لكن jobs returned empty؛ لا diagnostic logs متاحة.
+- CI لا يختبر RLS في Supabase الحقيقي، ولا migration apply، ولا provider أو engine runtime.
