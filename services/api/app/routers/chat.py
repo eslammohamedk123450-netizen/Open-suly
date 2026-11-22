@@ -561,7 +561,7 @@ def add_user_message(
                 ) or []
                 if len(files) != len(request.attachments):
                     raise HTTPException(status_code=404, detail="One or more attached files were not found.")
-                        total_chars = 0
+                total_chars = 0
                 for file in files:
                     file_content = file.get("content")
                     if not isinstance(file_content, str) or contains_secret_material(file_content):
