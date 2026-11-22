@@ -47,7 +47,7 @@ def _collaboration_lifecycle_migration() -> str:
 
 
 def test_parent_cancellation_cascades_to_handoffs_and_child_tasks():
-    sql = re.sub(r"\\s+", " ", _collaboration_lifecycle_migration())
+    sql = re.sub(r"\s+", " ", _collaboration_lifecycle_migration())
     assert "cancel_engine_collaboration_children_on_parent_cancel" in sql
     assert "old.cancel_requested_at is not null or new.cancel_requested_at is null" in sql
     assert "h.status in ('pending_approval','approved','running')" in sql
