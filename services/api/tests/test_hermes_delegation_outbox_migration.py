@@ -239,3 +239,11 @@ def test_opencode_post_apply_review_is_visible_in_the_owner_scoped_event_feed():
     assert "'post_apply_review_queued'" in sql
     assert "'task_step_key',v_step_key" in sql
     assert "on conflict (run_id,sequence) do nothing" in sql
+
+
+def test_parent_continuation_waits_for_other_incomplete_dag_steps():
+    sql = re.sub(r"\s+", " ", _parent_child_continuation_migration())
+    assert "v_dependencies jsonb" in sql
+    assert "jsonb_agg(s.step_key order by s.step_order)" in sql
+    assert "s.status in ('pending','ready','running')" in sql
+    assert "v_step_order,v_dependencies,v_input" in sql
