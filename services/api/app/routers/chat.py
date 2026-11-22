@@ -205,7 +205,6 @@ def _inject_target_attachments(
     if admin is None:
         raise HTTPException(status_code=503, detail="Attachment storage is unavailable.")
     try:
-        from app.services.project_workspace_store import contains_secret_material
         with admin:
             rows = (
                 admin.table("project_files").select("id,path,content")
