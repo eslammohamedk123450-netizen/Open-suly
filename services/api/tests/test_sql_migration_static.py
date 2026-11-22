@@ -70,3 +70,12 @@ def test_engine_credit_idempotency_metadata_comparisons_are_null_safe():
         r"v_existing\.metadata\s*->>\s*'[^']+'\s*(?:<>|!=)\s*",
         source,
     )
+
+
+def test_project_file_limit_serializes_concurrent_inserts_by_owner_project():
+    source = (MIGRATIONS / "20261122112716_project_files_atomic_limit.sql").read_text(encoding="utf-8")
+    assert "from public.projects p" in source
+    assert "p.user_id = new.user_id" in source
+    assert "for update" in source
+    assert "where project_id = new.project_id" in source
+    assert "and user_id = new.user_id" in source
