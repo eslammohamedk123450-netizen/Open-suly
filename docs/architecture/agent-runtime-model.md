@@ -9,8 +9,12 @@ are not user-facing hosted AI services.
 
 ## Agent roles
 
-- **Hermes** is the primary orchestration agent. It plans, resolves approved
-  skills, uses the SULY-scoped context, and delegates specialist work.
+- **Hermes** is the intended primary orchestration agent. The current worker
+  invokes the pinned native Hermes runtime and supplies approved skills and
+  SULY-scoped context. Native Hermes subagent/delegation toolsets are currently
+  disabled in the runtime profile; the SULY-controlled delegation bridge is a
+  remaining implementation requirement before Hermes can dispatch specialist
+  agents end-to-end.
 - **OpenCode** is the coding specialist. It receives bounded coding tasks,
   works on a task-scoped project snapshot, and returns a reviewable change set.
 - Additional agents are registered by immutable engine manifest, declared
@@ -46,6 +50,17 @@ containers; it is not the agent's brain.
 9. The runtime is released and its credentials revoked before the attempt is
    marked terminal. If cleanup cannot be confirmed, the run remains pending
    for reconciliation rather than being reported as cleanly completed.
+
+## Current implementation boundary
+
+The repository contains pinned upstream Hermes and OpenCode submodules and
+image-build definitions. Hermes and OpenCode are provisioned as separate,
+digest-pinned task containers; they are not embedded as long-lived processes in
+the API worker. The task-scoped runtime model is implemented, but the full
+Hermes-to-SULY delegation bridge (native delegation tool interception, durable
+child-task creation, approval, result return, and parent resumption) is not yet
+closed. Do not describe Hermes as a fully operational multi-agent orchestrator
+until those paths and their integration tests are complete.
 
 ## External acceptance test boundary
 
