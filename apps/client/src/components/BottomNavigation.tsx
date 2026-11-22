@@ -2,10 +2,11 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { colors } from "@/theme/tokens";
 
-export type AppTab = "home" | "projects" | "activity" | "settings";
+export type AppTab = "home" | "conversations" | "projects" | "activity" | "settings";
 
-const items: { key: AppTab; title: string; icon: string; route: "/" | "/projects" | "/activity" | "/settings" }[] = [
+const items: { key: AppTab; title: string; icon: string; route: "/" | "/conversations" | "/projects" | "/activity" | "/settings" }[] = [
   { key: "home", title: "الرئيسية", icon: "⌂", route: "/" },
+  { key: "conversations", title: "المحادثات", icon: "▤", route: "/conversations" },
   { key: "projects", title: "المشاريع", icon: "▦", route: "/projects" },
   { key: "activity", title: "النشاط", icon: "◷", route: "/activity" },
   { key: "settings", title: "الإعدادات", icon: "⚙", route: "/settings" },

@@ -5,6 +5,7 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { colors } from "@/theme/tokens";
 import { useAuth } from "@/providers/AuthProvider";
 import { listProjects, type SulyProject } from "@/lib/projects";
+import { createConversation } from "@/lib/conversations";
 import { listAgentTasks, type AgentTask } from "@/lib/agent-tasks";
 
 function statusLabel(status: string): string {
@@ -23,6 +24,7 @@ export default function ProjectDetailScreen() {
   const [tasks, setTasks] = useState<AgentTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [creatingConversation, setCreatingConversation] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!user || !id) { setLoading(false); return; }
@@ -37,6 +39,20 @@ export default function ProjectDetailScreen() {
   }, [user?.id, id]);
 
   useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));
+  const startProjectConversation = async () => {
+    if (!project || creatingConversation) return;
+    setCreatingConversation(true);
+    setError("");
+    try {
+      const conversation = await createConversation(project.name, project.id);
+      router.push({ pathname: "/conversation/[id]", params: { id: conversation.id } });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "تعذر إنشاء محادثة المشروع.");
+    } finally {
+      setCreatingConversation(false);
+    }
+  };
+
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -69,6 +85,9 @@ export default function ProjectDetailScreen() {
               </Pressable>
               <Pressable style={styles.filesButton} onPress={() => router.push({ pathname: "/project/[id]/files", params: { id: project.id } })}>
                 <Text style={styles.filesButtonText}>⌘ ملفات المشروع ومحرر الأكواد</Text>
+              </Pressable>
+              <Pressable style={styles.filesButton} onPress={() => void startProjectConversation()} disabled={creatingConversation}>
+                {creatingConversation ? <ActivityIndicator color={colors.gold} /> : <Text style={styles.filesButtonText}>محادثة مرتبطة بالمشروع</Text>}
               </Pressable>
               <View style={styles.listHeader}><Text style={styles.heading}>مهام المشروع</Text><Text style={styles.muted}>{tasks.length} مهمة</Text></View>
               {tasks.length === 0 ? (

@@ -70,3 +70,26 @@ def test_engine_credit_idempotency_metadata_comparisons_are_null_safe():
         r"v_existing\.metadata\s*->>\s*'[^']+'\s*(?:<>|!=)\s*",
         source,
     )
+
+
+
+def test_conversation_project_scope_is_owner_matched_and_optional():
+    source = (MIGRATIONS / "20261122100000_conversation_project_scope.sql").read_text(encoding="utf-8")
+    assert "add column if not exists project_id uuid" in source
+    assert "foreign key (project_id, user_id)" in source
+    assert "references public.projects(id, user_id)" in source
+    assert "on delete set null (project_id)" in source
+
+
+def test_message_lifecycle_roles_remain_server_written():
+    source = (MIGRATIONS / "20261122103000_extend_message_lifecycle_roles.sql").read_text(encoding="utf-8")
+    assert "('user', 'assistant', 'system', 'tool', 'agent', 'error')" in source
+    assert "Only user messages may be inserted by authenticated clients" in source
+
+
+
+def test_project_owner_unique_key_exists_before_engine_composite_foreign_keys():
+    source = (MIGRATIONS / "20261121161000_engine_workspace_lifecycle_foundation.sql").read_text(encoding="utf-8")
+    ensure_key = source.index("add constraint projects_id_user_unique unique (id, user_id)")
+    first_project_fk = source.index("references public.projects(id,user_id)")
+    assert ensure_key < first_project_fk

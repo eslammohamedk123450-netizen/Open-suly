@@ -178,3 +178,57 @@ def test_chat_provider_requires_persisted_user_approval_before_database_or_model
 
     assert response.status_code == 403
     assert "موافقة صريحة" in response.json()["detail"]
+
+
+
+def test_stream_chat_response_persists_completed_reply_and_usage(monkeypatch):
+    user_id = "stream-user"
+    conversation_id = "00000000-0000-0000-0000-000000000201"
+    message_id = "00000000-0000-0000-0000-000000000202"
+    admin = FakeChatAdmin(conversation_id, user_id, message_id)
+
+    class FakeApprovalStore:
+        def __init__(self, _admin):
+            pass
+
+        def active_scopes(self, _user_id):
+            return frozenset({"ai.provider.run"})
+
+    from app.core.config import Settings
+    monkeypatch.setattr(chat_module, "get_supabase_admin_client", lambda: admin)
+    monkeypatch.setattr(chat_module, "ToolApprovalStore", FakeApprovalStore)
+    monkeypatch.setattr(chat_module, "get_settings", lambda: Settings(
+        ai_provider="openai-compatible", ai_model="test-model",
+    ))
+
+    async def fake_stream(_messages, *, on_usage=None):
+        if on_usage is not None:
+            on_usage({"input_tokens": 9, "output_tokens": 3, "total_tokens": 12})
+        yield "stream "
+        yield "answer"
+
+    monkeypatch.setattr(chat_module, "stream_reply", fake_stream)
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id=user_id, email=None)
+    try:
+        response = client.post(
+            "/v1/chat/respond/stream",
+            json={"conversation_id": conversation_id, "message_id": message_id},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert "event: delta" in response.text
+    assert "stream answer" in response.text
+    assert "event: complete" in response.text
+    assert len(admin.inserted) == 1
+    assert admin.inserted[0]["content"] == "stream answer"
+    assert admin.inserted[0]["metadata"]["usage"] == {
+        "input_tokens": 9, "output_tokens": 3, "total_tokens": 12,
+    }
+
+
+
+def test_chat_capabilities_requires_authentication():
+    response = client.get("/v1/chat/capabilities")
+    assert response.status_code == 401

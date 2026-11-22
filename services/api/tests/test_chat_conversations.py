@@ -195,3 +195,99 @@ def test_delete_conversation_removes_owned_row(monkeypatch):
     assert response.status_code == 200
     assert response.json() == {"deleted": True}
     assert rows == []
+
+
+
+def test_conversation_detail_requires_authentication():
+    response = client.get(
+        "/v1/chat/conversations/00000000-0000-0000-0000-000000000001"
+    )
+    assert response.status_code == 401
+
+
+def test_message_attachment_request_requires_authentication():
+    response = client.post(
+        "/v1/chat/conversations/00000000-0000-0000-0000-000000000001/messages",
+        json={"content": "Review this", "attachments": ["00000000-0000-0000-0000-000000000002"]},
+    )
+    assert response.status_code == 401
+
+
+
+class _ProjectConversationQuery:
+    def __init__(self, admin, table):
+        self.admin = admin
+        self.table = table
+        self.operation = "select"
+        self.filters = {}
+        self.payload = None
+
+    def select(self, *_args): return self
+    def insert(self, payload):
+        self.operation = "insert"
+        self.payload = payload
+        return self
+    def eq(self, key, value):
+        self.filters[key] = value
+        return self
+    def limit(self, *_args): return self
+    def execute(self):
+        if self.table == "projects":
+            rows = [row for row in self.admin.projects if all(
+                str(row.get(key)) == str(value) for key, value in self.filters.items()
+            )]
+            return type("Result", (), {"data": rows})()
+        if self.operation == "insert":
+            row = {"id": "00000000-0000-0000-0000-000000000401", **self.payload}
+            self.admin.created.append(row)
+            return type("Result", (), {"data": [row]})()
+        return type("Result", (), {"data": []})()
+
+
+class _ProjectConversationAdmin:
+    def __init__(self, projects):
+        self.projects = projects
+        self.created = []
+
+    def __enter__(self): return self
+    def __exit__(self, *_args): return False
+    def table(self, name): return _ProjectConversationQuery(self, name)
+
+
+def test_create_conversation_validates_project_ownership(monkeypatch):
+    from app.core.auth import AuthenticatedUser, get_current_user
+    from app.routers import chat as chat_module
+
+    project_id = "00000000-0000-0000-0000-000000000402"
+    admin = _ProjectConversationAdmin([{"id": project_id, "user_id": "owner-a"}])
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="owner-a", email=None)
+    monkeypatch.setattr(chat_module, "get_supabase_admin_client", lambda: admin)
+    try:
+        response = client.post("/v1/chat/conversations", json={
+            "title": "Project chat", "project_id": project_id,
+        })
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    assert response.json()["project_id"] == project_id
+    assert admin.created[0]["user_id"] == "owner-a"
+
+
+def test_create_conversation_rejects_another_users_project(monkeypatch):
+    from app.core.auth import AuthenticatedUser, get_current_user
+    from app.routers import chat as chat_module
+
+    project_id = "00000000-0000-0000-0000-000000000412"
+    admin = _ProjectConversationAdmin([{"id": project_id, "user_id": "owner-b"}])
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="owner-a", email=None)
+    monkeypatch.setattr(chat_module, "get_supabase_admin_client", lambda: admin)
+    try:
+        response = client.post("/v1/chat/conversations", json={
+            "title": "Hijack", "project_id": project_id,
+        })
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert admin.created == []

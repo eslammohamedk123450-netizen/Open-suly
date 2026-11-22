@@ -6,11 +6,12 @@ export type Conversation = {
   id: string;
   user_id: string;
   title: string;
+  project_id?: string | null;
   created_at: string;
   updated_at: string;
 };
 
-export type MessageRole = "user" | "assistant" | "system" | "tool";
+export type MessageRole = "user" | "assistant" | "system" | "tool" | "agent" | "error";
 
 export type ChatMessage = {
   id: string;
@@ -56,13 +57,19 @@ export async function listConversations(): Promise<Conversation[]> {
   return payload.items ?? [];
 }
 
-export async function createConversation(title = "محادثة جديدة"): Promise<Conversation> {
+export async function createConversation(title = "محادثة جديدة", projectId?: string): Promise<Conversation> {
   const cleanTitle = title.trim() || "محادثة جديدة";
   if (cleanTitle.length > 200) throw new Error("عنوان المحادثة أطول من الحد المسموح.");
   return request<Conversation>("/v1/chat/conversations", {
     method: "POST",
-    body: JSON.stringify({ title: cleanTitle }),
+    body: JSON.stringify({ title: cleanTitle, ...(projectId ? { project_id: projectId } : {}) }),
   });
+}
+
+export async function getConversation(conversationId: string): Promise<Conversation> {
+  return request<Conversation>(
+    "/v1/chat/conversations/" + encodeURIComponent(conversationId),
+  );
 }
 
 export async function listMessages(conversationId: string): Promise<ChatMessage[]> {
@@ -72,13 +79,15 @@ export async function listMessages(conversationId: string): Promise<ChatMessage[
   return payload.items ?? [];
 }
 
-export async function sendUserMessage(conversationId: string, content: string): Promise<ChatMessage> {
+export async function sendUserMessage(
+  conversationId: string, content: string, attachments: string[] = [],
+): Promise<ChatMessage> {
   const cleanContent = content.trim();
   if (!cleanContent) throw new Error("اكتب رسالة قبل الإرسال.");
   if (cleanContent.length > 100000) throw new Error("الرسالة أطول من الحد المسموح.");
   return request<ChatMessage>(
     "/v1/chat/conversations/" + encodeURIComponent(conversationId) + "/messages",
-    { method: "POST", body: JSON.stringify({ content: cleanContent }) },
+    { method: "POST", body: JSON.stringify({ content: cleanContent, attachments }) },
   );
 }
 

@@ -7,8 +7,24 @@ create table if not exists public.projects (
   description text not null default '',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (id, user_id)
+  constraint projects_id_user_unique unique (id, user_id)
 );
+-- The projects table may have been created by the earlier workspace migration,
+-- whose original definition had only the id primary key. Ensure the composite
+-- owner key exists before creating any composite tenant foreign keys.
+do $
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'projects_id_user_unique'
+      and conrelid = 'public.projects'::regclass
+  ) then
+    alter table public.projects
+      add constraint projects_id_user_unique unique (id, user_id);
+  end if;
+end;
+$;
+
 create index if not exists projects_owner_updated_idx on public.projects(user_id, updated_at desc);
 
 create table if not exists public.project_files (
