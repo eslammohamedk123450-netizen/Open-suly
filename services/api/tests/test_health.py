@@ -69,3 +69,22 @@ def test_readiness_accepts_configuration_without_claiming_network_health(monkeyp
     }
     assert "public-test-placeholder" not in response.text
     assert "server-only-test-secret" not in response.text
+
+
+def test_cors_origin_validation_rejects_wildcards_and_http_in_production() -> None:
+    from app.main import _validated_cors_origins
+
+    import pytest
+
+    with pytest.raises(RuntimeError):
+        _validated_cors_origins(["*"], "production")
+    with pytest.raises(RuntimeError):
+        _validated_cors_origins(["http://client.example"], "production")
+
+
+def test_cors_origin_validation_accepts_exact_https_origins() -> None:
+    from app.main import _validated_cors_origins
+
+    assert _validated_cors_origins(
+        ["https://app.example.com", "https://admin.example.com/"], "production"
+    ) == ["https://app.example.com", "https://admin.example.com"]
