@@ -8,7 +8,9 @@ from app.services.agent_manager import AgentDefinition, AgentManager
 from app.services.engine_registry import EngineDefinition, EngineRegistry
 from app.services.hermes_delegation_bridge import (
     DelegationPlan, DelegationPlanError, HermesDelegationBridge,
+    parse_hermes_orchestration_output,
 )
+from app.services.hermes_delegation_outbox import HermesDelegationOutbox
 
 
 class FakeResponse:
@@ -117,3 +119,89 @@ def test_bridge_enforces_delegation_budget_before_writing():
     with pytest.raises(DelegationPlanError, match="budget_invalid"):
         bridge.submit(payload, user_id=str(uuid4()), parent_task_id=str(uuid4()), parent_run_id=str(uuid4()))
     assert client.calls == []
+
+
+
+def test_hermes_orchestration_envelope_is_opt_in_and_backward_compatible():
+    plain = "A normal Hermes answer containing JSON-like text: {}"
+    assert parse_hermes_orchestration_output(plain) == (plain, None)
+
+    encoded = (
+        "SULY_ORCHESTRATION_V1\\n"
+        + __import__("json").dumps({
+            "schema_version": 1,
+            "content": "I will delegate the coding work.",
+            "delegation_plan": plan(),
+        })
+    )
+    answer, delegation = parse_hermes_orchestration_output(encoded)
+    assert answer == "I will delegate the coding work."
+    assert delegation is not None
+    assert delegation["schema_version"] == 1
+    assert delegation["delegations"][0]["agent_id"] == "coding-agent"
+
+
+def test_malformed_marked_hermes_plan_fails_closed():
+    with pytest.raises(DelegationPlanError, match="orchestration_json_invalid"):
+        parse_hermes_orchestration_output("SULY_ORCHESTRATION_V1\\n{broken")
+    invalid = {
+        "schema_version": 1,
+        "content": "Answer",
+        "delegation_plan": {"schema_version": 1, "delegations": [{
+            **plan()["delegations"][0], "untrusted_command": "execute me"
+        }]},
+    }
+    with pytest.raises(DelegationPlanError, match="item_invalid"):
+        parse_hermes_orchestration_output(
+            "SULY_ORCHESTRATION_V1\\n" + __import__("json").dumps(invalid)
+        )
+
+
+class OutboxCall:
+    def __init__(self, client, name, params):
+        self.client, self.name, self.params = client, name, params
+
+    def execute(self):
+        self.client.calls.append((self.name, self.params))
+        if self.name == "claim_hermes_delegation_plan":
+            return FakeResponse([{
+                "plan_id": str(uuid4()),
+                "task_id": str(uuid4()),
+                "step_id": str(uuid4()),
+                "user_id": str(uuid4()),
+                "parent_run_id": str(uuid4()),
+                "payload": plan(),
+                "lease_token": str(uuid4()),
+            }])
+        if self.name == "create_engine_collaboration_handoff":
+            return FakeResponse(str(uuid4()))
+        if self.name == "complete_hermes_delegation_plan":
+            return FakeResponse(True)
+        return FakeResponse(False)
+
+
+class OutboxClient:
+    def __init__(self):
+        self.calls = []
+
+    def rpc(self, name, params):
+        return OutboxCall(self, name, params)
+
+
+def test_outbox_delivers_to_pending_handoff_then_checkpoints_submission():
+    client = OutboxClient()
+    bridge = HermesDelegationBridge(client=client, agent_manager=manager())
+    outbox = HermesDelegationOutbox(
+        client=client, bridge=bridge, worker_id="suly-worker-test"
+    )
+    assert outbox.process_once() == "submitted"
+    names = [name for name, _ in client.calls]
+    assert names == [
+        "claim_hermes_delegation_plan",
+        "create_engine_collaboration_handoff",
+        "complete_hermes_delegation_plan",
+    ]
+    handoff_params = client.calls[1][1]
+    assert handoff_params["p_max_child_tasks"] == 1
+    assert handoff_params["p_max_parallel_children"] == 1
+    assert client.calls[2][1]["p_result"]["handoffs"][0]["status"] == "pending_approval"
