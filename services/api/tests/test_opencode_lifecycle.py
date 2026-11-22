@@ -4,7 +4,7 @@ import pytest
 
 from app.services.opencode_event_consumer import iter_sse_data
 from app.services.opencode_approval_manager import OpenCodeApprovalManager
-from app.services.opencode_lifecycle_store import _safe_json
+from app.services.opencode_lifecycle_store import _TRANSITIONS, _safe_json
 
 
 def test_sse_parser_handles_multiline_data_and_crlf():
@@ -63,3 +63,7 @@ def test_approval_gateway_rejects_non_https_origin_and_path_traversal():
         OpenCodeApprovalManager._gateway_url(
             "https://runtime.example.test", f"/v1/runtime-gateway/{runtime_id}", "/../admin"
         )
+
+
+def test_applying_opencode_run_can_terminalize_as_cancelled():
+    assert "cancelled" in _TRANSITIONS["applying"]
