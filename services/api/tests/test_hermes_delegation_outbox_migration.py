@@ -166,3 +166,21 @@ def test_opencode_child_handoff_waits_for_owner_change_set_decision_and_rereview
     assert "'re_review_rejected'" in sql
     assert "review_decision = v_decision" in sql
     assert "after update of status on public.opencode_change_sets" in sql
+
+
+def test_parent_continuation_preserves_opencode_review_outcome_and_claim_barrier():
+    sql = re.sub(r"\s+", " ", _parent_child_continuation_migration())
+    assert "add column if not exists review_decision text" in sql
+    assert "'review_decision',h.review_decision" in sql
+    assert "waiting_children" in sql
+    assert "left(s.step_key,7) = 'resume_'" in sql
+
+
+def test_post_apply_review_waits_for_remaining_dag_steps_and_is_not_recursive():
+    sql = re.sub(r"\s+", " ", _opencode_post_apply_migration())
+    assert "t.status in ('completed','ready','running')" in sql
+    assert "v_dependencies" in sql
+    assert "s.status in ('pending','ready','running')" in sql
+    assert "v_source_step.input ? 'review_of_change_set_id'" in sql
+    assert "if v_parent.status = 'completed' then" in sql
+    assert "'review_of_change_set_id',new.id" in sql
