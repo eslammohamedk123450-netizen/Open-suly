@@ -23,6 +23,29 @@ from app.services.runtime_provisioner_http import HTTPSRuntimeLeaseProvider
 settings = get_settings()
 
 
+def _validate_production_settings(current) -> None:
+    """Fail closed before serving traffic when production secrets are incomplete."""
+    if current.app_env != "production":
+        return
+    required = {
+        "SUPABASE_URL": current.supabase_url,
+        "SUPABASE_PUBLISHABLE_KEY": current.supabase_publishable_key,
+        "SUPABASE_SECRET_KEY": current.supabase_secret_key,
+    }
+    missing = []
+    for name, value in required.items():
+        if value is None or (hasattr(value, "get_secret_value") and not value.get_secret_value()):
+            missing.append(name)
+    if missing:
+        raise RuntimeError("Missing required production settings: " + ", ".join(missing))
+    parsed = urlsplit(current.supabase_url)
+    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+        raise RuntimeError("Production SUPABASE_URL must be an HTTPS URL without embedded credentials")
+    if parsed.query or parsed.fragment:
+        raise RuntimeError("Production SUPABASE_URL must not contain a query or fragment")
+    if current.ai_provider not in {"disabled", "ollama", "openai-compatible"}:
+        raise RuntimeError("AI_PROVIDER is not supported")
+
 def _validated_cors_origins(origins: list[str], app_env: str) -> list[str]:
     """Accept only exact origins; wildcard and malformed origins fail closed."""
     if not isinstance(origins, list):
@@ -59,6 +82,20 @@ app = FastAPI(
 ) 
 
 cors_origins = _validated_cors_origins(settings.cors_allowed_origins, settings.app_env)
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    """Apply conservative browser security headers without trusting client input."""
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault("Cache-Control", "no-store")
+    response.headers["X-Request-ID"] = str(uuid4())
+    if settings.app_env == "production":
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+    return response
+
 if cors_origins:
     app.add_middleware(
         CORSMiddleware,
@@ -84,6 +121,7 @@ app.include_router(agent_memories_router)
 def configure_opencode_runtime() -> None:
     """Enable the isolated runtime broker only with a complete explicit configuration."""
     current = get_settings()
+    _validate_production_settings(current)
     app.state.runtime_broker = None
     app.state.runtime_provider = None
     # Both engines use the same trusted provisioner contract, but receive
