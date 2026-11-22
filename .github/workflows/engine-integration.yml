@@ -2,10 +2,12 @@ name: Engine integration verification
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, edited]
     branches: [main, fix/hermes-upstream-tool-approval-gateway]
     paths:
       - "services/api/**"
       - ".github/workflows/engine-integration.yml"
+  workflow_dispatch:
   push:
     branches: [feat/universal-engine-dispatcher]
     paths:
