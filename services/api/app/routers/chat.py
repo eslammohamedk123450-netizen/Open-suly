@@ -17,6 +17,7 @@ from app.services.ai_gateway import (
     AIProviderNotConfigured,
     AIProviderTimeout,
     generate_reply,
+    model_registry,
     provider_capabilities,
     selected_model_profile,
     stream_reply,
@@ -202,6 +203,7 @@ def get_chat_capabilities(
     return {
         "providers": provider_capabilities(),
         "selected_model": selected_model_profile(),
+        "models": model_registry(),
     }
 
 
