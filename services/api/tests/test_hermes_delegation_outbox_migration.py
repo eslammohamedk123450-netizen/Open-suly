@@ -69,3 +69,54 @@ def test_child_terminal_state_is_persisted_as_metadata_only_handoff_event():
     assert "jsonb_build_object('child_task_id',new.id,'child_status',new.status)" in sql
     assert "from public.task_steps" not in sql
     assert "revoke all on function public.record_engine_collaboration_child_terminal() from public,anon,authenticated" in sql
+
+
+def _parent_child_continuation_migration() -> str:
+    root = Path(__file__).resolve().parents[3]
+    return (root / "supabase" / "migrations" / "20261122070000_durable_parent_child_continuation.sql").read_text(encoding="utf-8")
+
+
+def test_parent_wait_state_and_approval_support_multiple_sibling_handoffs():
+    sql = re.sub(r"\s+", " ", _parent_child_continuation_migration())
+    assert "'waiting_children'" in sql
+    assert "v_task.status not in ('running','completed','waiting_children')" in sql
+    assert "v_parent.status not in ('running','completed','waiting_children')" in sql
+    assert "after insert on public.engine_collaboration_handoffs" in sql
+    assert "after insert on public.hermes_delegation_outbox" in sql
+    assert "set status = 'waiting_children'" in sql
+
+
+def test_parent_resumes_only_after_all_sibling_handoffs_and_outbox_rows_are_terminal():
+    sql = re.sub(r"\s+", " ", _parent_child_continuation_migration())
+    assert "maybe_queue_engine_parent_continuation" in sql
+    assert "o.status in ('pending','processing')" in sql
+    assert "h.status in ('pending_approval','approved','running')" in sql
+    assert "new.status in ('submitted','failed')" in sql
+    assert "new.status in ('completed','failed','cancelled','rejected')" in sql
+    assert "on conflict (task_id,step_key) do nothing" in sql
+    assert "v_step_key := 'resume_' || replace(p_parent_run_id::text,'-','')" in sql
+    assert "set status = 'ready'" in sql
+    assert "t.status = 'waiting_children'" in sql
+    assert "t.cancel_requested_at is null" in sql
+
+
+def test_parent_continuation_includes_bounded_owner_scoped_child_results_as_untrusted_context():
+    sql = re.sub(r"\s+", " ", _parent_child_continuation_migration())
+    assert "s.task_id = h.child_task_id" in sql
+    assert "s.user_id = p_user_id" in sql
+    assert "left(s.output::text,2200)" in sql
+    assert "left(v_outcomes::text,8000)" in sql
+    assert "<UNTRUSTED_CHILD_RESULTS>" in sql
+    assert "SULY_PARENT_CONTINUATION_V1" in sql
+    assert "runtime_budget_seconds" in sql
+    assert "continuation_of_run_id" in sql
+
+
+def test_parent_cancellation_and_duplicate_child_terminal_triggers_remain_single_writer():
+    sql = re.sub(r"\s+", " ", _parent_child_continuation_migration())
+    assert "drop trigger if exists tasks_sync_engine_collaboration_child on public.tasks" in sql
+    assert "drop trigger if exists tasks_record_engine_collaboration_child_terminal on public.tasks" in sql
+    assert "create trigger tasks_record_engine_collaboration_child_terminal" in sql
+    assert "where h.child_task_id = new.id" in sql
+    assert "h.status in ('approved','running')" in sql
+    assert "from public.engine_collaboration_events" in sql
