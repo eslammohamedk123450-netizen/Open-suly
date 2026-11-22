@@ -184,3 +184,23 @@ def test_post_apply_review_waits_for_remaining_dag_steps_and_is_not_recursive():
     assert "v_source_step.input ? 'review_of_change_set_id'" in sql
     assert "if v_parent.status = 'completed' then" in sql
     assert "'review_of_change_set_id',new.id" in sql
+
+
+def test_resume_claim_rechecks_late_handoff_race_and_does_not_consume_attempt():
+    sql = re.sub(r"\s+", " ", _parent_child_continuation_migration())
+    assert "collaboration_parent_run_already_resumed" in sql
+    assert "attempt_count=greatest(attempt_count-1,0)" in sql
+    assert "status='pending'" in sql
+    assert "left(v_step.step_key,7) <> 'resume_'" in sql
+    assert "o.parent_run_id::text = v_step.input->>'continuation_of_run_id'" in sql
+    assert "h.parent_run_id::text = v_step.input->>'continuation_of_run_id'" in sql
+
+
+def test_opencode_apply_is_blocked_after_child_or_parent_cancellation():
+    sql = re.sub(r"\s+", " ", _opencode_post_apply_migration())
+    assert "guard_opencode_change_set_apply_after_cancellation" in sql
+    assert "new.status not in ('applying','applied')" in sql
+    assert "v_task_status in ('cancel_requested','cancelled')" in sql
+    assert "h.status in ('cancelled','failed')" in sql
+    assert "raise exception 'opencode_task_cancelled'" in sql
+    assert "before update of status on public.opencode_change_sets" in sql
