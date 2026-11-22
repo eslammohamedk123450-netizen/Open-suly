@@ -1448,3 +1448,23 @@ def test_hermes_adapter_extracts_structured_plan_from_native_output(monkeypatch)
     assert result.output["content"] == payload["content"]
     assert result.output["delegation_plan"]["delegations"][0]["agent_id"] == "coding-agent"
     assert "SULY_ORCHESTRATION_V1" not in result.output["content"]
+
+
+def test_engine_prompts_are_bounded_by_utf8_bytes_without_broken_codepoints():
+    from app.worker_runtime import _bound_utf8_text
+
+    prompt = "مراجعة مشروع SULY " * 4000
+    bounded = _bound_utf8_text(prompt, 4096)
+    assert len(bounded.encode("utf-8")) <= 4096
+    assert "[... prompt truncated by SULY engine input limit ...]" in bounded
+    assert not bounded.endswith("\ufffd")
+
+
+def test_hermes_and_opencode_apply_engine_specific_utf8_prompt_budgets():
+    import inspect
+    import app.worker_runtime as runtime_module
+
+    hermes_source = inspect.getsource(runtime_module.hermes_agent_turn)
+    opencode_source = inspect.getsource(runtime_module.opencode_task_run)
+    assert "_bound_utf8_text(prompt, 28_000)" in hermes_source
+    assert "_bound_utf8_text(prompt, 44_000)" in opencode_source
