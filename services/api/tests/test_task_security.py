@@ -114,4 +114,4 @@ def test_cancel_update_is_conditioned_on_nonterminal_state(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["status"] == "completed"
-    assert ("in", "status", ["queued", "planning", "ready", "running", "waiting_approval"]) in admin.task_query.filters
+    assert ("in", "status", ["queued", "planning", "ready", "running", "waiting_approval", "waiting_children"]) in admin.task_query.filters
