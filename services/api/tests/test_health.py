@@ -88,3 +88,53 @@ def test_cors_origin_validation_accepts_exact_https_origins() -> None:
     assert _validated_cors_origins(
         ["https://app.example.com", "https://admin.example.com/"], "production"
     ) == ["https://app.example.com", "https://admin.example.com"]
+
+
+def test_production_configuration_fails_closed_when_supabase_secrets_missing() -> None:
+    import pytest
+    from types import SimpleNamespace
+    from app.main import _validate_production_settings
+
+    with pytest.raises(RuntimeError, match="SUPABASE_URL"):
+        _validate_production_settings(SimpleNamespace(
+            app_env="production", supabase_url=None,
+            supabase_publishable_key=None, supabase_secret_key=None,
+            ai_provider="disabled",
+        ))
+
+
+def test_production_configuration_requires_https_supabase_url() -> None:
+    import pytest
+    from types import SimpleNamespace
+    from pydantic import SecretStr
+    from app.main import _validate_production_settings
+
+    with pytest.raises(RuntimeError, match="HTTPS"):
+        _validate_production_settings(SimpleNamespace(
+            app_env="production", supabase_url="http://project.supabase.co",
+            supabase_publishable_key=SecretStr("public"),
+            supabase_secret_key=SecretStr("server-secret"), ai_provider="disabled",
+        ))
+
+
+def test_production_configuration_accepts_complete_https_configuration() -> None:
+    from types import SimpleNamespace
+    from pydantic import SecretStr
+    from app.main import _validate_production_settings
+
+    _validate_production_settings(SimpleNamespace(
+        app_env="production", supabase_url="https://project.supabase.co",
+        supabase_publishable_key=SecretStr("public"),
+        supabase_secret_key=SecretStr("server-secret"), ai_provider="disabled",
+    ))
+
+
+def test_health_responses_include_security_headers_and_fresh_request_id() -> None:
+    first = client.get("/health")
+    second = client.get("/health")
+    assert first.headers["x-content-type-options"] == "nosniff"
+    assert first.headers["x-frame-options"] == "DENY"
+    assert first.headers["referrer-policy"] == "no-referrer"
+    assert first.headers["cache-control"] == "no-store"
+    assert first.headers["x-request-id"]
+    assert first.headers["x-request-id"] != second.headers["x-request-id"]
