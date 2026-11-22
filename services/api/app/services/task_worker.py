@@ -260,11 +260,16 @@ class TaskWorker:
             if not stop_heartbeat() or lease_lost.is_set():
                 return "lease_lost"
             # Exception text may contain prompts, provider payloads, or secrets.
+            shutdown_requested = worker_stop_event is not None and worker_stop_event.is_set()
             try:
                 failure_result = self.fail(
                     step,
-                    "tool_execution_failed",
-                    "Step execution failed. Sensitive diagnostic details were not stored",
+                    "worker_shutdown" if shutdown_requested else "tool_execution_failed",
+                    (
+                        "Worker is shutting down; the task step will be retried safely."
+                        if shutdown_requested
+                        else "Step execution failed. Sensitive diagnostic details were not stored"
+                    ),
                 )
             except Exception:
                 # A failed failure-write must never be reported as durably recorded.
