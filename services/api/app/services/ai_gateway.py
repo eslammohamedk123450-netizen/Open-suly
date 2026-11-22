@@ -292,6 +292,7 @@ async def stream_reply(
 
     async def consume(session: httpx.AsyncClient):
         total_chars = 0
+        terminal_event_seen = False
         async with session.stream(
             "POST", url, headers=headers, json=payload,
             timeout=settings.ai_timeout_seconds,
@@ -308,6 +309,7 @@ async def stream_reply(
                         continue
                     encoded = line[5:].strip()
                     if encoded == "[DONE]":
+                        terminal_event_seen = True
                         break
                 try:
                     body = json.loads(encoded)
@@ -350,7 +352,10 @@ async def stream_reply(
                         raise AIProviderError("The AI provider response exceeded the supported limit.")
                     yield fragment
                 if is_ollama and body.get("done") is True:
+                    terminal_event_seen = True
                     break
+        if not terminal_event_seen:
+            raise AIProviderError("The AI provider stream ended before completion.")
 
     try:
         if client is not None:
