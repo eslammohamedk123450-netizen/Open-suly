@@ -1410,3 +1410,41 @@ def test_suly_memory_context_is_owner_scoped_bounded_and_untrusted(monkeypatch):
     assert "Use the existing project architecture." in rendered
     assert "<SULY_APPROVED_MEMORY>" in rendered
     assert "غير موثوقة" in rendered
+
+
+
+def test_hermes_adapter_extracts_structured_plan_from_native_output(monkeypatch):
+    import json
+    import app.worker_runtime as runtime_module
+    from app.services.engine_contract import EngineRequest
+
+    payload = {
+        "schema_version": 1,
+        "content": "I will ask the coding specialist to implement this.",
+        "delegation_plan": {
+            "schema_version": 1,
+            "delegations": [{
+                "agent_id": "coding-agent",
+                "capability": "code.edit",
+                "prompt": "Implement the requested change",
+                "idempotency_key": "native-hermes-plan-unique-001",
+            }],
+        },
+    }
+    raw = "SULY_ORCHESTRATION_V1\\n" + json.dumps(payload)
+    monkeypatch.setattr(runtime_module, "run_agent_turn", lambda *_args, **_kwargs: {
+        "engine": "hermes-agent", "content": raw,
+    })
+    adapter = runtime_module.HermesAgentAdapter(
+        idempotency_key="suly-run-unique-0001",
+        on_run_started=lambda _run_id: True,
+    )
+    result = adapter.execute(EngineRequest(
+        task_id="00000000-0000-0000-0000-000000000001",
+        capability="agent.general",
+        input_payload={"prompt": "Please implement this"},
+        timeout_seconds=30,
+    ))
+    assert result.output["content"] == payload["content"]
+    assert result.output["delegation_plan"]["delegations"][0]["agent_id"] == "coding-agent"
+    assert "SULY_ORCHESTRATION_V1" not in result.output["content"]
