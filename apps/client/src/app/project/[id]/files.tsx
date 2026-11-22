@@ -6,8 +6,8 @@ import { colors } from "@/theme/tokens";
 import { useAuth } from "@/providers/AuthProvider";
 import {
   listProjectFileHistory, listProjectFiles, readProjectFile,
-  restoreProjectFileRevision, saveProjectFile, previewProjectFile,
-  type ProjectFile, type ProjectFileRevision, type ProjectFileDiffPreview,
+  restoreProjectFileRevision, saveProjectFile, previewProjectFile, searchProjectFiles,
+  type ProjectFile, type ProjectFileRevision, type ProjectFileDiffPreview, type ProjectFileSearchResult,
 } from "@/lib/project-files";
 
 export default function ProjectFilesScreen() {
@@ -25,6 +25,23 @@ export default function ProjectFilesScreen() {
   const [previewing, setPreviewing] = useState(false);
   const [preview, setPreview] = useState<ProjectFileDiffPreview | null>(null);
   const [notice, setNotice] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<ProjectFileSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  const runSearch = async () => {
+    if (searching) return;
+    setSearching(true);
+    setNotice("");
+    try {
+      setSearchResults(await searchProjectFiles(id, searchQuery));
+    } catch (error) {
+      setSearchResults([]);
+      setNotice(error instanceof Error ? error.message : "تعذر البحث داخل الملفات.");
+    } finally {
+      setSearching(false);
+    }
+  };
 
   const loadHistory = async (path: string) => setHistory(await listProjectFileHistory(id, path));
 
@@ -135,6 +152,31 @@ export default function ProjectFilesScreen() {
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {loading ? <View style={styles.state}><ActivityIndicator color={colors.gold} /></View> : null}
           <View style={styles.section}>
+            <Text style={styles.sectionTitle}>بحث داخل ملفات المشروع</Text>
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onSubmitEditing={() => void runSearch()}
+              placeholder="ابحث عن دالة أو نص أو اسم..."
+              placeholderTextColor={colors.faint}
+              autoCapitalize="none"
+              style={styles.pathInput}
+              returnKeyType="search"
+            />
+            <Pressable style={[styles.secondary, searching && styles.disabled]} onPress={() => void runSearch()} disabled={searching || searchQuery.trim().length < 2}>
+              {searching ? <ActivityIndicator color={colors.gold} /> : <Text style={styles.secondaryText}>بحث في محتوى الملفات</Text>}
+            </Pressable>
+            {searchResults.map((result, index) => (
+              <Pressable key={result.path + ":" + index} style={styles.searchResult} onPress={() => void openFile(result.path)}>
+                <Text style={styles.filePath}>{result.path}</Text>
+                <Text selectable style={styles.searchSnippet}>{result.snippet}</Text>
+              </Pressable>
+            ))}
+            {searchQuery.trim().length >= 2 && searchResults.length === 0 && !searching
+              ? <Text style={styles.muted}>لا توجد نتائج مطابقة لآخر بحث.</Text>
+              : null}
+          </View>
+          <View style={styles.section}>
             <Text style={styles.sectionTitle}>ملفات مساحة العمل ({files.length}/200)</Text>
             {files.map((file) => (
               <Pressable key={file.id} style={[styles.fileRow, selected === file.path && styles.fileSelected]} onPress={() => void openFile(file.path)}>
@@ -209,6 +251,8 @@ const styles = StyleSheet.create({
   sectionTitle: { color: colors.text, fontSize: 13, fontWeight: "800", textAlign: "right" },
   fileRow: { minHeight: 42, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 10, borderRadius: 9, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border },
   fileSelected: { borderColor: colors.gold },
+  searchResult: { padding: 10, borderRadius: 9, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, gap: 7 },
+  searchSnippet: { color: colors.muted, fontSize: 10, lineHeight: 17, textAlign: "left" },
   filePath: { color: colors.text, fontSize: 11, textAlign: "left", flex: 1 },
   fileSize: { color: colors.faint, fontSize: 9, marginRight: 10 },
   revisionRow: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 10, borderRadius: 9, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border },
