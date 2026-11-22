@@ -168,7 +168,7 @@ class OpenCodeEngineAdapter:
             changes, task_run = result.get("changes", {}), result.get("task_run", {})
             change_set, session = result.get("change_set", {}), result.get("session", {})
             return EngineResult("opencode", {
-                "operation": "opencode.task.run", "engine_run_id": str(run_id),
+                "operation": "opencode.task.run", "engine": "opencode", "engine_run_id": str(run_id),
                 "opencode_run_id": task_run.get("id"),
                 "session_record_id": session.get("id"),
                 "change_set_id": change_set.get("id"),
