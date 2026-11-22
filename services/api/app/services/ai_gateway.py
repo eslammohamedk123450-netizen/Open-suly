@@ -7,6 +7,50 @@ import httpx
 from app.core.config import get_settings
 
 
+_PROVIDER_REGISTRY: dict[str, dict[str, Any]] = {
+    "openai-compatible": {
+        "protocol": "openai-chat-completions",
+        "streaming": True,
+        "token_usage": True,
+        "requires_api_key": True,
+        "supports_cancellation": True,
+    },
+    "ollama": {
+        "protocol": "ollama-chat",
+        "streaming": True,
+        "token_usage": True,
+        "requires_api_key": False,
+        "supports_cancellation": True,
+    },
+}
+
+
+def provider_capabilities(provider: str | None = None) -> dict[str, Any]:
+    """Return safe protocol capabilities without exposing provider credentials or URLs."""
+    if provider is not None:
+        capabilities = _PROVIDER_REGISTRY.get(provider)
+        return {"provider": provider, **capabilities} if capabilities else {"provider": provider, "supported": False}
+    return {
+        name: {"provider": name, "supported": True, **capabilities}
+        for name, capabilities in _PROVIDER_REGISTRY.items()
+    }
+
+
+def selected_model_profile() -> dict[str, Any]:
+    """Describe only the server-selected model; do not imply remote model discovery."""
+    settings = get_settings()
+    configured = bool(settings.ai_provider in _PROVIDER_REGISTRY and settings.ai_model)
+    capabilities = provider_capabilities(settings.ai_provider)
+    return {
+        "configured": configured,
+        "provider": settings.ai_provider if configured else None,
+        "model": settings.ai_model if configured else None,
+        "max_output_tokens": settings.ai_max_output_tokens if configured else None,
+        "capabilities": capabilities if configured else {},
+        "discovery": "server_configured_selection_only",
+    }
+
+
 class AIProviderNotConfigured(RuntimeError):
     """Raised when no deliberate AI provider configuration is present."""
 
