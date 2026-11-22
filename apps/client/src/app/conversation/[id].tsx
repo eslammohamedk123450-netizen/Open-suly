@@ -3,6 +3,7 @@ import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollVie
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { colors } from "@/theme/tokens";
+/** واجهة المحادثة تعرض بيانات usage التي أرسلها مزود الخدمة دون تقدير سعر أو خصم credits. */
 import { useAuth } from "@/providers/AuthProvider";
 import { listMessages, sendUserMessage, type ChatMessage } from "@/lib/conversations";
 import { requestAssistantReply } from "@/lib/chat-api";
@@ -98,7 +99,7 @@ export default function ConversationScreen() {
             return (
             <View key={message.id} style={message.role === "user" ? styles.userMessage : styles.assistantMessage}>
               <Text style={message.role === "user" ? styles.userText : styles.assistantText}>{message.content}</Text>
-              {!!usage && <Text style={styles.usage}>عدد الرموز · إدخال {usage.input_tokens.toLocaleString("ar-EG")} / إخراج {usage.output_tokens.toLocaleString("ar-EG")}</Text>}
+              {!!usage && <Text style={styles.usage}>عدد الرموز · إدخال {usage.input_tokens.toLocaleString("ar-EG")} / إخراج {usage.output_tokens.toLocaleString("ar-EG")} / الإجمالي {usage.total_tokens.toLocaleString("ar-EG")}</Text>}
               <Text style={styles.time}>{new Date(message.created_at).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" })}</Text>
             </View>
             );
