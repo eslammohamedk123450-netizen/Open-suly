@@ -68,3 +68,39 @@ def test_pinned_opencode_manifest_declares_its_native_limits_and_capabilities():
     assert opencode.max_timeout_seconds == 1800
     assert opencode.max_input_bytes == 48_000
     assert opencode.max_output_bytes == 16_000
+
+
+def test_worker_registry_accepts_a_new_reviewed_engine_without_builtin_changes(monkeypatch):
+    from types import SimpleNamespace
+    import app.worker_runtime as worker_runtime
+    from app.services.engine_catalog import EngineManifest
+
+    class BrowserAdapter:
+        def execute(self, request):
+            return EngineResult("browser-use", {"task_id": request.task_id, "ok": True})
+
+    monkeypatch.setattr(worker_runtime, "get_settings", lambda: SimpleNamespace(
+        worker_enabled=True, hermes_agent_enabled=False, opencode_enabled=False,
+    ))
+    manifest = EngineManifest(
+        engine_id="browser-use",
+        display_name="Browser Use",
+        repository="https://github.com/browser-use/browser-use",
+        revision="b" * 40,
+        license_id="MIT",
+        role="isolated browser automation",
+        capabilities=frozenset({"browser.navigate"}),
+    )
+    registry = worker_runtime.build_engine_registry(
+        idempotency_key="suly-browser-extension-test",
+        on_run_started=lambda _run_id: True,
+        additional_manifests=(manifest,),
+        additional_runtime_overrides={"browser-use": (True, BrowserAdapter())},
+    )
+
+    result = EngineDispatcher(registry).execute(EngineRequest(
+        task_id="task-browser-1", capability="browser.navigate",
+        input_payload={"url": "https://example.invalid"}, timeout_seconds=30,
+    ))
+    assert result.engine_id == "browser-use"
+    assert result.output["ok"] is True
