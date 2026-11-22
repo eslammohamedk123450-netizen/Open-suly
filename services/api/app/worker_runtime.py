@@ -997,20 +997,25 @@ def main() -> None:
                 },
                 runtime_broker=runtime_broker,
             )
-    WorkerRuntime(
-        worker,
-        poll_interval_seconds=settings.worker_poll_interval_seconds,
-        handler=lambda step: dispatch(step, approval_store),
-        cancel_aware_handler=lambda step, cancel_event: dispatch_cancel_aware(
-            step, cancel_event, approval_store, runtime_broker
-        ),
-        reconciler=reconciler,
-        reconcile_interval_seconds=settings.engine_reconciler_interval_seconds,
-        runtime_broker=runtime_broker,
-    ).run(stop)
-    if runtime_provider is not None:
-        runtime_provider.close()
-    logger.info("Worker stopped")
+    try:
+        WorkerRuntime(
+            worker,
+            poll_interval_seconds=settings.worker_poll_interval_seconds,
+            handler=lambda step: dispatch(
+                step, approval_store, runtime_broker=runtime_broker
+            ),
+            cancel_aware_handler=lambda step, cancel_event: dispatch_cancel_aware(
+                step, cancel_event, approval_store, runtime_broker
+            ),
+            reconciler=reconciler,
+            reconcile_interval_seconds=settings.engine_reconciler_interval_seconds,
+            runtime_broker=runtime_broker,
+        ).run(stop)
+    finally:
+        # Close the HTTP provider on every worker exit path, including shutdown errors.
+        if runtime_provider is not None:
+            runtime_provider.close()
+        logger.info("Worker stopped")
 
 
 if __name__ == "__main__":
