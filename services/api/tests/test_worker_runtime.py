@@ -1456,7 +1456,8 @@ def test_engine_prompts_are_bounded_by_utf8_bytes_without_broken_codepoints():
     prompt = "مراجعة مشروع SULY " * 4000
     bounded = _bound_utf8_text(prompt, 4096)
     assert len(bounded.encode("utf-8")) <= 4096
-    assert "[... prompt truncated by SULY engine input limit ...]" in bounded
+    assert "[... middle of prompt truncated by SULY engine input limit ...]" in bounded
+    assert bounded.endswith(prompt[-100:])
     assert not bounded.endswith("\ufffd")
 
 
