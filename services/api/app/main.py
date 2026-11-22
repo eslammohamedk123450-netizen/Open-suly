@@ -25,7 +25,7 @@ settings = get_settings()
 
 def _validate_production_settings(current) -> None:
     """Fail closed before serving traffic when production secrets are incomplete."""
-    if current.app_env != "production":
+    if getattr(current, "app_env", "development") != "production":
         return
     required = {
         "SUPABASE_URL": current.supabase_url,
@@ -43,7 +43,7 @@ def _validate_production_settings(current) -> None:
         raise RuntimeError("Production SUPABASE_URL must be an HTTPS URL without embedded credentials")
     if parsed.query or parsed.fragment:
         raise RuntimeError("Production SUPABASE_URL must not contain a query or fragment")
-    if current.ai_provider not in {"disabled", "ollama", "openai-compatible"}:
+    if getattr(current, "ai_provider", "disabled") not in {"disabled", "ollama", "openai-compatible"}:
         raise RuntimeError("AI_PROVIDER is not supported")
 
 def _validated_cors_origins(origins: list[str], app_env: str) -> list[str]:
