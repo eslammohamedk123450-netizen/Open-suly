@@ -180,18 +180,22 @@ def validate_egress_disabled(value: object | None = None) -> None:
 # networks. A normal internal bridge still has a host-side IP and can expose
 # host services bound to that bridge address to task containers.
 _TASK_NETWORK_OPTIONS = {
-    "com.docker.network.bridge.gateway_mode_ipv4": "isolated",
+    # Keep Docker's normal NAT port-publishing path for the trusted loopback
+    # gateway, but do not assign an IPv4 address to the host-side bridge.
+    "com.docker.network.bridge.inhibit_ipv4": "true",
     "com.docker.network.bridge.enable_icc": "false",
     "com.docker.network.bridge.enable_ip_masquerade": "false",
 }
 
 
 def _create_isolated_task_network(client: Any, *, name: str, labels: dict[str, str]):
-    """Create a per-attempt bridge with no host bridge address or peer traffic.
+    """Create a per-attempt internal bridge without a host IPv4 address.
 
-    Older Docker Engines reject the isolated gateway option; that error is
-    converted to a safe failure instead of silently downgrading to a normal
-    internal bridge.
+    Docker Engine 28+ supports inhibit_ipv4 for internal bridge networks. This
+    preserves the normal NAT port-publishing path used by the loopback-only
+    provisioner gateway while removing the host bridge address that task
+    containers could otherwise use to reach host services. Older Engines fail
+    closed instead of silently downgrading.
     """
     try:
         return client.networks.create(

@@ -77,12 +77,13 @@ def test_isolated_bridge_blocks_host_and_external_access_but_keeps_loopback_gate
         assert network.attrs.get("Internal") is True
         assert network.attrs.get("EnableIPv6") is False
         options = network.attrs.get("Options") or {}
-        assert options.get("com.docker.network.bridge.gateway_mode_ipv4") == "isolated"
+        assert options.get("com.docker.network.bridge.inhibit_ipv4") == "true"
         assert options.get("com.docker.network.bridge.enable_icc") == "false"
         assert options.get("com.docker.network.bridge.enable_ip_masquerade") == "false"
 
-        # A host-side bridge address is the path that makes ordinary internal
-        # bridge networks able to reach services listening on 0.0.0.0.
+        # An internal bridge normally receives a host-side IPv4 address. With
+        # inhibit_ipv4 enabled, that address must be absent while NAT-mode port
+        # publishing remains available for the trusted loopback gateway.
         bridge_name = options.get("com.docker.network.bridge.name") or f"br-{network.id[:12]}"
         bridge_addresses = subprocess.run(
             ["ip", "-o", "-4", "addr", "show", "dev", bridge_name],

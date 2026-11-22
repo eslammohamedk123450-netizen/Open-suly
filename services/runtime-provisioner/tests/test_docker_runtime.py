@@ -129,7 +129,7 @@ def test_network_has_no_outbound_egress_or_host_bridge_by_default(tmp_path):
     assert fake.networks.kwargs["internal"] is True
     assert fake.networks.kwargs["enable_ipv6"] is False
     assert fake.networks.kwargs["options"] == {
-        "com.docker.network.bridge.gateway_mode_ipv4": "isolated",
+        "com.docker.network.bridge.inhibit_ipv4": "true",
         "com.docker.network.bridge.enable_icc": "false",
         "com.docker.network.bridge.enable_ip_masquerade": "false",
     }
