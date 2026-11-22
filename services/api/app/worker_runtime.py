@@ -249,10 +249,13 @@ def _bound_utf8_text(value: str, max_bytes: int) -> str:
     encoded = value.encode("utf-8")
     if len(encoded) <= max_bytes:
         return value
-    marker = "\n[... prompt truncated by SULY engine input limit ...]"
-    marker_bytes = marker.encode("utf-8")
-    prefix = encoded[: max_bytes - len(marker_bytes)].decode("utf-8", errors="ignore").rstrip()
-    return prefix + marker
+    marker = "\n[... middle of prompt truncated by SULY engine input limit ...]\n"
+    content_budget = max_bytes - len(marker.encode("utf-8"))
+    prefix_budget = content_budget * 2 // 5
+    suffix_budget = content_budget - prefix_budget
+    prefix = encoded[:prefix_budget].decode("utf-8", errors="ignore").rstrip()
+    suffix = encoded[-suffix_budget:].decode("utf-8", errors="ignore").lstrip()
+    return prefix + marker + suffix
 
 
 def _hermes_prompt_with_conversation_context(step: ClaimedStep, prompt: str) -> str:
