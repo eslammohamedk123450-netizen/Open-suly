@@ -158,3 +158,117 @@ async def generate_reply(
         raise AIProviderError(f"The AI provider returned HTTP {status_code}.") from exc
     except httpx.RequestError as exc:
         raise AIProviderError("The AI provider could not be reached.") from exc
+
+
+
+async def stream_reply(
+    messages: list[dict[str, str]],
+    *,
+    client: httpx.AsyncClient | None = None,
+):
+    """Yield bounded text deltas from OpenAI-compatible SSE or Ollama NDJSON.
+
+    Streaming deliberately has no automatic retry: once bytes have reached the
+    caller, retrying could duplicate or reorder visible output. The caller owns
+    persistence of the assembled final response.
+    """
+    settings = get_settings()
+    provider = settings.ai_provider
+    if (
+        provider not in {"openai-compatible", "ollama"}
+        or not settings.ai_base_url
+        or not settings.ai_model
+        or (provider == "openai-compatible" and not settings.ai_api_key)
+    ):
+        raise AIProviderNotConfigured("No AI provider is configured.")
+
+    _validate_messages(messages)
+    is_ollama = provider == "ollama"
+    url = (
+        f"{settings.ai_base_url.rstrip('/')}/api/chat"
+        if is_ollama
+        else f"{settings.ai_base_url.rstrip('/')}/chat/completions"
+    )
+    payload: dict[str, Any] = (
+        {
+            "model": settings.ai_model,
+            "messages": messages,
+            "stream": True,
+            "options": {"temperature": 0.3, "num_predict": settings.ai_max_output_tokens},
+        }
+        if is_ollama
+        else {
+            "model": settings.ai_model,
+            "messages": messages,
+            "temperature": 0.3,
+            "max_tokens": settings.ai_max_output_tokens,
+            "stream": True,
+        }
+    )
+    headers = {"Content-Type": "application/json"}
+    if not is_ollama and settings.ai_api_key:
+        headers["Authorization"] = f"Bearer {settings.ai_api_key.get_secret_value()}"
+
+    async def consume(session: httpx.AsyncClient):
+        total_chars = 0
+        async with session.stream(
+            "POST", url, headers=headers, json=payload,
+            timeout=settings.ai_timeout_seconds,
+        ) as response:
+            response.raise_for_status()
+            async for raw_line in response.aiter_lines():
+                line = raw_line.strip()
+                if not line:
+                    continue
+                if is_ollama:
+                    encoded = line
+                else:
+                    if not line.startswith("data:"):
+                        continue
+                    encoded = line[5:].strip()
+                    if encoded == "[DONE]":
+                        break
+                try:
+                    body = __import__("json").loads(encoded)
+                except (ValueError, TypeError) as exc:
+                    raise AIProviderError("The AI provider returned an invalid stream event.") from exc
+
+                if is_ollama:
+                    fragment = (body.get("message") or {}).get("content", "")
+                else:
+                    choices = body.get("choices")
+                    fragment = ""
+                    if isinstance(choices, list) and choices:
+                        delta = (choices[0] or {}).get("delta") or {}
+                        fragment = delta.get("content", "")
+                        if isinstance(fragment, list):
+                            fragment = "".join(
+                                part.get("text", "") for part in fragment
+                                if isinstance(part, dict) and part.get("type") == "text"
+                            )
+                if fragment:
+                    if not isinstance(fragment, str):
+                        raise AIProviderError("The AI provider returned an invalid stream fragment.")
+                    total_chars += len(fragment)
+                    if total_chars > _MAX_REPLY_CHARS:
+                        raise AIProviderError("The AI provider response exceeded the supported limit.")
+                    yield fragment
+                if is_ollama and body.get("done") is True:
+                    break
+
+    try:
+        if client is not None:
+            async for fragment in consume(client):
+                yield fragment
+        else:
+            async with httpx.AsyncClient(timeout=settings.ai_timeout_seconds) as session:
+                async for fragment in consume(session):
+                    yield fragment
+    except httpx.TimeoutException as exc:
+        raise AIProviderTimeout("The AI provider timed out.") from exc
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 429:
+            raise AIProviderError("The AI provider is rate-limiting requests. Try again shortly.") from exc
+        raise AIProviderError(f"The AI provider returned HTTP {exc.response.status_code}.") from exc
+    except httpx.RequestError as exc:
+        raise AIProviderError("The AI provider could not be reached.") from exc
