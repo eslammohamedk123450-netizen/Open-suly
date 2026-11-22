@@ -65,6 +65,12 @@ then creates durable handoffs in `pending_approval`; the outbox does not start
 the specialist runtime. The existing owner-approval RPC remains the only path
 that creates an executable child task.
 
+Parent cancellation now terminalizes outstanding collaboration handoffs, records
+metadata-only cancellation events, and requests cancellation of already-approved
+child tasks. Child task completion, failure, and cancellation are also reflected
+as durable handoff terminal events; the actual child result remains in its
+owner-scoped task-step checkpoint rather than being copied into event metadata.
+
 The following lifecycle remains open: suspend the parent while approved child
 tasks run, return the child result to Hermes, resume the parent after child
 completion, and cover those transitions with crash/recovery integration tests.
