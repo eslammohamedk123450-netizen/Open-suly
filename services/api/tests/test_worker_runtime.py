@@ -470,6 +470,7 @@ def test_hermes_agent_task_calls_bridge_only_after_approval(monkeypatch):
         "operation": "hermes.agent.turn",
         "engine": "hermes-agent",
         "content": "processed: safe task",
+        "handoff_context": "processed: safe task",
     }
 
 
@@ -528,6 +529,7 @@ def test_hermes_operation_routes_through_registry_after_approval(monkeypatch):
         "operation": "hermes.agent.turn",
         "engine": "hermes-agent",
         "content": "processed: safe task",
+        "handoff_context": "processed: safe task",
     }
 
 
@@ -936,6 +938,10 @@ def test_hermes_agent_turn_persists_metadata_events_and_never_logs_payload(monke
     callbacks = {}
 
     class Registry:
+        def candidates(self, capability):
+            from types import SimpleNamespace
+            return [SimpleNamespace(engine_id="hermes-agent")] if capability == "agent.general" else []
+
         def execute(self, _engine_id, _request):
             from app.services.hermes_agent import _safe_run_event
             safe_event = _safe_run_event({
@@ -998,6 +1004,10 @@ def test_hermes_agent_turn_logs_only_metadata_when_event_persistence_fails(monke
     callbacks = {}
 
     class Registry:
+        def candidates(self, capability):
+            from types import SimpleNamespace
+            return [SimpleNamespace(engine_id="hermes-agent")] if capability == "agent.general" else []
+
         def execute(self, _engine_id, _request):
             callbacks["on_event"]({"event": "approval.request", "seq": 8})
             return EngineResult(engine_id="hermes-agent", output={
@@ -1148,6 +1158,7 @@ def test_opencode_worker_handler_returns_review_ids_and_finishes_engine_run(monk
     ))
     assert result == {
         "operation": "opencode.task.run",
+        "engine": "opencode",
         "engine_run_id": str(engine_run_id),
         "opencode_run_id": "opencode-run",
         "session_record_id": "session-record",
@@ -1247,6 +1258,10 @@ def test_hermes_terminal_approval_callback_uses_suly_gateway(monkeypatch):
             return True
 
     class Registry:
+        def candidates(self, capability):
+            from types import SimpleNamespace
+            return [SimpleNamespace(engine_id="hermes-agent")] if capability == "agent.general" else []
+
         def execute(self, _engine_id, _request):
             callbacks["event"]({
                 "event": "approval.request",
