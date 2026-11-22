@@ -9,6 +9,7 @@ from dataclasses import dataclass
 import json
 import re
 from threading import Event, Thread
+from time import monotonic
 from typing import Any, Callable
 from uuid import UUID
 
@@ -204,16 +205,24 @@ class TaskWorker:
         cancel_event = Event()
 
         def maintain_lease() -> None:
-            while not heartbeat_stop.wait(self.heartbeat_interval_seconds):
-                # إيقاف الخدمة يطلب إيقافًا تعاونيًا للمحرك، لكنه لا يعني فقدان lease.
+            next_renewal = monotonic() + self.heartbeat_interval_seconds
+            while not heartbeat_stop.is_set():
+                # Poll the shutdown signal more frequently than the lease heartbeat
+                # so long-running engines receive a prompt cooperative cancellation.
                 if worker_stop_event is not None and worker_stop_event.is_set():
                     cancel_event.set()
                     return
+                remaining = max(0.0, next_renewal - monotonic())
+                if heartbeat_stop.wait(min(0.25, remaining)):
+                    return
+                if monotonic() < next_renewal:
+                    continue
                 try:
                     if not self.renew(step):
                         lease_lost.set()
                         cancel_event.set()
                         return
+                    next_renewal = monotonic() + self.heartbeat_interval_seconds
                 except Exception:
                     # Failed heartbeat means ownership can no longer be proven.
                     lease_lost.set()
