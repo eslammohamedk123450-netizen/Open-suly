@@ -23,7 +23,7 @@ class EngineDispatcher:
     """Resolve an engine by capability and planner preference, failing closed."""
 
     def __init__(self, registry: EngineRegistry) -> None:
-        if not isinstance(registry, EngineRegistry):
+        if not callable(getattr(registry, "candidates", None)) or not callable(getattr(registry, "execute", None)):
             raise TypeError("engine_registry_required")
         self._registry = registry
 
