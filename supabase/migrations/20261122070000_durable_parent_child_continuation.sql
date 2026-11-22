@@ -247,11 +247,29 @@ declare
   v_parallel_budget smallint;
   v_seq bigint;
 begin
+  -- Use one lock order everywhere: parent task -> child task -> handoff.
+  -- First read the parent identity without locking the handoff; cancellation
+  -- holds the parent before it touches children or handoffs.
+  select * into v_handoff
+    from public.engine_collaboration_handoffs
+   where id = p_handoff_id and user_id = p_user_id;
+  if not found then
+    raise exception 'collaboration_handoff_not_found' using errcode = 'P0002';
+  end if;
+
+  select * into v_parent
+    from public.tasks
+   where id = v_handoff.parent_task_id and user_id = p_user_id
+   for update;
+  if not found then
+    raise exception 'collaboration_parent_task_not_available' using errcode = '55000';
+  end if;
+
   select * into v_handoff
     from public.engine_collaboration_handoffs
    where id = p_handoff_id and user_id = p_user_id
    for update;
-  if not found then
+  if not found or v_handoff.parent_task_id <> v_parent.id then
     raise exception 'collaboration_handoff_not_found' using errcode = 'P0002';
   end if;
   if v_handoff.status <> 'pending_approval' then
@@ -268,11 +286,7 @@ begin
     raise exception 'collaboration_target_engine_unavailable' using errcode = '55000';
   end if;
 
-  select * into v_parent
-    from public.tasks
-   where id = v_handoff.parent_task_id and user_id = p_user_id
-   for update;
-  if not found or v_parent.status not in ('running','completed','waiting_children') or v_parent.cancel_requested_at is not null then
+  if v_parent.status not in ('running','completed','waiting_children') or v_parent.cancel_requested_at is not null then
     raise exception 'collaboration_parent_task_not_available' using errcode = '55000';
   end if;
 
