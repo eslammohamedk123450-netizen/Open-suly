@@ -381,9 +381,17 @@ def test_hermes_prompt_context_is_bounded_by_current_request_size(monkeypatch):
 def test_hermes_project_workspace_is_materialized_in_its_task_runtime(monkeypatch):
     import hashlib
     import app.worker_runtime as runtime_module
-    monkeypatch.setattr(runtime_module, "_hermes_approved_skills", lambda _step: [])
     from types import SimpleNamespace
     from app.services.tool_registry import ToolExecutionContext
+
+    skill_body = "Review code changes for correctness and security."
+    approved_skill = {
+        "name": "suly-code-review", "content_utf8": skill_body,
+        "sha256": hashlib.sha256(skill_body.encode("utf-8")).hexdigest(),
+        "content_bytes": len(skill_body.encode("utf-8")),
+    }
+    monkeypatch.setattr(runtime_module, "_hermes_approved_skills", lambda _step: [approved_skill])
+    captured_prompt = {}
 
     class Query:
         def __init__(self, table): self.table_name = table
@@ -421,14 +429,18 @@ def test_hermes_project_workspace_is_materialized_in_its_task_runtime(monkeypatc
         hermes_agent_enabled=True,
         hermes_agent_timeout_seconds=90.0,
     ))
-    monkeypatch.setattr(runtime_module, "run_agent_turn", lambda *_args, **_kwargs: {
-        "engine": "hermes-agent", "content": "project inspected",
-    })
+    def fake_run_agent_turn(prompt, **_kwargs):
+        captured_prompt["value"] = prompt
+        return {"engine": "hermes-agent", "content": "project inspected"}
+    monkeypatch.setattr(runtime_module, "run_agent_turn", fake_run_agent_turn)
     result = runtime_module.hermes_agent_turn(
         make_step({"operation": "hermes.agent.turn", "prompt": "Inspect this project"}),
         ToolExecutionContext(engine_run_store=store, runtime_broker=broker),
     )
     assert result["content"] == "project inspected"
+    assert broker.acquired_skills == [[approved_skill]]
+    assert skill_body in captured_prompt["value"]
+    assert "<SULY_APPROVED_SKILLS>" in captured_prompt["value"]
     assert broker.acquired_files == [[{
         "path": "README.md",
         "content": "# SULY Project",
@@ -1310,3 +1322,35 @@ def test_hermes_terminal_approval_callback_uses_suly_gateway(monkeypatch):
     assert len(approval_responses) == 1
     assert approval_responses[0]["choice"] == "once"
     assert approval_responses[0]["request_id"] == "approval_req_123456"
+
+
+def test_suly_memory_context_is_owner_scoped_bounded_and_untrusted(monkeypatch):
+    import app.worker_runtime as runtime_module
+
+    step = make_step({"operation": "hermes.agent.turn", "prompt": "continue the project"})
+    calls = []
+
+    class MemoryStore:
+        def context_for_task(self, **kwargs):
+            calls.append(kwargs)
+            return [{
+                "scope": "project", "memory_key": "build-plan",
+                "content": "Use the existing project architecture.",
+            }]
+
+    monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(agent_memory_enabled=True))
+    monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: object())
+    rendered = runtime_module._suly_user_memory_context(
+        step, "continue the project",
+        task_scope={"project_id": "00000000-0000-0000-0000-000000000066", "conversation_id": None},
+        store=MemoryStore(),
+    )
+    assert calls == [{
+        "user_id": str(step.user_id),
+        "project_id": "00000000-0000-0000-0000-000000000066",
+        "conversation_id": None,
+        "max_bytes": 16 * 1024,
+    }]
+    assert "Use the existing project architecture." in rendered
+    assert "<SULY_APPROVED_MEMORY>" in rendered
+    assert "غير موثوقة" in rendered
