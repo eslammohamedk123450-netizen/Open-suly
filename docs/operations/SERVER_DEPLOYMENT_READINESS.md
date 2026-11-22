@@ -113,9 +113,15 @@ external execution disabled until then.
 
 ## Operational notes
 
-- `/health` is a liveness endpoint only.
+- `/health` is a liveness endpoint only and is also used by the Docker image `HEALTHCHECK`.
 - `/ready` checks required Supabase configuration; it does not perform a live
-  database query and is not proof of database availability.
+  database query and is not proof of database availability. Production startup
+  additionally fails closed unless the Supabase URL is HTTPS and both server-side
+  publishable and secret keys are present.
+- API responses include request IDs and conservative browser security headers;
+  HSTS is emitted only in production. The container uses a non-root UID, read-only
+  root filesystem, dropped Linux capabilities, bounded concurrency, and graceful
+  SIGTERM shutdown. Compose caps CPU, memory, process count, and JSON log rotation.
 - API rate limits are per process. Enforce global limits at the ingress.
 - Render's current free web-service template is a lightweight API preview only:
   it sleeps when idle and does not deploy the durable worker or isolated runtime
