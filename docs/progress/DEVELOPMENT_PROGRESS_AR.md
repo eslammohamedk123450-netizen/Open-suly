@@ -789,3 +789,10 @@ undefined
 - لم تُطبق migrations، ولم يُشغّل Docker أو Worker أو Engine أو Provider، ولم يحدث deploy أو تعديل Production. لم تتغير upstream revisions أو تراخيصها أو dependencies.
 - المتبقي: تشغيل CI، ثم اختبار runtime storage على volume تجريبي فعلي؛ وبعده استكمال host firewall/egress gateway وSSRF isolation. هذه الدفعة تحسن خصوصية ملفات المضيف لكنها لا تثبت عزل الحاويات عن المضيف أو الشبكة.
 
+### متابعة CI وتوسعة فحص صورة Provisioner — 2026-11-22
+
+- على commit `79ab8483d5fd095c1021c001371b9ca35d22918a`: Runtime Provisioner CI run `45015847028` نجح، **71 passed, 5 warnings**؛ compile وpytest اكتملتا. Repository baseline run `45015847002` نجح. Platform CI run `45015847068` نجح (API tests، client typecheck، Expo compatibility، Web export).
+- Engine integration/runtime primitives run `45015847057`: اختبارات Provisioner نجحت؛ التحقق من upstream pins نجح، تثبيت Bun وTypecheck نجحا، وبناء OpenCode image كان جاريًا وقت التحديث.
+- Workflow قديم `engine-runtime-build.yml` run `45015845696` فشل دون أن يعيد GitHub أي jobs؛ لا توجد logs أو سبب مؤكد، لذلك لا يُسجل كنجاح. حالة Railway `strong-gentleness - suly-api` خارجية وفاشلة؛ لم يتم deploy أو محاولة إصلاحها.
+- أضيف إلى Runtime Provisioner CI بناء صورة provisioner محليًا دون push أو نشر، حتى يفحص Dockerfile الجديد وصلاحيات مجلدات التخزين بدل الاكتفاء باختبارات fake Docker. نتيجة هذا البناء تنتظر CI التالي.
+

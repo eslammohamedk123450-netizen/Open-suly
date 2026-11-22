@@ -43,6 +43,10 @@ jobs:
           PYTHONPATH: .
         run: python -m pytest -q tests
 
+      - name: Build runtime provisioner image without publishing
+        working-directory: services/runtime-provisioner
+        run: docker build --pull=false -t suly-runtime-provisioner:ci .
+
       - name: Report integration boundary
         run: |
           echo "Provisioner tests use fake Docker clients; they do not prove real host, firewall, TLS, image startup, or provider egress isolation."
