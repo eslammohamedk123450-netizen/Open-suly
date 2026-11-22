@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.services.agent_manager import AgentManager
 from app.services.hermes_delegation_bridge import HermesDelegationBridge
 
 
@@ -107,3 +106,38 @@ class HermesDelegationOutbox:
                 "p_error_code": error_code,
             },
         ).execute()
+
+
+
+def build_delegation_agent_manager() -> AgentManager:
+    """Build a routing-only allow-list; adapters are never executed by this registry."""
+    from app.core.config import get_settings
+    from app.services.agent_catalog import build_agent_manager
+    from app.services.engine_catalog import ENGINE_MANIFESTS
+    from app.services.engine_registry import EngineDefinition, EngineRegistry
+
+    settings = get_settings()
+    runtime_ready = bool(
+        settings.worker_enabled
+        and settings.opencode_enabled
+        and settings.runtime_provisioner_url
+        and settings.runtime_provisioner_token
+        and settings.runtime_provisioner_allowed_origins
+    )
+    definitions = [
+        EngineDefinition(
+            engine_id=manifest.engine_id,
+            display_name=manifest.display_name,
+            capabilities=manifest.capabilities,
+            enabled=runtime_ready and manifest.engine_id == "opencode",
+            requires_approval=True,
+            max_input_bytes=manifest.max_input_bytes,
+            max_output_bytes=manifest.max_output_bytes,
+            max_timeout_seconds=manifest.max_timeout_seconds,
+        )
+        for manifest in ENGINE_MANIFESTS
+    ]
+    # This registry only selects a target. The database catalog and approval
+    # RPC re-check collaboration eligibility; a separate task runtime adapter
+    # is created only after the owner approves the handoff.
+    return build_agent_manager(EngineRegistry(definitions))
