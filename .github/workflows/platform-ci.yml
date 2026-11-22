@@ -55,3 +55,7 @@ jobs:
       - name: Run API tests
         working-directory: services/api
         run: python -m pytest -q
+
+      - name: Build dedicated worker image without publishing
+        working-directory: services/api
+        run: docker build --file Dockerfile.worker --tag suly-worker:ci .
