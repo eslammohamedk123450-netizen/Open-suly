@@ -204,3 +204,11 @@ def test_opencode_apply_is_blocked_after_child_or_parent_cancellation():
     assert "h.status in ('cancelled','failed')" in sql
     assert "raise exception 'opencode_task_cancelled'" in sql
     assert "before update of status on public.opencode_change_sets" in sql
+
+
+def test_continuation_prompts_are_utf8_byte_bounded_for_engine_input_contracts():
+    parent = re.sub(r"\s+", " ", _parent_child_continuation_migration())
+    opencode = re.sub(r"\s+", " ", _opencode_post_apply_migration())
+    assert "octet_length(v_prompt) > 30000" in parent
+    assert "octet_length(v_prompt) > 44000" in opencode
+    assert "collaboration_parent_run_already_resumed" in parent
