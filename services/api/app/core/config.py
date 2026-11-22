@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     log_level: str = "INFO"
+    # Exact browser origins allowed to call the API; empty means same-origin only.
+    cors_allowed_origins: list[str] = Field(default_factory=list)
 
     # Supabase client credentials. Secret keys are server-only.
     supabase_url: str | None = None
