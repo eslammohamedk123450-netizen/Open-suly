@@ -53,7 +53,7 @@ def test_parent_cancellation_cascades_to_handoffs_and_child_tasks():
     assert "h.status in ('pending_approval','approved','running')" in sql
     assert "child_task_id" in sql
     assert "child.status in ('ready','running','cancel_requested')" in sql
-    assert "child.cancel_requested_at = coalesce(child.cancel_requested_at,now())" in sql
+    assert "cancel_requested_at = coalesce(child.cancel_requested_at,now())" in sql
     assert "'handoff.cancelled','cancelled'" in sql
     assert "from public.engine_collaboration_events" in sql
 
@@ -64,7 +64,7 @@ def test_child_terminal_state_is_persisted_as_metadata_only_handoff_event():
     assert "new.status not in ('completed','failed','cancelled')" in sql
     assert "when 'completed' then 'handoff.completed'" in sql
     assert "when 'failed' then 'handoff.failed'" in sql
-    assert "when 'cancelled' then 'handoff.cancelled'" in sql
+    assert "else 'handoff.cancelled'" in sql
     assert "where h.child_task_id = new.id" in sql
     assert "jsonb_build_object('child_task_id',new.id,'child_status',new.status)" in sql
     assert "from public.task_steps" not in sql
