@@ -56,6 +56,8 @@ def test_parent_cancellation_cascades_to_handoffs_and_child_tasks():
     assert "cancel_requested_at = coalesce(child.cancel_requested_at,now())" in sql
     assert "'handoff.cancelled','cancelled'" in sql
     assert "from public.engine_collaboration_events" in sql
+    assert "parent -> child task -> handoff" in sql
+    assert sql.index("update public.tasks child") < sql.index("update public.engine_collaboration_handoffs h")
 
 
 def test_child_terminal_state_is_persisted_as_metadata_only_handoff_event():
