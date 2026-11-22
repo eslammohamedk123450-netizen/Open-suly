@@ -121,7 +121,7 @@ begin
      or (p_input_payload - array['prompt','title']) <> '{}'::jsonb
      or jsonb_typeof(p_input_payload->'prompt') <> 'string'
      or char_length(btrim(p_input_payload->>'prompt')) not between 1 and 20000
-     or octet_length(p_input_payload::text) > p_max_input_bytes
+     or octet_length(p_input_payload::text) > least(p_max_input_bytes,v_target_catalog.max_input_bytes)
      or octet_length(p_input_payload::text) > 64000 then
     raise exception 'collaboration_payload_invalid' using errcode = '22023';
   end if;
@@ -325,6 +325,16 @@ begin
   if not found or jsonb_typeof(v_source_step.output) <> 'object' then
     raise exception 'collaboration_source_output_not_available' using errcode = '55000';
   end if;
+  select * into v_source_catalog
+    from public.engine_runtime_catalog c
+   where c.engine_id = v_handoff.source_engine
+     and c.enabled and c.collaboration_enabled;
+  if not found
+     or v_source_step.output->>'engine' is distinct from v_handoff.source_engine
+     or v_source_step.output->>'operation' is distinct from v_source_catalog.task_operation then
+    raise exception 'collaboration_source_output_invalid' using errcode = '55000';
+  end if;
+
   if v_handoff.source_engine = 'hermes-agent' then
     if v_source_step.output->>'operation' <> 'hermes.agent.turn'
        or v_source_step.output->>'engine' <> 'hermes-agent'
