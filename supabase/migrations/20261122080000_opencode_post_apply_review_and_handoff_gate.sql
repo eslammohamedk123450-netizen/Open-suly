@@ -16,7 +16,7 @@ declare
   v_step_order integer;
   v_prompt text;
 begin
-  if new.status is distinct from old.status or new.status <> 'applied' then
+  if new.status is not distinct from old.status or new.status <> 'applied' then
     return new;
   end if;
 
