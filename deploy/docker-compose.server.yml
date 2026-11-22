@@ -32,6 +32,8 @@ services:
       - ALL
 
   worker:
+    # Opt-in so a routine `compose up -d` cannot start task execution before migrations/acceptance.
+    profiles: ["workers"]
     image: suly-api:local
     env_file:
       - ../.env
