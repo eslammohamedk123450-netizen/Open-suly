@@ -175,6 +175,16 @@ def _db() -> sqlite3.Connection:
     if "runtime_profile" not in columns:
         db.execute("ALTER TABLE runtimes ADD COLUMN runtime_profile TEXT")
     db.execute("CREATE INDEX IF NOT EXISTS idx_runtime_expiry ON runtimes(expires_at)")
+    # A task attempt may own at most one runtime. The unique index also closes
+    # concurrent create races across multiple provisioner processes.
+    try:
+        db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_runtime_task_attempt "
+            "ON runtimes(task_id,engine_run_id)"
+        )
+    except sqlite3.IntegrityError as exc:
+        db.close()
+        raise RuntimeErrorSafe("runtime_task_attempt_duplicate_records") from exc
     return db
 
 
@@ -360,6 +370,15 @@ async def create_runtime(request: Request, authorization: str | None = Header(de
         raise HTTPException(422, "runtime_profile_required")
     if body.engine_id == "opencode" and body.runtime_profile is not None:
         raise HTTPException(422, "runtime_profile_not_applicable")
+    # Reject retries before allocating Docker resources. The unique SQLite
+    # index below remains the cross-process race guard at registration time.
+    with _db() as db:
+        existing_attempt = db.execute(
+            "SELECT 1 FROM runtimes WHERE task_id=? AND engine_run_id=? LIMIT 1",
+            (task_id, run_id),
+        ).fetchone()
+    if existing_attempt is not None:
+        raise HTTPException(409, "runtime_attempt_already_exists")
     total_skill_bytes = 0
     for skill in body.skills:
         encoded = skill.content_utf8.encode("utf-8")
@@ -385,8 +404,8 @@ async def create_runtime(request: Request, authorization: str | None = Header(de
             access_token_factory=_derive_runtime_access_token,
         )
     except RuntimeErrorSafe as exc:
-        if str(exc) == "runtime_network_isolation_unavailable":
-            raise HTTPException(503, "runtime_network_isolation_unavailable") from exc
+        if str(exc) in {"runtime_network_isolation_unavailable", "runtime_gateway_unavailable"}:
+            raise HTTPException(503, str(exc)) from exc
         raise HTTPException(422, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
@@ -405,7 +424,14 @@ async def create_runtime(request: Request, authorization: str | None = Header(de
                  json.dumps({item.path: item.sha256 or hashlib.sha256(item.content.encode()).hexdigest() for item in body.files}, separators=(",", ":"))),
             )
     except Exception as exc:
-        manager.destroy(runtime_id=result["runtime_id"], task_id=task_id, engine_run_id=run_id)
+        # Registration can lose a cross-process unique-index race after Docker
+        # has created the runtime. Always attempt exact-owner teardown first.
+        try:
+            manager.destroy(runtime_id=result["runtime_id"], task_id=task_id, engine_run_id=run_id)
+        except Exception:
+            logger.exception("runtime_registration_cleanup_failed")
+        if isinstance(exc, sqlite3.IntegrityError):
+            raise HTTPException(409, "runtime_attempt_already_exists") from exc
         if isinstance(exc, RuntimeErrorSafe):
             raise HTTPException(503, f"{body.engine_id}_startup_failed") from exc
         raise HTTPException(503, "runtime_registration_failed") from exc

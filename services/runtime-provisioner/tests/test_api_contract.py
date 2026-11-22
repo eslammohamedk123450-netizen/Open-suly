@@ -596,3 +596,121 @@ def test_runtime_image_base_and_context_are_immutable_and_minimal():
 
     dockerignore = Path(".dockerignore").read_text(encoding="utf-8").splitlines()
     assert dockerignore == ["**", "!Dockerfile", "!requirements.txt", "!app/", "!app/*.py"]
+
+
+
+def test_create_returns_unavailable_when_isolated_task_network_has_no_gateway(tmp_path, monkeypatch):
+    import pytest
+    from app.docker_runtime import RuntimeErrorSafe
+
+    database = tmp_path / "runtime-gateway-unavailable.sqlite3"
+    monkeypatch.setattr(runtime_api, "DATABASE", str(database))
+
+    class UnavailableManager:
+        def create(self, **kwargs):
+            raise RuntimeErrorSafe("runtime_gateway_unavailable")
+
+    monkeypatch.setattr(runtime_api, "_get_manager", lambda *_args: UnavailableManager())
+    response = client.post(
+        "/v1/runtimes",
+        headers={"Authorization": "Bearer " + "t" * 48},
+        json={
+            "task_id": "00000000-0000-4000-8000-000000000131",
+            "engine_run_id": "00000000-0000-4000-8000-000000000132",
+            "engine_id": "opencode",
+        },
+    )
+    assert response.status_code == 503
+    assert response.json()["detail"] == "runtime_gateway_unavailable"
+
+
+def test_create_rejects_existing_runtime_attempt_before_allocating_docker(tmp_path, monkeypatch):
+    import hashlib
+    import time
+    import pytest
+
+    task_id = "00000000-0000-4000-8000-000000000101"
+    run_id = "00000000-0000-4000-8000-000000000102"
+    database = tmp_path / "runtime-attempt.sqlite3"
+    monkeypatch.setattr(runtime_api, "DATABASE", str(database))
+    db = runtime_api._db()
+    db.execute(
+        "INSERT INTO runtimes (runtime_id,task_id,engine_run_id,engine_id,container_id,host_port,token_hash,expires_at,created_at,baseline_json) VALUES(?,?,?,?,?,?,?,?,?,?)",
+        (
+            "00000000-0000-4000-8000-000000000103", task_id, run_id, "opencode",
+            "existing-container", 43123, hashlib.sha256(b"existing-token").hexdigest(),
+            time.time() + 600, time.time(), "{}",
+        ),
+    )
+    db.commit()
+    db.close()
+
+    monkeypatch.setattr(
+        runtime_api, "_get_manager",
+        lambda *_args: pytest.fail("duplicate task attempt must be rejected before Docker access"),
+    )
+    response = client.post(
+        "/v1/runtimes",
+        headers={"Authorization": "Bearer " + "t" * 48},
+        json={"task_id": task_id, "engine_run_id": run_id, "engine_id": "opencode"},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"] == "runtime_attempt_already_exists"
+
+
+def test_runtime_database_enforces_unique_task_attempt_index(tmp_path, monkeypatch):
+    import hashlib
+    import sqlite3
+    import time
+    import pytest
+
+    database = tmp_path / "runtime-unique.sqlite3"
+    monkeypatch.setattr(runtime_api, "DATABASE", str(database))
+    db = runtime_api._db()
+    task_id = "00000000-0000-4000-8000-000000000111"
+    run_id = "00000000-0000-4000-8000-000000000112"
+    values = (
+        task_id, run_id, "opencode", "container", 43123,
+        hashlib.sha256(b"token").hexdigest(), time.time() + 600, time.time(), "{}",
+    )
+    db.execute(
+        "INSERT INTO runtimes (runtime_id,task_id,engine_run_id,engine_id,container_id,host_port,token_hash,expires_at,created_at,baseline_json) VALUES(?,?,?,?,?,?,?,?,?,?)",
+        ("00000000-0000-4000-8000-000000000113", *values),
+    )
+    with pytest.raises(sqlite3.IntegrityError):
+        db.execute(
+            "INSERT INTO runtimes (runtime_id,task_id,engine_run_id,engine_id,container_id,host_port,token_hash,expires_at,created_at,baseline_json) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            ("00000000-0000-4000-8000-000000000114", *values),
+        )
+    db.close()
+
+
+def test_runtime_database_fails_closed_on_legacy_duplicate_attempt_rows(tmp_path, monkeypatch):
+    import hashlib
+    import time
+    import pytest
+    from app.docker_runtime import RuntimeErrorSafe
+
+    database = tmp_path / "runtime-legacy-duplicates.sqlite3"
+    monkeypatch.setattr(runtime_api, "DATABASE", str(database))
+    db = runtime_api._db()
+    db.execute("DROP INDEX idx_runtime_task_attempt")
+    task_id = "00000000-0000-4000-8000-000000000121"
+    run_id = "00000000-0000-4000-8000-000000000122"
+    for runtime_id in (
+        "00000000-0000-4000-8000-000000000123",
+        "00000000-0000-4000-8000-000000000124",
+    ):
+        db.execute(
+            "INSERT INTO runtimes (runtime_id,task_id,engine_run_id,engine_id,container_id,host_port,token_hash,expires_at,created_at,baseline_json) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (
+                runtime_id, task_id, run_id, "opencode", runtime_id, 43123,
+                hashlib.sha256(runtime_id.encode()).hexdigest(),
+                time.time() + 600, time.time(), "{}",
+            ),
+        )
+    db.commit()
+    db.close()
+
+    with pytest.raises(RuntimeErrorSafe, match="runtime_task_attempt_duplicate_records"):
+        runtime_api._db()

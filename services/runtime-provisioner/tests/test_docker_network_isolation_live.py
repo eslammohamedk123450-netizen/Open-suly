@@ -10,9 +10,6 @@ import os
 import re
 import socket
 import subprocess
-import time
-import urllib.error
-import urllib.request
 from uuid import uuid4
 
 import docker
@@ -43,8 +40,8 @@ def _host_ipv4_addresses() -> list[str]:
     return sorted(addresses)
 
 
-def test_isolated_bridge_blocks_host_and_external_access_but_keeps_loopback_gateway():
-    """Prove Docker Engine's isolated internal bridge on the CI host."""
+def test_isolated_bridge_blocks_host_and_external_access_without_published_ports():
+    """Prove task isolation without assuming a host control-port mapping exists."""
     image = os.getenv("RUNTIME_NETWORK_TEST_IMAGE", "")
     if not re.fullmatch(r"[A-Za-z0-9./:_-]+@sha256:[0-9a-f]{64}", image):
         pytest.fail("RUNTIME_NETWORK_TEST_IMAGE must be an immutable digest")
@@ -81,9 +78,8 @@ def test_isolated_bridge_blocks_host_and_external_access_but_keeps_loopback_gate
         assert options.get("com.docker.network.bridge.enable_icc") == "false"
         assert options.get("com.docker.network.bridge.enable_ip_masquerade") == "false"
 
-        # An internal bridge normally receives a host-side IPv4 address. With
-        # inhibit_ipv4 enabled, that address must be absent while NAT-mode port
-        # publishing remains available for the trusted loopback gateway.
+        # An internal bridge normally receives a host-side IPv4 address.
+        # inhibit_ipv4 must remove it; this network is not the control plane.
         bridge_name = options.get("com.docker.network.bridge.name") or f"br-{network.id[:12]}"
         bridge_addresses = subprocess.run(
             ["ip", "-o", "-4", "addr", "show", "dev", bridge_name],
@@ -99,7 +95,6 @@ def test_isolated_bridge_blocks_host_and_external_access_but_keeps_loopback_gate
             name=f"suly-isolation-probe-{suffix}",
             detach=True,
             network=network.name,
-            ports={"8080/tcp": ("127.0.0.1", None)},
             user="65534:65534",
             read_only=True,
             tmpfs={"/tmp": "rw,noexec,nosuid,size=8m"},
@@ -110,24 +105,11 @@ def test_isolated_bridge_blocks_host_and_external_access_but_keeps_loopback_gate
             restart_policy={"Name": "no"},
         )
         container.reload()
-        bindings = container.attrs.get("NetworkSettings", {}).get("Ports", {}).get("8080/tcp") or []
-        assert len(bindings) == 1
-        assert bindings[0].get("HostIp") == "127.0.0.1"
-        host_port = int(bindings[0]["HostPort"])
+        published_ports = container.attrs.get("NetworkSettings", {}).get("Ports") or {}
+        assert not published_ports.get("8080/tcp"), "task container must not publish a host port"
 
-        # Verify the only intended ingress path remains usable from the trusted
-        # host-side provisioner: an explicit loopback-only published port.
-        deadline = time.monotonic() + 15
-        while time.monotonic() < deadline:
-            try:
-                with urllib.request.urlopen(f"http://127.0.0.1:{host_port}/", timeout=1) as response:
-                    assert response.status == 200
-                break
-            except (OSError, urllib.error.URLError):
-                time.sleep(0.2)
-        else:
-            pytest.fail("loopback-published runtime gateway did not become reachable")
-
+        # The control plane must use a separately isolated gateway network.
+        # Do not weaken this task bridge to recover a host-published port.
         probe = r'''
 import json
 import socket
@@ -158,6 +140,15 @@ except OSError:
 else:
     print("external_egress_reachable")
     raise SystemExit(23)
+
+try:
+    with socket.create_connection(("169.254.169.254", 80), timeout=1):
+        pass
+except OSError:
+    print("metadata_endpoint_blocked")
+else:
+    print("metadata_endpoint_reachable")
+    raise SystemExit(24)
 '''
         result = container.exec_run(
             ["python", "-c", probe, json.dumps(host_addresses), str(host_service_port)],
@@ -167,6 +158,7 @@ else:
         assert result.exit_code == 0, output
         assert "host_services_blocked" in output
         assert "external_egress_blocked" in output
+        assert "metadata_endpoint_blocked" in output
     finally:
         if container is not None:
             try:

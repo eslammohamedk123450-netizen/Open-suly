@@ -191,11 +191,11 @@ _TASK_NETWORK_OPTIONS = {
 def _create_isolated_task_network(client: Any, *, name: str, labels: dict[str, str]):
     """Create a per-attempt internal bridge without a host IPv4 address.
 
-    Docker Engine 28+ supports inhibit_ipv4 for internal bridge networks. This
-    preserves the normal NAT port-publishing path used by the loopback-only
-    provisioner gateway while removing the host bridge address that task
-    containers could otherwise use to reach host services. Older Engines fail
-    closed instead of silently downgrading.
+    Docker Engine 28+ supports inhibit_ipv4 for internal bridge networks. It
+    removes the host-side bridge address and the default route from task
+    containers. Do not assume that this network can also expose a host-published
+    control port; the live Docker probe verifies that separately, and runtime
+    creation fails closed when no loopback-only gateway binding is available.
     """
     try:
         return client.networks.create(
@@ -422,9 +422,11 @@ class DockerTaskRuntimeManager:
             container.reload()
             port = container.attrs.get("NetworkSettings", {}).get("Ports", {}).get(container_port) or []
             if not port:
-                raise RuntimeErrorSafe("runtime_port_not_allocated")
-            # Host port is loopback-only. A separately configured TLS gateway must
-            # proxy runtime_id -> 127.0.0.1:port; never publish this port publicly.
+                # Docker's isolated task network may not support a host-published
+                # control port. Never fall back to a host-addressable task bridge.
+                raise RuntimeErrorSafe("runtime_gateway_unavailable")
+            # Any available host port must be loopback-only. A separately
+            # configured TLS gateway must proxy runtime_id -> 127.0.0.1:port.
             binding = port[0]
             if binding.get("HostIp") not in {"127.0.0.1", "::1"}:
                 raise RuntimeErrorSafe("runtime_port_binding_not_loopback")

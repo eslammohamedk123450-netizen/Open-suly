@@ -17,7 +17,8 @@ class FakeNetwork:
 class FakeContainer:
     def __init__(self, name, labels, ports=None, container_port="4096/tcp"):
         self.name, self.id, self.labels = name, "container-id", labels
-        self.attrs = {"NetworkSettings": {"Ports": {container_port: ports or [{"HostIp": "127.0.0.1", "HostPort": "43123"}]}}}
+        bindings = [{"HostIp": "127.0.0.1", "HostPort": "43123"}] if ports is None else ports
+        self.attrs = {"NetworkSettings": {"Ports": {container_port: bindings}}}
         self.removed = False
     def reload(self): pass
     def remove(self, **kwargs): self.removed = True
@@ -32,11 +33,14 @@ class FakeNetworks:
 
 
 class FakeContainers:
-    def __init__(self): self.items = {}; self.kwargs = None
+    def __init__(self): self.items = {}; self.kwargs = None; self.port_bindings = None
     def run(self, image, **kwargs):
         self.kwargs = kwargs
         container_port = next(iter(kwargs["ports"]))
-        value = FakeContainer(kwargs["name"], kwargs["labels"], container_port=container_port)
+        value = FakeContainer(
+            kwargs["name"], kwargs["labels"],
+            ports=self.port_bindings, container_port=container_port,
+        )
         self.items[value.name] = value
         return value
     def get(self, name): return self.items[name]
@@ -113,6 +117,23 @@ def test_create_rejects_non_loopback_port_binding_and_cleans_up(tmp_path):
     )
     with pytest.raises(RuntimeErrorSafe, match="loopback"):
         mgr.create(task_id=str(uuid4()), engine_run_id=str(uuid4()), engine_id="opencode", files=[])
+
+
+def test_create_fails_closed_and_cleans_up_when_isolated_network_has_no_host_gateway(tmp_path):
+    mgr, fake = manager(tmp_path)
+    fake.containers.port_bindings = []
+
+    with pytest.raises(RuntimeErrorSafe, match="runtime_gateway_unavailable"):
+        mgr.create(
+            task_id=str(uuid4()), engine_run_id=str(uuid4()),
+            engine_id="opencode", files=[],
+        )
+
+    created = next(iter(fake.containers.items.values()))
+    created_network = next(iter(fake.networks.items.values()))
+    assert created.removed is True
+    assert created_network.removed is True
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_image_must_use_a_full_sha256_digest(tmp_path):
