@@ -181,6 +181,7 @@ class TaskWorker:
         handler: Callable[[ClaimedStep], dict[str, Any]],
         *,
         cancel_aware_handler: Callable[[ClaimedStep, Event], dict[str, Any]] | None = None,
+        worker_stop_event: Event | None = None,
     ) -> str:
         """Run one claimed step; cancel-aware engines receive an event set on lease loss.
 
@@ -204,6 +205,10 @@ class TaskWorker:
 
         def maintain_lease() -> None:
             while not heartbeat_stop.wait(self.heartbeat_interval_seconds):
+                # إيقاف الخدمة يطلب إيقافًا تعاونيًا للمحرك، لكنه لا يعني فقدان lease.
+                if worker_stop_event is not None and worker_stop_event.is_set():
+                    cancel_event.set()
+                    return
                 try:
                     if not self.renew(step):
                         lease_lost.set()
@@ -275,6 +280,18 @@ class TaskWorker:
 
         if lease_lost.is_set():
             return "lease_lost"
+        # عند إيقاف الخدمة نعيد الخطوة للطابور عبر مسار الفشل القابل لإعادة المحاولة.
+        # لا نعتمد نتيجة جزئية ولا نترك المهمة running حتى انتهاء lease.
+        if worker_stop_event is not None and worker_stop_event.is_set():
+            try:
+                shutdown_result = self.fail(
+                    step,
+                    "worker_shutdown",
+                    "Worker is shutting down; the task step will be retried safely.",
+                )
+            except Exception:
+                return "failure_not_recorded"
+            return "failed_or_retry_scheduled" if shutdown_result.get("accepted") is True else "failure_not_recorded"
         try:
             completed = self.complete(step, output)
         except Exception:
