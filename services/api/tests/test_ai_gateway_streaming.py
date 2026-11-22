@@ -117,6 +117,7 @@ def test_provider_registry_reports_only_supported_capabilities(monkeypatch):
         "get_settings",
         lambda: Settings(
             ai_provider="ollama",
+            ai_base_url="http://ollama:11434",
             ai_model="qwen2.5:3b",
             ai_max_output_tokens=512,
         ),
