@@ -25,6 +25,9 @@ class EngineManifest:
     license_id: str
     role: str
     capabilities: frozenset[str]
+    max_input_bytes: int = 32_000
+    max_output_bytes: int = 64_000
+    max_timeout_seconds: int = 300
 
 
 # Immutable upstream revisions inspected on 2026-11-20.
@@ -51,6 +54,9 @@ ENGINE_MANIFESTS: tuple[EngineManifest, ...] = (
         capabilities=frozenset({
             "code.edit", "code.review", "code.test", "code.repository",
         }),
+        max_input_bytes=48_000,
+        max_output_bytes=16_000,
+        max_timeout_seconds=1800,
     ),
     EngineManifest(
         engine_id="browser-use",
@@ -118,6 +124,9 @@ def build_engine_registry(
             capabilities=item.capabilities,
             enabled=enabled,
             requires_approval=True,
+            max_input_bytes=item.max_input_bytes,
+            max_output_bytes=item.max_output_bytes,
+            max_timeout_seconds=item.max_timeout_seconds,
             adapter=adapter,
         ))
     return EngineRegistry(definitions)
