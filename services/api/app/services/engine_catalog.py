@@ -87,6 +87,15 @@ def validate_engine_manifests(
             raise ValueError("engine_repository_must_be_https_github")
         if not item.license_id or not item.role or not item.capabilities:
             raise ValueError("engine_manifest_metadata_required")
+        if (
+            isinstance(item.max_input_bytes, bool) or not isinstance(item.max_input_bytes, int)
+            or not 1 <= item.max_input_bytes <= 1_000_000
+            or isinstance(item.max_output_bytes, bool) or not isinstance(item.max_output_bytes, int)
+            or not 1 <= item.max_output_bytes <= 1_000_000
+            or isinstance(item.max_timeout_seconds, bool) or not isinstance(item.max_timeout_seconds, int)
+            or not 1 <= item.max_timeout_seconds <= 3600
+        ):
+            raise ValueError("engine_manifest_limits_invalid")
 
 
 def build_engine_registry(
