@@ -887,11 +887,23 @@ begin
     return false;
   end if;
 
+  -- Refresh after acquiring the parent lock: an approval may have created
+  -- the child while this cancellation request was waiting for that lock.
+  select * into v_handoff
+    from public.engine_collaboration_handoffs
+   where id = p_handoff_id and user_id = p_user_id;
+  if not found then
+    return false;
+  end if;
+
   if v_handoff.child_task_id is not null then
     select * into v_child
       from public.tasks
      where id = v_handoff.child_task_id and user_id = p_user_id
      for update;
+    if not found then
+      return false;
+    end if;
   end if;
 
   select * into v_handoff
@@ -916,6 +928,25 @@ begin
     ) values (
       p_handoff_id,p_user_id,v_sequence,'handoff.cancelled','cancelled',
       jsonb_build_object('reason','owner_cancelled')
+    );
+    return true;
+  end if;
+
+  if v_handoff.status = 'running' and v_handoff.child_task_id is not null
+     and v_child.id = v_handoff.child_task_id
+     and v_child.status = 'completed' then
+    update public.engine_collaboration_handoffs
+       set status = 'cancelled', finished_at = now(), updated_at = now()
+     where id = p_handoff_id and user_id = p_user_id and status = 'running';
+
+    select coalesce(max(e.sequence),0)+1 into v_sequence
+      from public.engine_collaboration_events e
+     where e.handoff_id = p_handoff_id and e.user_id = p_user_id;
+    insert into public.engine_collaboration_events (
+      handoff_id,user_id,sequence,event_type,status,metadata
+    ) values (
+      p_handoff_id,p_user_id,v_sequence,'handoff.cancelled','cancelled',
+      jsonb_build_object('reason','owner_cancelled_pending_review')
     );
     return true;
   end if;
