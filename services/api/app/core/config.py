@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     # SULY-owned explicit memory; keep disabled until its migration is applied.
     agent_memory_enabled: bool = False
 
+    # Read-only credits API stays disabled until the ledger migration is reviewed/applied.
+    engine_credits_enabled: bool = False
+
     # OpenCode must remain explicitly disabled; provisioner credentials alone cannot activate it.
     opencode_enabled: bool = False
     # Isolated runtime provider configuration. These values do not activate it unless opencode_enabled is true.
