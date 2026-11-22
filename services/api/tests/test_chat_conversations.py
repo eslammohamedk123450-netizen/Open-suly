@@ -70,7 +70,7 @@ class _OwnedConversationQuery:
         self.values = {}
 
     def select(self, *_args):
-        self.operation = "select"
+        # PostgREST select() after update/delete requests representation.
         return self
 
     def update(self, values):

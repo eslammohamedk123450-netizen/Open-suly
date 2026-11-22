@@ -375,6 +375,7 @@ def rename_conversation(
                 .update({"title": title})
                 .eq("id", str(conversation_id))
                 .eq("user_id", user.id)
+                .select("id,user_id,title,created_at,updated_at")
                 .execute()
                 .data
             )
@@ -401,6 +402,7 @@ def delete_conversation(
                 .delete()
                 .eq("id", str(conversation_id))
                 .eq("user_id", user.id)
+                .select("id")
                 .execute()
                 .data
             )
