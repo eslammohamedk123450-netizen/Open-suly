@@ -33,7 +33,7 @@ curl --fail http://127.0.0.1:8000/ready
 
 The compose file publishes API only on loopback by default. Put a TLS-terminating
 reverse proxy/load balancer in front of it; do not expose the container port
-directly to the public Internet. Configure ingress body-size, request timeout,
+directly to the public Internet. Set `CORS_ALLOWED_ORIGINS` to a JSON array of exact HTTPS origins, for example `["https://app.example.com"]`; wildcard origins are rejected. Configure ingress body-size, request timeout,
 rate limits, DDoS protection, and trusted proxy headers there.
 
 Start the durable worker only after database migrations and staging acceptance
