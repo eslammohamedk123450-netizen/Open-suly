@@ -7,7 +7,8 @@ import { useAuth } from "@/providers/AuthProvider";
 import { listMessages, sendUserMessage, type ChatMessage } from "@/lib/conversations";
 import { requestAssistantReply } from "@/lib/chat-api";
 
-function tokenUsage(metadata: ChatMessage["metadata"]): { input_tokens: number; output_tokens: number; total_tokens: number } | null {
+function tokenUsage(metadata: ChatMessage["metadata"] | null | undefined): { input_tokens: number; output_tokens: number; total_tokens: number } | null {
+  if (!metadata || typeof metadata !== "object") return null;
   const raw = metadata.usage;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const usage = raw as Record<string, unknown>;
@@ -97,8 +98,8 @@ export default function ConversationScreen() {
             return (
             <View key={message.id} style={message.role === "user" ? styles.userMessage : styles.assistantMessage}>
               <Text style={message.role === "user" ? styles.userText : styles.assistantText}>{message.content}</Text>
-              {!!usage && <Text style={styles.usage}>Tokens · {usage.input_tokens.toLocaleString("ar-EG")} input / {usage.output_tokens.toLocaleString("ar-EG")} output</Text>}
-              <Text style={styles.time>{new Date(message.created_at).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" })}</Text>
+              {!!usage && <Text style={styles.usage}>عدد الرموز · إدخال {usage.input_tokens.toLocaleString("ar-EG")} / إخراج {usage.output_tokens.toLocaleString("ar-EG")}</Text>}
+              <Text style={styles.time}>{new Date(message.created_at).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" })}</Text>
             </View>
             );
           })}
