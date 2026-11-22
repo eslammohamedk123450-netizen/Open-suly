@@ -5,7 +5,7 @@ from pathlib import Path
 
 def _migration_text() -> str:
     repository_root = Path(__file__).resolve().parents[3]
-    path = repository_root / "supabase" / "migrations" / "20261122030500_universal_engine_runtime_catalog.sql"
+    path = repository_root / "supabase" / "migrations" / "20261122111643_universal_engine_runtime_catalog.sql"
     return path.read_text(encoding="utf-8")
 
 
