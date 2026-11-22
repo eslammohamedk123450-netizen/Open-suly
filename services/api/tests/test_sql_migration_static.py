@@ -70,3 +70,21 @@ def test_engine_credit_idempotency_metadata_comparisons_are_null_safe():
         r"v_existing\.metadata\s*->>\s*'[^']+'\s*(?:<>|!=)\s*",
         source,
     )
+
+
+def test_owner_ai_provider_vault_rpcs_are_service_role_only():
+    source = (MIGRATIONS / "20261122130000_suly_ai_provider_vault.sql").read_text(encoding="utf-8").lower()
+    for function in (
+        "suly_ai_provider_config_get",
+        "suly_ai_provider_config_set",
+        "suly_ai_provider_config_clear",
+    ):
+        assert f"security definer" in source
+        assert f"revoke all on function public.{function}" in source
+        assert f"grant execute on function public.{function}" in source
+    assert "from public, anon, authenticated" in source
+    assert "to service_role" in source
+    assert "vault.create_secret" in source
+    assert "vault.update_secret" in source
+    assert "vault.decrypted_secrets" in source
+    assert "set search_path = ''" in source

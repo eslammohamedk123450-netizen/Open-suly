@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -8,11 +9,11 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { colors } from "@/theme/tokens";
 import { BottomNavigation } from "@/components/BottomNavigation";
 import { useAuth } from "@/providers/AuthProvider";
-import { createConversation, sendUserMessage } from "@/lib/conversations";
+import { createConversation, createMessageIdempotencyKey, listConversations, sendUserMessage, type Conversation } from "@/lib/conversations";
 
 const suggestions = [
   { title: "ابحث بعمق", description: "اجمع المعلومات وقارن المصادر", prompt: "ابحث بعمق عن " },
@@ -25,7 +26,30 @@ export default function HomeScreen() {
   const [notice, setNotice] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [sending, setSending] = useState(false);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyNotice, setHistoryNotice] = useState("");
+  const pendingDraft = useRef<{ content: string; messageKey: string; conversationId?: string } | null>(null);
   const { user } = useAuth();
+
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    if (!user) {
+      setConversations([]);
+      setHistoryLoading(false);
+      setHistoryNotice("");
+      return () => { active = false; };
+    }
+    setHistoryLoading(true);
+    setHistoryNotice("");
+    void listConversations()
+      .then((items) => { if (active) setConversations(items); })
+      .catch((error) => {
+        if (active) setHistoryNotice(error instanceof Error ? error.message : "تعذر تحميل محادثاتك السابقة.");
+      })
+      .finally(() => { if (active) setHistoryLoading(false); });
+    return () => { active = false; };
+  }, [user?.id]));
 
   const sendDraft = async () => {
     const request = draft.trim();
@@ -38,8 +62,16 @@ export default function HomeScreen() {
     setSending(true);
     setNotice("");
     try {
-      const conversation = await createConversation(request.slice(0, 40));
-      await sendUserMessage(conversation.id, request);
+      const pending = pendingDraft.current?.content === request
+        ? pendingDraft.current
+        : { content: request, messageKey: createMessageIdempotencyKey() };
+      pendingDraft.current = pending;
+      const conversation = pending.conversationId
+        ? { id: pending.conversationId }
+        : await createConversation(request.slice(0, 40));
+      pending.conversationId = conversation.id;
+      await sendUserMessage(conversation.id, request, pending.messageKey);
+      pendingDraft.current = null;
       setDraft("");
       router.push({ pathname: "/conversation/[id]", params: { id: conversation.id } });
     } catch (error) {
@@ -108,13 +140,40 @@ export default function HomeScreen() {
                   <Text style={styles.toolText}>◈ تنفيذ كمهمة</Text>
                 </Pressable>
               </View>
-              <Pressable style={[styles.sendButton, !draft.trim() && styles.sendDisabled]} onPress={sendDraft} accessibilityLabel="إرسال الطلب">
-                <Text style={styles.sendText}>↑</Text>
+              <Pressable style={[styles.sendButton, (!draft.trim() || sending) && styles.sendDisabled]} onPress={sendDraft} disabled={!draft.trim() || sending} accessibilityLabel="إرسال الطلب">
+                {sending ? <ActivityIndicator color={colors.background} /> : <Text style={styles.sendText}>↑</Text>}
               </Pressable>
             </View>
           </View>
 
           {!!notice && <Text style={styles.notice}>{notice}</Text>}
+
+          {user && (
+            <View style={styles.historySection}>
+              <View style={styles.historyHeading}>
+                <Text style={styles.sectionTitle}>محادثاتك السابقة</Text>
+                <Text style={styles.sectionHint}>آخر {Math.min(conversations.length, 6)} محادثات</Text>
+              </View>
+              {historyLoading ? <ActivityIndicator color={colors.gold} /> : !!historyNotice ? (
+                <Text style={styles.historyEmpty}>{historyNotice}</Text>
+              ) : conversations.length === 0 ? (
+                <Text style={styles.historyEmpty}>ستظهر محادثاتك المحفوظة هنا بعد بدء محادثة.</Text>
+              ) : conversations.slice(0, 6).map((conversation) => (
+                <Pressable
+                  key={conversation.id}
+                  style={styles.historyCard}
+                  onPress={() => router.push({ pathname: "/conversation/[id]", params: { id: conversation.id } })}
+                  accessibilityRole="button"
+                >
+                  <View style={styles.historyCopy}>
+                    <Text numberOfLines={1} style={styles.historyTitle}>{conversation.title}</Text>
+                    <Text style={styles.historyDate}>{new Date(conversation.updated_at).toLocaleDateString("ar-EG", { month: "short", day: "numeric" })}</Text>
+                  </View>
+                  <Text style={styles.chevron}>‹</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
 
           <View style={styles.sectionHeading}>
             <Text style={styles.sectionTitle}>ابدأ من هنا</Text>
@@ -180,6 +239,13 @@ const styles = StyleSheet.create({
   sendDisabled: { opacity: 0.45 },
   sendText: { color: colors.background, fontSize: 24, fontWeight: "800" },
   notice: { color: colors.gold, fontSize: 12, textAlign: "right", lineHeight: 20, marginTop: 12 },
+  historySection: { marginTop: 28, gap: 9 },
+  historyHeading: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 3 },
+  historyCard: { minHeight: 58, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, flexDirection: "row", alignItems: "center", gap: 10 },
+  historyCopy: { flex: 1, gap: 4 },
+  historyTitle: { color: colors.text, fontSize: 12, fontWeight: "700", textAlign: "right" },
+  historyDate: { color: colors.faint, fontSize: 9, textAlign: "right" },
+  historyEmpty: { color: colors.muted, fontSize: 11, textAlign: "right", paddingVertical: 10 },
   sectionHeading: { marginTop: 34, marginBottom: 14, flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" },
   sectionTitle: { color: colors.text, fontSize: 17, fontWeight: "700" },
   sectionHint: { color: colors.faint, fontSize: 11 },

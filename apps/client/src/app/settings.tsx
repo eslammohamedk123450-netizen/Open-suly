@@ -68,6 +68,11 @@ export default function SettingsScreen() {
             <SettingRow title="الإشعارات" subtitle="تنبيهات المهام والتحديثات" value={notifications ? "مفعّلة" : "متوقفة"} onPress={() => setNotifications((v) => !v)} />
           </View>
 
+          <Text style={styles.sectionTitle}>الذكاء الاصطناعي</Text>
+          <View style={styles.group}>
+            <SettingRow title="مزود الذكاء الاصطناعي" subtitle="إعداد مركزي للمفتاح والنموذج — لمالك التطبيق فقط" onPress={() => router.push("/ai-provider")} />
+          </View>
+
           <Text style={styles.sectionTitle}>الخصوصية والأمان</Text>
           <View style={styles.group}>
             <SettingRow title="حماية البيانات" subtitle="إعدادات الخصوصية والتحكم في البيانات" value={privacy ? "مفعّلة" : "متوقفة"} onPress={() => setPrivacy((v) => !v)} />

@@ -18,8 +18,19 @@ services:
         value: "false"
       - key: HERMES_AGENT_ENABLED
         value: "false"
+      # Must match the owner's verified Supabase Auth email; no owner is hardcoded.
+      - key: SULY_OWNER_EMAIL
+        sync: false
+      # AI stays disabled by application default until the owner configures it.
+      # sync:false keeps provider selection and credentials out of source control.
       - key: AI_PROVIDER
-        value: disabled
+        sync: false
+      - key: AI_BASE_URL
+        sync: false
+      - key: AI_API_KEY
+        sync: false
+      - key: AI_MODEL
+        sync: false
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_PUBLISHABLE_KEY

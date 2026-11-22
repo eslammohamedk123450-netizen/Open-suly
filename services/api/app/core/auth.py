@@ -13,6 +13,7 @@ _bearer = HTTPBearer(auto_error=False)
 class AuthenticatedUser:
     id: str
     email: str | None
+    email_verified: bool = False
 
 
 def get_current_user(
@@ -64,4 +65,5 @@ def get_current_user(
     return AuthenticatedUser(
         id=str(user.id),
         email=getattr(user, "email", None),
+        email_verified=bool(getattr(user, "email_confirmed_at", None)),
     )

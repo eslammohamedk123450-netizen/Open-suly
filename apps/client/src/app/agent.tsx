@@ -52,12 +52,19 @@ function statusLabel(status: string): string {
 
 export default function AgentScreen() {
   const { user } = useAuth();
-  const params = useLocalSearchParams<{ prompt?: string | string[]; projectId?: string | string[]; conversationId?: string | string[] }>();
+  const params = useLocalSearchParams<{ prompt?: string | string[]; projectId?: string | string[]; conversationId?: string | string[]; operation?: string | string[] }>();
   const initialPrompt = typeof params.prompt === "string" ? params.prompt : "";
   const projectId = typeof params.projectId === "string" ? params.projectId : undefined;
   const conversationId = typeof params.conversationId === "string" ? params.conversationId : undefined;
+  const requestedOperation = typeof params.operation === "string" ? params.operation : undefined;
+  const initialOperation: AgentOperation = requestedOperation === "ai.respond"
+    || requestedOperation === "text.analyze"
+    || requestedOperation === "hermes.agent.turn"
+    || requestedOperation === "opencode.task.run"
+    ? requestedOperation
+    : conversationId ? "hermes.agent.turn" : initialPrompt ? "ai.respond" : "text.analyze";
   const [operation, setOperation] = useState<AgentOperation>(
-    conversationId ? "hermes.agent.turn" : initialPrompt ? "ai.respond" : "text.analyze",
+    initialOperation,
   );
   const [prompt, setPrompt] = useState(initialPrompt);
   const [snapshot, setSnapshot] = useState<AgentTaskSnapshot | null>(null);

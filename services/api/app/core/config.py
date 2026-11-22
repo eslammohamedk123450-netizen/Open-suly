@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     supabase_publishable_key: SecretStr | None = None
     supabase_secret_key: SecretStr | None = None
 
+    # Exact, email-verified account allowed to manage the central AI provider.
+    suly_owner_email: str | None = None
+
     # Server-side AI gateway: OpenAI-compatible providers or self-hosted Ollama. Disabled by default.
     ai_provider: str = "disabled"
     ai_base_url: str | None = None
@@ -53,6 +56,7 @@ class Settings(BaseSettings):
     rate_limit_chat_respond_per_minute: int = Field(default=10, ge=0, le=1000)
     rate_limit_chat_conversations_per_minute: int = Field(default=10, ge=0, le=1000)
     rate_limit_chat_messages_per_minute: int = Field(default=30, ge=0, le=1000)
+    rate_limit_owner_ai_provider_per_minute: int = Field(default=5, ge=0, le=1000)
 
     # Worker runtime is opt-in; never starts merely because the API boots.
     worker_enabled: bool = False

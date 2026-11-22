@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { colors } from "@/theme/tokens";
 /** واجهة المحادثة تعرض بيانات usage التي أرسلها مزود الخدمة دون تقدير سعر أو خصم credits. */
 import { useAuth } from "@/providers/AuthProvider";
-import { listMessages, sendUserMessage, type ChatMessage } from "@/lib/conversations";
+import { createMessageIdempotencyKey, listMessages, sendUserMessage, type ChatMessage } from "@/lib/conversations";
 import { requestAssistantReply } from "@/lib/chat-api";
 
 function tokenUsage(metadata: ChatMessage["metadata"] | null | undefined): { input_tokens: number; output_tokens: number; total_tokens: number } | null {
@@ -28,6 +28,8 @@ export default function ConversationScreen() {
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const sendLock = useRef(false);
+  const pendingSend = useRef<{ content: string; idempotencyKey: string } | null>(null);
   const [error, setError] = useState("");
   const [engineNotice, setEngineNotice] = useState("");
 
@@ -58,15 +60,21 @@ export default function ConversationScreen() {
   }, [id, user]);
 
   const send = async () => {
-    if (!draft.trim() || sending) return;
+    if (!draft.trim() || sendLock.current) return;
     if (!user) { router.push("/auth"); return; }
     const content = draft.trim();
+    const pending = pendingSend.current?.content === content
+      ? pendingSend.current
+      : { content, idempotencyKey: createMessageIdempotencyKey() };
+    pendingSend.current = pending;
+    sendLock.current = true;
     setDraft("");
     setSending(true);
     setError("");
     setEngineNotice("");
     try {
-      const saved = await sendUserMessage(id, content);
+      const saved = await sendUserMessage(id, content, pending.idempotencyKey);
+      pendingSend.current = null;
       setMessages((current) => [...current, saved]);
       try {
         const reply = await requestAssistantReply(id, saved.id);
@@ -77,14 +85,17 @@ export default function ConversationScreen() {
     } catch (e) {
       setDraft(content);
       setError(e instanceof Error ? e.message : "تعذر حفظ الرسالة.");
-    } finally { setSending(false); }
+    } finally {
+      sendLock.current = false;
+      setSending(false);
+    }
   };
 
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView style={styles.page} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View style={styles.header}>
-          <Pressable style={styles.backButton} onPress={() => router.replace("/projects")}><Text style={styles.backText}>→</Text></Pressable>
+          <Pressable style={styles.backButton} onPress={() => router.replace("/")}><Text style={styles.backText}>→</Text></Pressable>
           <View style={styles.headerCopy}><Text style={styles.title}>محادثة SULY</Text><Text style={styles.subtitle}>مساحة محادثة خاصة بحسابك</Text></View>
           <Pressable style={styles.permissionButton} onPress={() => router.push({ pathname: "/agent", params: { conversationId: id } })}>
             <Text style={styles.permissionText}>الوكيل</Text>
@@ -109,7 +120,7 @@ export default function ConversationScreen() {
             <View style={styles.noticeBox}>
               <Text style={styles.engineNotice}>{engineNotice}</Text>
               {engineNotice.includes("موافقة صريحة") && (
-                <Pressable style={styles.permissionButton} onPress={() => router.push("/agent")}>
+                <Pressable style={styles.permissionButton} onPress={() => router.push({ pathname: "/agent", params: { operation: "ai.respond" } })}>
                   <Text style={styles.permissionText}>فتح مساحة الوكيل لإدارة الموافقة</Text>
                 </Pressable>
               )}

@@ -2,7 +2,7 @@ from typing import Any, Callable
 
 import httpx
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 
 
 class AIProviderNotConfigured(RuntimeError):
@@ -67,8 +67,9 @@ async def generate_reply(
     *,
     client: httpx.AsyncClient | None = None,
     on_usage: Callable[[dict[str, int]], None] | None = None,
+    settings_override: Settings | None = None,
 ) -> str:
-    settings = get_settings()
+    settings = settings_override or get_settings()
     provider = settings.ai_provider
     if (
         provider not in {"openai-compatible", "ollama"}

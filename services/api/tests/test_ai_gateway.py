@@ -48,6 +48,30 @@ def test_gateway_calls_openai_compatible_endpoint_without_leaking_key(monkeypatc
     assert seen["timeout"] == "7.0"
 
 
+def test_gateway_uses_explicit_vault_settings_override(monkeypatch) -> None:
+    monkeypatch.setattr(ai_gateway, "get_settings", lambda: Settings(ai_provider="disabled"))
+    observed = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        observed["authorization"] = request.headers.get("authorization")
+        observed["model"] = json.loads(request.content)["model"]
+        return httpx.Response(200, json={"choices": [{"message": {"content": "from vault"}}]})
+
+    async def run() -> str:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await ai_gateway.generate_reply(
+                [{"role": "user", "content": "hello"}],
+                client=client,
+                settings_override=configured_settings(),
+            )
+
+    assert asyncio.run(run()) == "from vault"
+    assert observed == {
+        "authorization": "Bearer server-test-secret",
+        "model": "test-model",
+    }
+
+
 @pytest.mark.parametrize("messages", [
     [],
     [{"role": "tool", "content": "not allowed"}],
@@ -101,6 +125,20 @@ def test_gateway_maps_rate_limit_without_exposing_response_body(monkeypatch) -> 
     with pytest.raises(ai_gateway.AIProviderError, match="rate-limiting") as error:
         asyncio.run(run())
     assert "private provider detail" not in str(error.value)
+
+
+def test_gateway_maps_invalid_credentials_without_exposing_response_body(monkeypatch) -> None:
+    monkeypatch.setattr(ai_gateway, "get_settings", configured_settings)
+
+    async def run() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda request: httpx.Response(401, text="Invalid API key: provider-private-secret")
+        )) as client:
+            await ai_gateway.generate_reply([{"role": "user", "content": "hello"}], client=client)
+
+    with pytest.raises(ai_gateway.AIProviderError, match="HTTP 401") as error:
+        asyncio.run(run())
+    assert "provider-private-secret" not in str(error.value)
 
 
 def test_gateway_rejects_malformed_and_oversized_replies(monkeypatch) -> None:
@@ -220,4 +258,3 @@ def test_gateway_rejects_ollama_malformed_response(monkeypatch) -> None:
 
     with pytest.raises(ai_gateway.AIProviderError, match="invalid response"):
         asyncio.run(run())
-

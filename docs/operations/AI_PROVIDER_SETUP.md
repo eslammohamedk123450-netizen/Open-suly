@@ -33,9 +33,19 @@ Use the actual private hostname/IP reachable from the API service. Do not put an
 5. Restart the API service and verify `/health` and `/ready`. These endpoints check API liveness and required Supabase configuration; they do not prove that Ollama is reachable.
 6. Sign in to SULY, open the Agent area, and grant the explicit `ai.provider.run` permission. Then send a test message. Revoke the permission to stop future provider calls.
 
-## OpenAI-compatible providers
+## Owner-managed provider key
 
-Set `AI_PROVIDER=openai-compatible`, `AI_BASE_URL` to the provider's API base URL, `AI_API_KEY` to its server-side key, and `AI_MODEL` to a supported model identifier. The provider must implement the chat-completions request/response shape. Check its pricing and free-tier limits before use.
+The app includes **Settings → AI provider** for the application owner. Configure `SULY_OWNER_EMAIL` in the API service environment with the owner's verified Supabase Auth email; owner access is denied when the email is missing, unverified, or different. The project must also have its server-only Supabase secret configured so the API can call the restricted Vault RPCs. Apply `supabase/migrations/20261122130000_suly_ai_provider_vault.sql` before enabling this page.
+
+The owner submits an OpenAI-compatible HTTPS base URL, model identifier, and API key over the authenticated HTTPS API. The API writes the configuration to Supabase Vault, where the secret is encrypted at rest. The app receives only safe status fields; it never reads back the key. The API uses the Vault configuration for conversation replies, ahead of any legacy environment configuration. The key is not included in logs, client storage, or this repository.
+
+The provider must implement the chat-completions request/response shape. Check its pricing and limits before entering a key. `AI_PROVIDER`, `AI_BASE_URL`, `AI_API_KEY`, and `AI_MODEL` remain supported as server-only fallback settings; never put their values in the Expo client or Git. To leave AI disabled, keep both Vault and provider environment settings empty. Render's `/health` verifies API liveness only; `/ready` verifies the required Supabase values are present, not that Auth, PostgreSQL, or the AI provider is reachable.
+
+## Client/API connection
+
+The Expo app sends authenticated requests to the API origin configured as `EXPO_PUBLIC_API_BASE_URL`. Set it in the client's build environment to the actual HTTPS service URL shown by the hosting provider (no `/v1` suffix), then rebuild the web/mobile client. This value is public; Supabase server secrets and provider credentials are not. For local testing, set the same variable in `apps/client/.env` to an API origin reachable from the device or browser. The repository example intentionally leaves it blank because no deployed API URL is committed.
+
+After setting server and client configuration, verify `/health` and `/ready`, then sign in, open a conversation, grant `ai.provider.run` consent in SULY AI, and send a message in the actual conversation screen. A live verification requires a valid Supabase user and applied conversation/approval migrations plus a reachable configured provider; passing the mocked tests below does not establish a live model response.
 
 ## Release and security notes
 

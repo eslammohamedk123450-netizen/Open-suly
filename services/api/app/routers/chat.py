@@ -16,6 +16,11 @@ from app.services.ai_gateway import (
     AIProviderTimeout,
     generate_reply,
 )
+from app.services.ai_provider_config import (
+    AIProviderConfigurationUnavailable,
+    ai_settings_from_config,
+    read_ai_provider_config,
+)
 
 router = APIRouter(prefix="/v1/chat", tags=["chat"])
 logger = logging.getLogger("suly.api.chat")
@@ -130,6 +135,17 @@ async def respond_to_message(
             if existing is not None:
                 return existing
 
+            try:
+                stored_config = read_ai_provider_config(admin)
+            except AIProviderConfigurationUnavailable as exc:
+                logger.warning("ai_provider_vault_lookup_failed")
+                raise HTTPException(
+                    status_code=503,
+                    detail="AI provider settings are unavailable.",
+                ) from exc
+            if stored_config is not None:
+                settings = ai_settings_from_config(stored_config)
+
             usage_summary: dict[str, int] | None = None
 
             def capture_usage(value: dict[str, int]) -> None:
@@ -137,15 +153,22 @@ async def respond_to_message(
                 usage_summary = value
 
             try:
-                answer = await generate_reply(prompt_messages, on_usage=capture_usage)
+                answer = await generate_reply(
+                    prompt_messages,
+                    on_usage=capture_usage,
+                    settings_override=settings,
+                )
             except AIProviderNotConfigured as exc:
                 raise HTTPException(status_code=503, detail="AI provider is not configured yet.") from exc
             except AIProviderTimeout as exc:
                 raise HTTPException(status_code=504, detail="AI provider timed out.") from exc
             except AIProviderError as exc:
-                # Log the provider detail server-side only; the client receives
-                # a generic message so upstream endpoints cannot leak to users.
-                logger.warning("AI provider failed to complete the request: %s", exc)
+                # Keep provider response details out of logs and API responses;
+                # only the safe error class is useful for operational triage.
+                logger.warning(
+                    "AI provider failed to complete the request (error type: %s)",
+                    type(exc).__name__,
+                )
                 raise HTTPException(
                     status_code=502,
                     detail="The AI provider could not complete the request. Try again shortly.",
@@ -205,6 +228,7 @@ class CreateConversationRequest(BaseModel):
 
 class AddUserMessageRequest(BaseModel):
     content: str
+    idempotency_key: UUID | None = None
 
 
 class RenameConversationRequest(BaseModel):
@@ -335,18 +359,58 @@ def add_user_message(
             )
             if not owned:
                 raise HTTPException(status_code=404, detail="Conversation not found.")
-            rows = (
-                admin.table("messages")
-                .insert({
-                    "conversation_id": str(conversation_id),
-                    "user_id": user.id,
-                    "role": "user",
-                    "content": content,
-                    "metadata": {},
-                })
-                .execute()
-                .data
-            )
+            message_id = str(request.idempotency_key) if request.idempotency_key else None
+
+            def find_existing() -> list[dict[str, Any]]:
+                if message_id is None:
+                    return []
+                return (
+                    admin.table("messages")
+                    .select("id,conversation_id,user_id,role,content,metadata,created_at")
+                    .eq("id", message_id)
+                    .eq("conversation_id", str(conversation_id))
+                    .eq("user_id", user.id)
+                    .limit(1)
+                    .execute()
+                    .data
+                ) or []
+
+            def reuse_or_conflict(rows: list[dict[str, Any]]) -> dict[str, Any]:
+                existing = rows[0]
+                if existing.get("role") == "user" and existing.get("content") == content:
+                    return existing
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="This message retry conflicts with an existing message.",
+                )
+
+            existing = find_existing()
+            if existing:
+                return reuse_or_conflict(existing)
+
+            payload = {
+                "conversation_id": str(conversation_id),
+                "user_id": user.id,
+                "role": "user",
+                "content": content,
+                "metadata": {},
+            }
+            if message_id is not None:
+                payload["id"] = message_id
+            try:
+                rows = admin.table("messages").insert(payload).execute().data
+            except Exception as insert_error:
+                # A concurrent retry can lose the primary-key race after both
+                # requests observed no prior row; return the winner if it matches.
+                if message_id is None:
+                    raise
+                try:
+                    duplicate = find_existing()
+                except Exception:
+                    raise insert_error
+                if duplicate:
+                    return reuse_or_conflict(duplicate)
+                raise
         if not rows:
             raise HTTPException(status_code=503, detail="Message was not saved.")
         return rows[0]

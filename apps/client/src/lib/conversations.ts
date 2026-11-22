@@ -22,6 +22,15 @@ export type ChatMessage = {
   created_at: string;
 };
 
+/** Request identifiers are for retry deduplication only; authorization remains server-side. */
+export function createMessageIdempotencyKey(): string {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (character) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = character === "x" ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
+
 /**
  * All conversation writes and reads go through the authenticated SULY API.
  * The client never supplies a user_id; the API derives ownership from the
@@ -72,13 +81,17 @@ export async function listMessages(conversationId: string): Promise<ChatMessage[
   return payload.items ?? [];
 }
 
-export async function sendUserMessage(conversationId: string, content: string): Promise<ChatMessage> {
+export async function sendUserMessage(
+  conversationId: string,
+  content: string,
+  idempotencyKey = createMessageIdempotencyKey(),
+): Promise<ChatMessage> {
   const cleanContent = content.trim();
   if (!cleanContent) throw new Error("اكتب رسالة قبل الإرسال.");
   if (cleanContent.length > 100000) throw new Error("الرسالة أطول من الحد المسموح.");
   return request<ChatMessage>(
     "/v1/chat/conversations/" + encodeURIComponent(conversationId) + "/messages",
-    { method: "POST", body: JSON.stringify({ content: cleanContent }) },
+    { method: "POST", body: JSON.stringify({ content: cleanContent, idempotency_key: idempotencyKey }) },
   );
 }
 
