@@ -659,7 +659,9 @@ begin
     '<UNTRUSTED_OUTBOX_RESULTS>' || E'\n' || left(v_outbox_outcomes::text,1500) || E'\n</UNTRUSTED_OUTBOX_RESULTS>' || E'\n' ||
     'تابع التخطيط والتنفيذ ضمن صلاحيات SULY الحالية فقط، واطلب موافقة جديدة لأي تفويض جديد.';
 
-  v_prompt := left(v_prompt,19500);
+  while octet_length(v_prompt) > 30000 loop
+    v_prompt := left(v_prompt,greatest(1,char_length(v_prompt)-500));
+  end loop;
   v_step_key := 'resume_' || replace(p_parent_run_id::text,'-','');
   v_step_order := (
     select coalesce(max(s.step_order),-1) + 1
