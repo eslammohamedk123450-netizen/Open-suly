@@ -117,6 +117,59 @@ def _load_chat_memory_context(
         raise HTTPException(status_code=503, detail="SULY memory context is temporarily unavailable.") from exc
 
 
+def _inject_target_attachments(
+    messages: list[dict[str, Any]], target_message_id: str,
+    user_id: str, project_id: str | None,
+) -> None:
+    """Append only verified owner/project files attached to the target message."""
+    target = next((row for row in messages if row.get("id") == target_message_id), None)
+    if target is None:
+        return
+    metadata = target.get("metadata") or {}
+    attachments = metadata.get("attachments") if isinstance(metadata, dict) else None
+    if not attachments:
+        return
+    if not project_id or not isinstance(attachments, list) or len(attachments) > 5:
+        raise HTTPException(status_code=422, detail="Invalid conversation attachments.")
+    ids = [item.get("id") for item in attachments if isinstance(item, dict) and isinstance(item.get("id"), str)]
+    if len(ids) != len(attachments) or len(ids) != len(set(ids)):
+        raise HTTPException(status_code=422, detail="Invalid conversation attachments.")
+    admin = get_supabase_admin_client()
+    if admin is None:
+        raise HTTPException(status_code=503, detail="Attachment storage is unavailable.")
+    try:
+        from app.services.project_workspace_store import contains_secret_material
+        with admin:
+            rows = (
+                admin.table("project_files").select("id,path,content")
+                .eq("user_id", user_id).eq("project_id", project_id)
+                .in_("id", ids).limit(5).execute().data
+            ) or []
+        if len(rows) != len(ids):
+            raise HTTPException(status_code=404, detail="One or more attached files were not found.")
+        by_id = {row.get("id"): row for row in rows}
+        parts: list[str] = []
+        total_chars = 0
+        for attachment_id in ids:
+            row = by_id.get(attachment_id)
+            content = row.get("content") if isinstance(row, dict) else None
+            path = row.get("path") if isinstance(row, dict) else None
+            if not isinstance(content, str) or not isinstance(path, str):
+                raise HTTPException(status_code=422, detail="An attached file is not valid text.")
+            if contains_secret_material(content):
+                raise HTTPException(status_code=422, detail="Remove secrets from attached files before sending.")
+            total_chars += len(content)
+            if total_chars > 12000:
+                raise HTTPException(status_code=422, detail="Attached file context exceeds the chat limit.")
+            parts.append(f"[Attached project file: {path}]\\n{content}")
+        target["content"] = str(target.get("content", "")) + "\\n\\n" + "\\n\\n".join(parts)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("chat_attachment_load_failed")
+        raise HTTPException(status_code=503, detail="Could not load conversation attachments.") from exc
+
+
 class ChatRespondRequest(BaseModel):
     conversation_id: UUID
     message_id: UUID
@@ -168,6 +221,9 @@ async def respond_to_message(
                 .data
             )
             messages = list(reversed(rows or []))
+            _inject_target_attachments(
+                messages, str(request.message_id), user.id, owned_conversation[0].get("project_id")
+            )
             memory_context = _load_chat_memory_context(
                 user.id, owned_conversation[0].get("project_id"), str(request.conversation_id)
             )
@@ -260,6 +316,7 @@ class CreateConversationRequest(BaseModel):
 
 class AddUserMessageRequest(BaseModel):
     content: str
+    attachments: list[UUID] = Field(default_factory=list, max_length=5)
 
 
 class RenameConversationRequest(BaseModel):
@@ -339,6 +396,30 @@ def create_conversation(
         raise HTTPException(status_code=503, detail="Could not create conversation.") from exc
 
 
+
+@router.get("/conversations/{conversation_id}")
+def get_conversation(
+    conversation_id: UUID,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    admin = _chat_admin()
+    try:
+        with admin:
+            rows = (
+                admin.table("conversations")
+                .select("id,user_id,title,project_id,created_at,updated_at")
+                .eq("id", str(conversation_id)).eq("user_id", user.id)
+                .limit(1).execute().data
+            )
+        if not rows:
+            raise HTTPException(status_code=404, detail="Conversation not found.")
+        return rows[0]
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Could not load conversation.") from exc
+
+
 @router.get("/conversations/{conversation_id}/messages")
 def list_conversation_messages(
     conversation_id: UUID,
@@ -393,7 +474,7 @@ def add_user_message(
         with admin:
             owned = (
                 admin.table("conversations")
-                .select("id,title")
+                .select("id,title,project_id")
                 .eq("id", str(conversation_id))
                 .eq("user_id", user.id)
                 .limit(1)
@@ -402,6 +483,31 @@ def add_user_message(
             )
             if not owned:
                 raise HTTPException(status_code=404, detail="Conversation not found.")
+            attachment_metadata: list[dict[str, str]] = []
+            if request.attachments:
+                project_id = owned[0].get("project_id")
+                if not project_id:
+                    raise HTTPException(status_code=422, detail="Attachments require a project-linked conversation.")
+                if len(request.attachments) != len(set(request.attachments)):
+                    raise HTTPException(status_code=422, detail="Duplicate attachments are not allowed.")
+                files = (
+                    admin.table("project_files").select("id,path,content")
+                    .eq("user_id", user.id).eq("project_id", str(project_id))
+                    .in_("id", [str(value) for value in request.attachments])
+                    .limit(5).execute().data
+                ) or []
+                if len(files) != len(request.attachments):
+                    raise HTTPException(status_code=404, detail="One or more attached files were not found.")
+                from app.services.project_workspace_store import contains_secret_material
+                total_chars = 0
+                for file in files:
+                    file_content = file.get("content")
+                    if not isinstance(file_content, str) or contains_secret_material(file_content):
+                        raise HTTPException(status_code=422, detail="Remove secrets or invalid content from attached files.")
+                    total_chars += len(file_content)
+                if total_chars > 12000:
+                    raise HTTPException(status_code=422, detail="Attached file context exceeds the chat limit.")
+                attachment_metadata = [{"id": file["id"], "path": file["path"]} for file in files]
             rows = (
                 admin.table("messages")
                 .insert({
@@ -409,7 +515,7 @@ def add_user_message(
                     "user_id": user.id,
                     "role": "user",
                     "content": content,
-                    "metadata": {},
+                    "metadata": {"attachments": attachment_metadata} if attachment_metadata else {},
                 })
                 .execute()
                 .data
@@ -515,6 +621,9 @@ async def stream_response_to_message(
             .order("created_at", desc=True).limit(30).execute().data
         )
         messages = list(reversed(rows or []))
+        _inject_target_attachments(
+            messages, str(request.message_id), user.id, owned[0].get("project_id")
+        )
         memory_context = _load_chat_memory_context(
             user.id, owned[0].get("project_id"), str(request.conversation_id)
         )
