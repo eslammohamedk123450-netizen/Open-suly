@@ -13,6 +13,7 @@ create table if not exists public.hermes_delegation_outbox (
     check (status in ('pending','processing','submitted','failed')),
   attempt_count integer not null default 0 check (attempt_count between 0 and 20),
   available_at timestamptz not null default now(),
+  lease_owner text,
   lease_token uuid,
   lease_expires_at timestamptz,
   result jsonb not null default '{}'::jsonb check (jsonb_typeof(result) = 'object'),
@@ -177,6 +178,7 @@ begin
   update public.hermes_delegation_outbox o
      set status = 'processing',
          attempt_count = o.attempt_count + 1,
+         lease_owner = btrim(p_worker_id),
          lease_token = v_token,
          lease_expires_at = now() + make_interval(secs => p_lease_seconds),
          updated_at = now()
@@ -201,7 +203,7 @@ begin
   end if;
   update public.hermes_delegation_outbox
      set status = 'submitted', result = p_result, error_code = null,
-         lease_token = null, lease_expires_at = null, updated_at = now()
+         lease_owner = null, lease_token = null, lease_expires_at = null, updated_at = now()
    where id = p_plan_id and status = 'processing'
      and lease_token = p_lease_token and lease_expires_at > now();
   return found;
@@ -227,7 +229,7 @@ begin
      set status = case when attempt_count >= 8 then 'failed' else 'pending' end,
          available_at = now() + make_interval(secs => least(300,power(2,least(attempt_count,8))::integer)),
          error_code = p_error_code,
-         lease_token = null, lease_expires_at = null, updated_at = now()
+         lease_owner = null, lease_token = null, lease_expires_at = null, updated_at = now()
    where id = p_plan_id and status = 'processing'
      and lease_token = p_lease_token and lease_expires_at > now();
   return found;
