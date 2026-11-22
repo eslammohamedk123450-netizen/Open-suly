@@ -95,6 +95,10 @@ begin
     left(new.changes::text,7000) || E'\n</UNTRUSTED_APPLIED_CHANGESET>' || E'\n' ||
     'لا تعتمد على الملخص وحده؛ افحص الحالة الحالية للمشروع. لا تطبق تغييرات ولا تتجاوز موافقة المالك.';
 
+  while octet_length(v_prompt) > 44000 loop
+    v_prompt := left(v_prompt,greatest(1,char_length(v_prompt)-500));
+  end loop;
+
   insert into public.task_steps (
     task_id,user_id,step_key,title,description,step_order,depends_on,input
   ) values (
@@ -107,7 +111,7 @@ begin
     jsonb_build_object(
       'operation','opencode.task.run',
       'project_id',v_run.project_id,
-      'prompt',left(v_prompt,19500),
+      'prompt',v_prompt,
       'title','Post-apply review',
       'runtime_budget_seconds',1800,
       'review_of_change_set_id',new.id
