@@ -79,8 +79,10 @@ export async function requestAssistantReplyStream(
 
   const decoder = new TextDecoder();
   let buffer = "";
-  let completed: ChatMessage | null = null;
-  let streamError: string | null = null;
+  const streamState: { completed: ChatMessage | null; error: string | null } = {
+    completed: null,
+    error: null,
+  };
 
   const dispatch = (frame: string) => {
     let event = "message";
@@ -103,10 +105,10 @@ export async function requestAssistantReplyStream(
     } else if (event === "complete") {
       const message = (payload as { message?: unknown }).message;
       if (message && typeof message === "object" && typeof (message as ChatMessage).id === "string") {
-        completed = message as ChatMessage;
+        streamState.completed = message as ChatMessage;
       }
     } else if (event === "error") {
-      streamError = responseError(payload);
+      streamState.error = responseError(payload);
     }
   };
 
@@ -129,7 +131,7 @@ export async function requestAssistantReplyStream(
     throw error;
   }
 
-  if (streamError) throw new Error(streamError);
-  if (!completed) throw new Error("انقطع بث المحادثة قبل حفظ الرد. أعد المحاولة.");
-  return completed;
+  if (streamState.error) throw new Error(streamState.error);
+  if (!streamState.completed) throw new Error("انقطع بث المحادثة قبل حفظ الرد. أعد المحاولة.");
+  return streamState.completed;
 }
