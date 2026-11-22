@@ -20,7 +20,7 @@ def test_outbox_is_server_only_and_durable():
 def test_completed_hermes_step_enqueues_only_verified_plan_for_successful_run():
     sql = _migration()
     assert "create or replace function public.enqueue_completed_hermes_delegation_plan()" in sql
-    assert "new.input->>'operation' <> 'hermes.agent.turn'" in sql
+    assert "new.input->>'operation' is distinct from 'hermes.agent.turn'" in sql
     assert "new.status <> 'completed'" in sql
     assert "engine_id = 'hermes-agent'" in sql
     assert "status = 'succeeded'" in sql
