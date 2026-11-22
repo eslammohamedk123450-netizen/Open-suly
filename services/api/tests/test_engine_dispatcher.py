@@ -104,3 +104,24 @@ def test_worker_registry_accepts_a_new_reviewed_engine_without_builtin_changes(m
     ))
     assert result.engine_id == "suly-test-browser"
     assert result.output["ok"] is True
+
+
+def test_collaboration_api_accepts_validated_future_engine_ids():
+    from app.routers.engine_collaboration import CreateEngineHandoffRequest
+
+    request = CreateEngineHandoffRequest(
+        target_engine="suly-test-browser",
+        capability="browser.navigate",
+        prompt="Open the project documentation",
+        idempotency_key="suly-browser-handoff-001",
+    )
+    assert request.target_engine == "suly-test-browser"
+    assert request.capability == "browser.navigate"
+
+    with pytest.raises(Exception):
+        CreateEngineHandoffRequest(
+            target_engine="Invalid Engine",
+            capability="browser.navigate",
+            prompt="Open the project documentation",
+            idempotency_key="suly-browser-handoff-002",
+        )
