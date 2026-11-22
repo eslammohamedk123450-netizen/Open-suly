@@ -1,0 +1,47 @@
+name: Credit ledger PostgreSQL integration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "services/api/tests/test_engine_credit_ledger_postgres.py"
+      - "services/api/requirements-integration.txt"
+      - ".github/workflows/credit-ledger-postgres.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  disposable-postgres:
+    name: Disposable PostgreSQL ledger integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: suly_credit_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d suly_credit_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      SULY_CREDIT_TEST_DSN: postgresql://postgres:test-only@127.0.0.1:5432/suly_credit_test
+      SULY_CREDIT_TEST_ALLOW_RESET: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install integration dependencies
+        run: pip install -r services/api/requirements-integration.txt
+      - name: Apply ledger migration in disposable test database and exercise RPCs
+        run: python -m pytest -q services/api/tests/test_engine_credit_ledger_postgres.py
