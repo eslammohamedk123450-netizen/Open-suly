@@ -769,4 +769,4 @@ undefined
 - Platform CI #1388 `45000436704` و#1389 `45000469647` green: **770 passed, 5 skipped, 5 warnings**؛ client typecheck/Expo compatibility/Web export green.
 - #1387 failed بسبب malformed JSX؛ إصلاح d033 confirmed by #1388/#1389. لا نخفي failure.
 - Repository baseline #1406 `45000436695` و#1407 `45000469682` green. Latest docs commit c434 pending #1390/#1408.
-- Current checklist: **61/157 (39%)**؛ controlled beta readiness still **~20%**. No provider live or billing.
+- Current checklist: **61/156 (39%)**؛ controlled beta readiness still **~20%**. No provider live or billing.

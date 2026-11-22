@@ -579,4 +579,4 @@ For every engine:
 - Platform CI #1388/run `45000436704` على commit d033 و#1389/run `45000469647` على commit 075 نجحا؛ كل منهما **770 passed, 5 skipped, 5 warnings**. client typecheck، Expo compatibility، Web export green.
 - فشل #1387 على commit 5e41 بسبب JSX tag syntax؛ API job كان green. أصلحنا markup/null metadata في d033، ثم أظهرت #1388/#1389 green.
 - Repository baseline #1406/run `45000436695` و#1407/run `45000469682` green. أحدث docs commit c434 ما زال CI #1390/#1408 pending.
-- إعادة عد checklist: **61/157 (39%)**. Readiness milestone-weighted remains **~20%**؛ provider usage counts لا تساوي cost ولا credits ولا تمنح صلاحية provider.
+- إعادة عد checklist: **61/156 (39%)**. Readiness milestone-weighted remains **~20%**؛ provider usage counts لا تساوي cost ولا credits ولا تمنح صلاحية provider.
