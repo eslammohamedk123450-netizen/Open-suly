@@ -66,7 +66,7 @@ def ai_respond(step: ClaimedStep) -> dict[str, Any]:
 
 
 class HermesAgentAdapter:
-    """Narrow adapter to the separately hosted Hermes bridge."""
+    """Narrow adapter to the pinned native Hermes engine in this task-scoped runtime."""
 
     def __init__(
         self,
