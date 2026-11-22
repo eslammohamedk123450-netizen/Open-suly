@@ -135,3 +135,34 @@ def test_parent_resume_step_is_claimed_only_after_its_exact_run_barrier_is_clear
     assert "and cancel_requested_at is null" in sql
     assert "pg_advisory_xact_lock" in sql
     assert "set status = 'ready'" not in sql
+
+
+def _opencode_post_apply_migration() -> str:
+    root = Path(__file__).resolve().parents[3]
+    return (root / "supabase" / "migrations" / "20261122080000_opencode_post_apply_review_and_handoff_gate.sql").read_text(encoding="utf-8")
+
+
+def test_opencode_apply_queues_one_durable_post_apply_review_without_recursive_review_loops():
+    sql = re.sub(r"\s+", " ", _opencode_post_apply_migration())
+    assert "enqueue_opencode_post_apply_review" in sql
+    assert "new.status is not distinct from old.status" in sql
+    assert "new.status <> 'applied'" in sql
+    assert "v_source_step.input ? 'review_of_change_set_id'" in sql
+    assert "review_after_apply_" in sql
+    assert "'review_of_change_set_id',new.id" in sql
+    assert "Perform a post-apply review" not in sql
+    assert "لا تعدّل الملفات ولا تطبق أي تغيير بنفسك" in sql
+    assert "on conflict (task_id,step_key) do nothing" in sql
+    assert "set status = 'ready'" in sql
+
+
+def test_opencode_child_handoff_waits_for_owner_change_set_decision_and_rereview():
+    sql = re.sub(r"\s+", " ", _opencode_post_apply_migration())
+    assert "cs.status in ('review_ready','applying')" in sql
+    assert "sync_opencode_change_set_handoff_terminal" in sql
+    assert "new.status not in ('applied','rejected','stale')" in sql
+    assert "if new.status = 'applied' and not v_handoff.is_re_review then continue" in sql
+    assert "'re_review_applied'" in sql
+    assert "'re_review_rejected'" in sql
+    assert "review_decision = v_decision" in sql
+    assert "after update of status on public.opencode_change_sets" in sql
