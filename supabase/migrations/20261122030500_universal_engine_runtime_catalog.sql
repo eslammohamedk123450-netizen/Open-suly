@@ -50,16 +50,16 @@ insert into public.engine_runtime_catalog (
   engine_id,task_operation,capabilities,max_timeout_seconds,max_input_bytes,max_output_bytes,
   requires_project,enabled,collaboration_enabled,upstream_repository,upstream_revision,license_id
 ) values
-  ('hermes-agent','hermes.agent.turn',array['agent.general'],300,32000,64000,false,true,true,
+  ('hermes-agent','hermes.agent.turn',array['agent.general'],300,32000,64000,false,false,true,
    'https://github.com/NousResearch/hermes-agent','2de9f51b8008a7d49a49221c184f2f11cbfc4af1','MIT'),
-  ('opencode','opencode.task.run',array['code.edit','code.review','code.test','code.repository'],1800,48000,16000,true,true,true,
+  ('opencode','opencode.task.run',array['code.edit','code.review','code.test','code.repository'],1800,48000,16000,true,false,true,
    'https://github.com/anomalyco/opencode','4cca18d80450a3dd6a9a4142028bde84ccb3116e','MIT')
 on conflict (engine_id) do update set
   task_operation=excluded.task_operation,capabilities=excluded.capabilities,
   max_timeout_seconds=excluded.max_timeout_seconds,max_input_bytes=excluded.max_input_bytes,
   max_output_bytes=excluded.max_output_bytes,requires_project=excluded.requires_project,
   upstream_repository=excluded.upstream_repository,upstream_revision=excluded.upstream_revision,
-  license_id=excluded.license_id,updated_at=now();
+  license_id=excluded.license_id,enabled=false,updated_at=now();
 
 create or replace function public.create_engine_collaboration_handoff(
   p_parent_task_id uuid,
