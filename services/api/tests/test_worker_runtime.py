@@ -1184,6 +1184,60 @@ def test_opencode_worker_handler_returns_review_ids_and_finishes_engine_run(monk
     assert finishes == [(engine_run_id, "succeeded", None)]
 
 
+def test_opencode_adapter_preserves_cancelled_terminal_state(monkeypatch):
+    from types import SimpleNamespace
+    import app.worker_runtime as runtime
+    from app.services.tool_registry import ToolExecutionContext
+
+    cancel_event = Event()
+    finishes = []
+
+    class FakeRunStore:
+        def start(self, _step, engine):
+            assert engine == "opencode"
+            return "run-123"
+        def finish(self, run_id, _step, status, error_code=None):
+            finishes.append((run_id, status, error_code))
+            return True
+
+    class CancellingExecutor:
+        def __init__(self, **_kwargs):
+            pass
+        def execute(self, **_kwargs):
+            cancel_event.set()
+            raise RuntimeError("cancelled while OpenCode was executing")
+
+    step = make_step({
+        "operation": "opencode.task.run",
+        "project_id": "00000000-0000-0000-0000-000000000099",
+        "prompt": "Build a feature",
+    })
+    monkeypatch.setattr(runtime, "get_supabase_admin_client", lambda: object())
+    monkeypatch.setattr(runtime, "EngineRunStore", lambda _client: FakeRunStore())
+    monkeypatch.setattr(runtime, "OpenCodeTaskExecutor", CancellingExecutor)
+    adapter = runtime.OpenCodeEngineAdapter(
+        step,
+        ToolExecutionContext(
+            cancel_event=cancel_event,
+            runtime_broker=object(),
+        ),
+    )
+    from app.services.engine_contract import EngineRequest
+    with pytest.raises(RuntimeError):
+        adapter.execute(EngineRequest(
+            task_id=str(step.task_id),
+            capability="code.edit",
+            input_payload={
+                "project_id": "00000000-0000-0000-0000-000000000099",
+                "prompt": "Build a feature",
+            },
+            timeout_seconds=60,
+        ))
+    assert finishes == [
+        ("run-123", "cancelled", None),
+    ]
+
+
 def test_hermes_delegated_runtime_budget_reaches_native_runs_adapter(monkeypatch):
     import app.worker_runtime as runtime_module
     stub_hermes_context(monkeypatch)
