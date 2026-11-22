@@ -1,0 +1,55 @@
+# API + durable worker. Supabase remains the managed PostgreSQL/Auth service.
+# Runtime Provisioner MUST run separately on a dedicated Docker worker host.
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: services/api/Dockerfile
+    image: suly-api:local
+    env_file:
+      - ../.env
+    environment:
+      APP_ENV: production
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      WORKER_ENABLED: "false"
+    ports:
+      - "${SULY_API_BIND:-127.0.0.1}:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop:
+      - ALL
+
+  worker:
+    image: suly-api:local
+    env_file:
+      - ../.env
+    environment:
+      APP_ENV: production
+      WORKER_ENABLED: "true"
+      API_HOST: 127.0.0.1
+      LOG_LEVEL: INFO
+    command: ["python", "-m", "app.worker_runtime"]
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop:
+      - ALL
