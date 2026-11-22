@@ -27,7 +27,7 @@ _TRANSITIONS = {
     "waiting_approval": {"running", "failed", "cancelled", "expired"},
     "collecting": {"review_ready", "failed", "cancelled", "expired"},
     "review_ready": {"applying", "completed", "failed", "cancelled"},
-    "applying": {"completed", "failed", "review_ready"},
+    "applying": {"completed", "failed", "cancelled", "review_ready"},
     "completed": set(), "failed": set(), "cancelled": set(), "expired": set(),
 }
 _STATUSES = frozenset({
