@@ -855,6 +855,89 @@ create trigger tasks_record_engine_collaboration_child_terminal
   after update of status on public.tasks
   for each row execute function public.record_engine_collaboration_child_terminal();
 
+create or replace function public.cancel_engine_collaboration_handoff(
+  p_handoff_id uuid,
+  p_user_id uuid
+)
+returns boolean
+language plpgsql
+security invoker
+set search_path = ''
+as $
+declare
+  v_handoff public.engine_collaboration_handoffs%rowtype;
+  v_parent public.tasks%rowtype;
+  v_child public.tasks%rowtype;
+  v_sequence bigint;
+begin
+  -- Match the global parent -> child -> handoff lock order used by approval
+  -- and parent cancellation. Never hold a handoff row while waiting on a task.
+  select * into v_handoff
+    from public.engine_collaboration_handoffs
+   where id = p_handoff_id and user_id = p_user_id;
+  if not found then
+    return false;
+  end if;
+
+  select * into v_parent
+    from public.tasks
+   where id = v_handoff.parent_task_id and user_id = p_user_id
+   for update;
+  if not found then
+    return false;
+  end if;
+
+  if v_handoff.child_task_id is not null then
+    select * into v_child
+      from public.tasks
+     where id = v_handoff.child_task_id and user_id = p_user_id
+     for update;
+  end if;
+
+  select * into v_handoff
+    from public.engine_collaboration_handoffs
+   where id = p_handoff_id and user_id = p_user_id
+   for update;
+  if not found then
+    return false;
+  end if;
+
+  if v_handoff.status = 'pending_approval' and v_handoff.child_task_id is null then
+    update public.engine_collaboration_handoffs
+       set status = 'cancelled', finished_at = now(), updated_at = now()
+     where id = p_handoff_id and user_id = p_user_id
+       and status = 'pending_approval';
+
+    select coalesce(max(e.sequence),0)+1 into v_sequence
+      from public.engine_collaboration_events e
+     where e.handoff_id = p_handoff_id and e.user_id = p_user_id;
+    insert into public.engine_collaboration_events (
+      handoff_id,user_id,sequence,event_type,status,metadata
+    ) values (
+      p_handoff_id,p_user_id,v_sequence,'handoff.cancelled','cancelled',
+      jsonb_build_object('reason','owner_cancelled')
+    );
+    return true;
+  end if;
+
+  if v_handoff.status = 'running' and v_handoff.child_task_id is not null
+     and v_child.id = v_handoff.child_task_id
+     and v_child.status in ('queued','planning','ready','running','waiting_approval','waiting_children','cancel_requested') then
+    if v_child.cancel_requested_at is null then
+      update public.tasks
+         set status = 'cancel_requested',
+             cancel_requested_at = now(),
+             updated_at = now()
+       where id = v_child.id and user_id = p_user_id
+         and cancel_requested_at is null;
+    end if;
+    return true;
+  end if;
+
+  raise exception 'collaboration_handoff_not_cancellable' using errcode = '55000';
+end;
+$;
+
 revoke all on function public.mark_task_waiting_for_collaboration() from public,anon,authenticated;
 revoke all on function public.mark_task_waiting_for_hermes_outbox() from public,anon,authenticated;
 revoke all on function public.maybe_queue_engine_parent_continuation(uuid,uuid,uuid) from public,anon,authenticated;
