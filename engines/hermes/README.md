@@ -63,7 +63,7 @@ For Hermes, the provisioner must also return the exact runtime profile `suly-her
 
 `HERMES_AGENT_ISOLATION_CONFIRMED` remains an operator attestation gate; it is not proof of isolation. Keep `HERMES_AGENT_ENABLED=false` until the provisioner is deployed and its security controls are tested. Do not use the single-service Compose profile or its named volume as a multi-tenant runtime.
 
-The bridge does not pass SULY identity claims, approval grants, database credentials, or Supabase service keys to Hermes. Toolset discovery is descriptive only; SULY approvals remain authoritative. The current integration does not yet provide SULY-owned skill installation/update, persistent memory, session mapping, MCP credential brokering, or separately budgeted child-task orchestration.
+The bridge does not pass SULY identity claims, approval grants, database credentials, or Supabase service keys to Hermes. Toolset discovery is descriptive only; SULY approvals remain authoritative. The current integration provides approved, versioned skill snapshots; owner/project/conversation-scoped memory/context; a SULY tool-approval gateway; and durable proposal → owner approval → child-task handoff → parent continuation. Native Hermes subagent spawning/delegate_task remains disabled: all delegation must pass through SULY AgentManager, the durable outbox, owner approval, and the universal engine dispatcher. SULY does not install or mutate upstream Hermes skills on the user's behalf.
 
 ## Verification boundary
 
