@@ -226,3 +226,9 @@ def test_stream_chat_response_persists_completed_reply_and_usage(monkeypatch):
     assert admin.inserted[0]["metadata"]["usage"] == {
         "input_tokens": 9, "output_tokens": 3, "total_tokens": 12,
     }
+
+
+
+def test_chat_capabilities_requires_authentication():
+    response = client.get("/v1/chat/capabilities")
+    assert response.status_code == 401
