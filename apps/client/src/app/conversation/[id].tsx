@@ -72,6 +72,7 @@ export default function ConversationScreen() {
       const hasReply = lastUserMessage && rows.some((row) => row.role === "assistant" && row.metadata?.in_reply_to === lastUserMessage.id);
       if (lastUserMessage && !hasReply) {
         setPendingMessageId(lastUserMessage.id);
+        setSending(true);
         try {
           const controller = new AbortController();
           activeRequest.current = controller;
@@ -84,6 +85,7 @@ export default function ConversationScreen() {
           if (active) setStreamingText("");
         } finally {
           activeRequest.current = null;
+          if (active) setSending(false);
         }
       }
     })
@@ -93,7 +95,7 @@ export default function ConversationScreen() {
   }, [id, user]);
 
   const send = async () => {
-    if (!draft.trim() || sending) return;
+    if (!draft.trim() || sending || pendingMessageId) return;
     if (!user) { router.push("/auth"); return; }
     const content = draft.trim();
     setDraft("");
@@ -222,7 +224,7 @@ export default function ConversationScreen() {
               <Text style={styles.sendText}>■</Text>
             </Pressable>
           ) : (
-            <Pressable style={[styles.sendButton, !draft.trim() && styles.disabled]} onPress={send} disabled={!draft.trim()} accessibilityLabel="إرسال الرسالة">
+            <Pressable style={[styles.sendButton, (!draft.trim() || !!pendingMessageId) && styles.disabled]} onPress={send} disabled={!draft.trim() || !!pendingMessageId} accessibilityLabel="إرسال الرسالة">
               <Text style={styles.sendText}>↑</Text>
             </Pressable>
           )}
