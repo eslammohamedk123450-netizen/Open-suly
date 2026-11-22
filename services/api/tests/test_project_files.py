@@ -212,3 +212,64 @@ def test_project_file_search_rejects_control_characters_before_database(monkeypa
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 422
+
+
+
+class _SearchQuery:
+    def __init__(self, table_name, rows):
+        self.table_name = table_name
+        self.rows = rows
+        self.filters = {}
+        self.pattern = None
+        self.limit_value = 20
+
+    def select(self, *_args): return self
+    def eq(self, key, value):
+        self.filters[key] = value
+        return self
+    def ilike(self, key, pattern):
+        assert key == "content"
+        self.pattern = pattern.replace("%", "").replace("\\_", "_")
+        return self
+    def order(self, *_args, **_kwargs): return self
+    def limit(self, value):
+        self.limit_value = value
+        return self
+    def execute(self):
+        if self.table_name == "projects":
+            rows = [row for row in self.rows if all(str(row.get(k)) == str(v) for k, v in self.filters.items())]
+        else:
+            rows = [
+                row for row in self.rows
+                if all(str(row.get(k)) == str(v) for k, v in self.filters.items())
+                and self.pattern.casefold() in row.get("content", "").casefold()
+            ]
+        return type("Result", (), {"data": rows[:self.limit_value]})()
+
+
+class _SearchAdmin:
+    def __init__(self):
+        self.projects = [{"id": PROJECT_ID, "user_id": "owner-a"}]
+        self.files = [
+            {"project_id": PROJECT_ID, "user_id": "owner-a", "path": "src/main.py", "content": "def launch_agent(): return True", "updated_at": "2026-11-22T10:00:00Z"},
+            {"project_id": PROJECT_ID, "user_id": "owner-b", "path": "secrets.py", "content": "def launch_agent(): return 'private'", "updated_at": "2026-11-22T10:00:00Z"},
+        ]
+    def __enter__(self): return self
+    def __exit__(self, *_args): return False
+    def table(self, name):
+        if name == "projects": return _SearchQuery(name, self.projects)
+        if name == "project_files": return _SearchQuery(name, self.files)
+        raise AssertionError(name)
+
+
+def test_project_file_search_returns_only_owned_matches(monkeypatch):
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="owner-a", email=None)
+    monkeypatch.setattr(files_module, "get_supabase_admin_client", _SearchAdmin)
+    try:
+        response = client.get(f"/v1/projects/{PROJECT_ID}/files/search?q=launch_agent")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert [item["path"] for item in response.json()["items"]] == ["src/main.py"]
+    assert "return True" in response.json()["items"][0]["snippet"]
