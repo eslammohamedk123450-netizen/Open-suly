@@ -287,3 +287,11 @@ def test_all_new_collaboration_and_opencode_plpgsql_bodies_have_balanced_dollar_
         assert len(re.findall(r"(?m)^as \$\$$", sql)) == len(re.findall(r"(?m)^\$\$;$", sql))
         assert not re.search(r"(?m)^as \$(?!\$)", sql)
         assert not re.search(r"(?m)^\$;$", sql)
+
+
+def test_opencode_apply_guard_serializes_with_parent_child_cancellation():
+    sql = re.sub(r"\s+", " ", _opencode_post_apply_migration())
+    guard = sql[sql.index("create or replace function public.guard_opencode_change_set_apply_after_cancellation"):sql.index("drop trigger if exists opencode_changeset_guard_cancelled_task")]
+    assert guard.index("from public.tasks t where t.id = v_parent_task_id") < guard.index("from public.tasks t where t.id = v_task_id") < guard.index("from public.engine_collaboration_handoffs h where h.child_task_id = v_task_id")
+    assert "for share" in guard
+    assert "v_parent_status in ('cancel_requested','cancelled')" in guard
