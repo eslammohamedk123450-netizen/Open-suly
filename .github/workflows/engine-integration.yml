@@ -1,0 +1,48 @@
+name: Engine integration verification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "services/api/**"
+      - ".github/workflows/engine-integration.yml"
+  push:
+    branches: [feat/universal-engine-dispatcher]
+    paths:
+      - "services/api/**"
+      - ".github/workflows/engine-integration.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  engine-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/api/requirements.txt
+      - name: Install API dependencies and test runner
+        working-directory: services/api
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+      - name: Compile API modules
+        working-directory: services/api
+        env:
+          PYTHONPATH: .
+        run: python -m compileall -q app
+      - name: Run engine lifecycle and integration tests
+        working-directory: services/api
+        env:
+          PYTHONPATH: .
+        run: |
+          pytest -q \
+            tests/test_engine_dispatcher.py \
+            tests/test_engine_collaboration.py \
+            tests/test_hermes_tool_gateway.py \
+            tests/test_worker_runtime.py
