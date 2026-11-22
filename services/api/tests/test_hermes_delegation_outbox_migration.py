@@ -247,3 +247,11 @@ def test_parent_continuation_waits_for_other_incomplete_dag_steps():
     assert "jsonb_agg(s.step_key order by s.step_order)" in sql
     assert "s.status in ('pending','ready','running')" in sql
     assert "v_step_order,v_dependencies,v_input" in sql
+
+
+def test_resume_and_post_apply_review_steps_can_continue_after_failed_parent_dependencies():
+    sql = re.sub(r"\s+", " ", _parent_child_continuation_migration())
+    assert "left(s.step_key,7) = 'resume_'" in sql
+    assert "left(s.step_key,19) = 'review_after_apply_'" in sql
+    assert "dep.status in ('completed','failed','blocked','cancelled')" in sql
+    assert "dep.status='completed'" in sql
