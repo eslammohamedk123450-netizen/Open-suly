@@ -1,5 +1,7 @@
 from typing import Any, Callable
 
+import json
+
 import httpx
 
 from app.core.config import get_settings
@@ -229,7 +231,7 @@ async def stream_reply(
                     if encoded == "[DONE]":
                         break
                 try:
-                    body = __import__("json").loads(encoded)
+                    body = json.loads(encoded)
                 except (ValueError, TypeError) as exc:
                     raise AIProviderError("The AI provider returned an invalid stream event.") from exc
 
