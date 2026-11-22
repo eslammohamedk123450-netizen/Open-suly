@@ -28,6 +28,9 @@ from app.services.hermes_agent import HermesAgentCancelled, respond_run_approval
 from app.services.hermes_skill_policy import HermesSkillApprovalStore
 from app.services.hermes_state_store import HermesStateStore
 from app.services.hermes_tool_gateway import HermesToolGateway
+from app.services.hermes_delegation_bridge import parse_hermes_orchestration_output
+from app.services.hermes_delegation_bridge import HermesDelegationBridge
+from app.services.hermes_delegation_outbox import HermesDelegationOutbox, build_delegation_agent_manager
 from app.services.engine_run_store import EngineRunStore
 from app.services.engine_run_reconciler import EngineRunReconciler
 from app.services.task_worker import ClaimedStep, TaskWorker
@@ -104,10 +107,13 @@ class HermesAgentAdapter:
         )
         if not isinstance(result, dict) or not isinstance(result.get("content"), str):
             raise ValueError("hermes_adapter_invalid_response")
-        return EngineResult(
-            engine_id="hermes-agent",
-            output={"engine": result.get("engine", "hermes-agent"), "content": result["content"], **({"session_id": result["session_id"]} if isinstance(result.get("session_id"), str) else {})},
-        )
+        content, delegation_plan = parse_hermes_orchestration_output(result["content"])
+        output: dict[str, Any] = {"engine": "hermes-agent", "content": content}
+        if isinstance(result.get("session_id"), str):
+            output["session_id"] = result["session_id"]
+        if delegation_plan is not None:
+            output["delegation_plan"] = delegation_plan
+        return EngineResult(engine_id="hermes-agent", output=output)
 
 
 
@@ -684,7 +690,9 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
         "engine": result.output["engine"],
         "content": result.output["content"],
         "handoff_context": result.output["content"][:12_000],
+        "engine_run_id": str(run_id),
         **({"session_id": result.output["session_id"]} if isinstance(result.output.get("session_id"), str) else {}),
+        **({"delegation_plan": result.output["delegation_plan"]} if isinstance(result.output.get("delegation_plan"), dict) else {}),
     }
 
 
