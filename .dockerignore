@@ -1,0 +1,8 @@
+# The OpenCode runtime image needs only the pinned upstream source tree.
+# Keep the root build context small and avoid sending application secrets,
+# local workspaces, Git metadata, or unrelated SULY services to the daemon.
+**
+!engines/
+!engines/opencode/
+!engines/opencode/upstream/
+!engines/opencode/upstream/**
