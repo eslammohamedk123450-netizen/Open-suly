@@ -7,7 +7,9 @@ to create child tasks. Retries reuse per-request idempotency keys.
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
+from app.services.agent_manager import AgentManager
 from app.services.hermes_delegation_bridge import HermesDelegationBridge
 
 
@@ -54,7 +56,7 @@ class HermesDelegationOutbox:
         user_id = row.get("user_id")
         parent_run_id = row.get("parent_run_id")
         payload = row.get("payload")
-        if not all(isinstance(value, str) and value for value in (
+        if not all(self._canonical_uuid(value) for value in (
             plan_id, lease_token, task_id, user_id, parent_run_id
         )) or not isinstance(payload, dict):
             self._fail(plan_id, lease_token, "delegation_outbox_claim_invalid")
@@ -95,8 +97,15 @@ class HermesDelegationOutbox:
             self._fail(plan_id, lease_token, "delegation_delivery_failed")
             return "retry_scheduled"
 
+    @staticmethod
+    def _canonical_uuid(value: Any) -> bool:
+        try:
+            return isinstance(value, str) and str(UUID(value)) == value
+        except (TypeError, ValueError, AttributeError):
+            return False
+
     def _fail(self, plan_id: Any, lease_token: Any, error_code: str) -> None:
-        if not isinstance(plan_id, str) or not isinstance(lease_token, str):
+        if not self._canonical_uuid(plan_id) or not self._canonical_uuid(lease_token):
             return
         self._client.rpc(
             "fail_hermes_delegation_plan",
