@@ -171,3 +171,34 @@ def test_reconciler_prefers_runtime_claim_handler_over_legacy_run_id_handler():
     )
     assert reconciler.run_once() == 1
     assert observed == [item.runtime_id]
+
+
+def test_reconciler_uses_generic_runtime_recovery_for_new_engines():
+    item = EngineStopClaim(
+        run_id=UUID("00000000-0000-0000-0000-000000000099"),
+        engine_id="suly-test-browser",
+        upstream_run_id=None,
+        reconcile_token=UUID("00000000-0000-0000-0000-000000000088"),
+        attempt_count=1,
+        task_id=UUID("00000000-0000-0000-0000-000000000001"),
+        runtime_id=UUID("00000000-0000-0000-0000-000000000055"),
+    )
+    store = FakeStore([item])
+    recovered, released = [], []
+
+    class RuntimeBroker:
+        def recover(self, runtime_id, task_id, engine_run_id, *, engine_id):
+            recovered.append((runtime_id, task_id, engine_run_id, engine_id))
+            return {"runtime_id": runtime_id, "engine_id": engine_id}
+
+        def release(self, lease):
+            released.append(lease)
+            return True
+
+    reconciler = EngineRunReconciler(store, runtime_broker=RuntimeBroker())
+    assert reconciler.run_once() == 1
+    assert recovered == [(
+        str(item.runtime_id), str(item.task_id), str(item.run_id), "suly-test-browser",
+    )]
+    assert released == [{"runtime_id": str(item.runtime_id), "engine_id": "suly-test-browser"}]
+    assert store.finished == [(item, True)]
