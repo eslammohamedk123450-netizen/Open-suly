@@ -112,3 +112,27 @@ export async function previewProjectFile(
     { method: "POST", body: JSON.stringify({ content, expected_updated_at: expectedUpdatedAt }) },
   );
 }
+
+
+export type ProjectFileSearchResult = {
+  path: string;
+  snippet: string;
+  updated_at: string | null;
+};
+
+export async function searchProjectFiles(
+  projectId: string,
+  query: string,
+  limit = 20,
+): Promise<ProjectFileSearchResult[]> {
+  const cleanQuery = query.trim();
+  if (cleanQuery.length < 2 || cleanQuery.length > 120) {
+    throw new Error("اكتب كلمتين على الأقل للبحث داخل ملفات المشروع.");
+  }
+  const boundedLimit = Math.max(1, Math.min(20, Math.floor(limit)));
+  const params = new URLSearchParams({ q: cleanQuery, limit: String(boundedLimit) });
+  const result = await request<{ items: ProjectFileSearchResult[] }>(
+    "/v1/projects/" + encodeURIComponent(projectId) + "/files/search?" + params.toString(),
+  );
+  return result.items ?? [];
+}

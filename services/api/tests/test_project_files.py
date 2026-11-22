@@ -179,3 +179,36 @@ def test_project_file_preview_rejects_traversal_before_database(monkeypatch):
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 422
+
+
+
+def test_project_file_search_requires_authentication():
+    assert client.get(f"/v1/projects/{PROJECT_ID}/files/search?q=agent").status_code == 401
+
+
+def test_project_file_search_rejects_short_query_before_database(monkeypatch):
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="user-a", email=None)
+    monkeypatch.setattr(
+        files_module,
+        "get_supabase_admin_client",
+        lambda: (_ for _ in ()).throw(AssertionError("Database must not be called")),
+    )
+    try:
+        response = client.get(f"/v1/projects/{PROJECT_ID}/files/search?q=a")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 422
+
+
+def test_project_file_search_rejects_control_characters_before_database(monkeypatch):
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(id="user-a", email=None)
+    monkeypatch.setattr(
+        files_module,
+        "get_supabase_admin_client",
+        lambda: (_ for _ in ()).throw(AssertionError("Database must not be called")),
+    )
+    try:
+        response = client.get(f"/v1/projects/{PROJECT_ID}/files/search?q=%0A")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 422

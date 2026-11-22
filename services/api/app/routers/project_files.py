@@ -88,6 +88,59 @@ def list_project_files(
         raise HTTPException(status_code=503, detail="Could not list project files.") from exc
 
 
+
+@router.get("/{project_id}/files/search")
+def search_project_files(
+    project_id: UUID,
+    q: str = Query(min_length=2, max_length=120),
+    limit: int = Query(default=20, ge=1, le=20),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Search text inside the caller's project files without exposing full file contents."""
+    query = q.strip()
+    if len(query) < 2 or any(ord(char) < 32 for char in query):
+        raise HTTPException(status_code=422, detail="Search query must contain 2–120 printable characters.")
+    # Treat user input literally: SQL/PostgREST wildcard characters are escaped.
+    escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    client = _admin()
+    try:
+        with client:
+            _owned_project(client, project_id, user.id)
+            rows = (
+                client.table("project_files")
+                .select("path,content,updated_at")
+                .eq("project_id", str(project_id))
+                .eq("user_id", user.id)
+                .ilike("content", f"%{escaped}%")
+                .order("path")
+                .limit(limit)
+                .execute()
+                .data
+            ) or []
+        matches = []
+        needle = query.casefold()
+        for row in rows:
+            content = row.get("content")
+            path = row.get("path")
+            if not isinstance(content, str) or not isinstance(path, str):
+                continue
+            index = content.casefold().find(needle)
+            if index < 0:
+                continue
+            start = max(0, index - 160)
+            end = min(len(content), index + len(query) + 240)
+            matches.append({
+                "path": path,
+                "snippet": content[start:end],
+                "updated_at": row.get("updated_at"),
+            })
+        return {"items": matches, "query": query}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Could not search project files.") from exc
+
+
 @router.get("/{project_id}/file")
 def read_project_file(
     project_id: UUID,
@@ -187,6 +240,7 @@ def restore_project_file_revision(
             }).eq("id", revision["file_id"])
               .eq("project_id", str(project_id)).eq("user_id", user.id)
               .eq("updated_at", request.expected_updated_at)
+              .select("path,updated_at")
               .execute().data)
         if not restored:
             raise HTTPException(status_code=409, detail="The file changed after it was opened. Reload it before restoring this version.")
@@ -277,6 +331,7 @@ def save_project_file(
                 }).eq("id", existing[0]["id"])
                   .eq("project_id", str(project_id)).eq("user_id", user.id)
                   .eq("updated_at", request.expected_updated_at)
+                  .select("id,path,updated_at")
                   .execute().data)
                 if not rows:
                     raise HTTPException(status_code=409, detail="This file was changed elsewhere. Reload the latest version before saving.")
@@ -322,7 +377,7 @@ def delete_project_file(
             _owned_project(client, project_id, user.id)
             rows = (client.table("project_files").delete()
                 .eq("project_id", str(project_id)).eq("user_id", user.id)
-                .eq("path", safe_path).execute().data)
+                .eq("path", safe_path).select("id").execute().data)
         if not rows:
             raise HTTPException(status_code=404, detail="Project file not found.")
         return {"deleted": True}
