@@ -922,7 +922,13 @@ begin
      and s.available_at <= now()
      and t.cancel_requested_at is null
      and (
-       (t.status in ('ready','running') and left(s.step_key,7) <> 'resume_')
+       -- Independent DAG siblings may continue while the parent waits for
+       -- delegated children. They must not move the parent out of the durable
+       -- waiting_children barrier; only the resume step does that.
+       (
+         (t.status in ('ready','running') or t.status = 'waiting_children')
+         and left(s.step_key,7) <> 'resume_'
+       )
        or (
          t.status in ('ready','running','waiting_children')
          and left(s.step_key,7) = 'resume_'
@@ -988,7 +994,12 @@ begin
    returning * into v_step;
 
   update public.tasks t
-     set status='running', started_at=coalesce(started_at,now())
+     set status=case
+           when t.status='waiting_children' and left(v_step.step_key,7) <> 'resume_'
+             then 'waiting_children'
+           else 'running'
+         end,
+         started_at=coalesce(started_at,now())
    where t.id=v_step.task_id
      and t.status in ('ready','waiting_children')
      and t.cancel_requested_at is null
