@@ -95,6 +95,28 @@ begin
   if not found then
     raise exception 'collaboration_parent_task_not_found' using errcode = 'P0002';
   end if;
+
+  -- Idempotent retries return the already-created handoff even if its parent
+  -- has since entered waiting, resumed, completed, or been cancelled.
+  select * into v_existing
+    from public.engine_collaboration_handoffs
+   where user_id = p_user_id and idempotency_key = p_idempotency_key
+   for update;
+  if found then
+    if v_existing.parent_task_id <> p_parent_task_id
+       or v_existing.parent_run_id <> p_parent_run_id
+       or v_existing.target_engine <> p_target_engine
+       or v_existing.capability <> p_capability
+       or v_existing.input_payload <> p_input_payload
+       or v_existing.max_child_tasks <> p_max_child_tasks
+       or v_existing.max_parallel_children <> p_max_parallel_children
+       or v_existing.max_runtime_seconds <> p_max_runtime_seconds
+       or v_existing.max_input_bytes <> p_max_input_bytes then
+      raise exception 'collaboration_idempotency_conflict' using errcode = '55000';
+    end if;
+    return v_existing.id;
+  end if;
+
   if v_task.status not in ('running','completed','waiting_children') or v_task.cancel_requested_at is not null then
     raise exception 'collaboration_parent_task_not_available' using errcode = '55000';
   end if;
@@ -142,21 +164,6 @@ begin
      and h.user_id = p_user_id;
   if v_depth not between 1 and 3 then
     raise exception 'collaboration_depth_exceeded' using errcode = '22023';
-  end if;
-
-  select * into v_existing
-    from public.engine_collaboration_handoffs
-   where user_id = p_user_id and idempotency_key = p_idempotency_key
-   for update;
-  if found then
-    if v_existing.parent_task_id <> p_parent_task_id
-       or v_existing.parent_run_id <> p_parent_run_id
-       or v_existing.target_engine <> p_target_engine
-       or v_existing.capability <> p_capability
-       or v_existing.input_payload <> p_input_payload then
-      raise exception 'collaboration_idempotency_conflict' using errcode = '55000';
-    end if;
-    return v_existing.id;
   end if;
 
   if exists (
