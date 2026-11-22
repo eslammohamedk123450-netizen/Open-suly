@@ -21,7 +21,7 @@ or live engine execution have already been configured or tested.
 Requirements: Docker Engine and Docker Compose v2 on a Linux host.
 
 ```sh
-cp .env.example .env
+cp services/api/.env.example .env
 # Edit .env on the server. Set Supabase URL, publishable key and server-only
 # secret key. Keep all secret values out of Git and client build variables.
 docker compose --env-file .env -f deploy/docker-compose.server.yml build
@@ -40,11 +40,11 @@ Start the durable worker only after database migrations and staging acceptance
 checks have passed:
 
 ```sh
-docker compose --env-file .env -f deploy/docker-compose.server.yml up -d worker
+docker compose --profile workers --env-file .env -f deploy/docker-compose.server.yml up -d worker
 ```
 
-The worker is deliberately not started by the default command. The API container
-has `WORKER_ENABLED=false`; the worker service explicitly sets it to true.
+The worker is deliberately hidden behind the `workers` Compose profile and is not started by a routine `up -d`. The API container
+has `WORKER_ENABLED=false`; the worker service explicitly sets it to true. Start it only after completing the database migration gate and staging acceptance checks.
 
 ## Runtime Provisioner isolation
 
