@@ -804,3 +804,9 @@ undefined
 - فحص Railway `strong-gentleness - suly-api` ما زال failure خارجيًا على HEAD الحالي. لم ننفذ deploy أو تعديل production أو إعادة تشغيل خدمة.
 - لا تزال اختبارات Runtime Provisioner تعتمد Fake Docker؛ بناء الصورة وOpenCode smoke test لا يثبتان host firewall أو host isolation أو task-aware egress أو tenant isolation على خادم فعلي. لا migrations أو staging acceptance في هذه الدفعة.
 
+### تقوية سلسلة بناء صورة Provisioner — 2026-11-22
+
+- تم تثبيت `python:3.12-slim` على manifest digest الذي استخدمه Docker بنجاح في CI (`sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b`) بدل tag متغير.
+- أضيف `.dockerignore` بقائمة سماح ضيقة لـDockerfile وrequirements وملفات Python داخل `app/` فقط؛ لا يُرسل مجلد الاختبارات أو ملفات البيئة/المستندات إلى Docker build context.
+- أضيف contract test يتحقق من digest pin وقائمة build context. سيشغل Runtime Provisioner CI الاختبار ثم يبني الصورة دون نشر.
+

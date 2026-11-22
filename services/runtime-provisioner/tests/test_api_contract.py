@@ -562,3 +562,16 @@ def test_runtime_database_requires_absolute_path(monkeypatch):
     monkeypatch.setattr(runtime_api, "DATABASE", "runtimes.sqlite3")
     with pytest.raises(RuntimeErrorSafe, match="runtime_database_path_invalid"):
         runtime_api._db()
+
+def test_runtime_image_base_and_context_are_immutable_and_minimal():
+    from pathlib import Path
+
+    dockerfile = Path("Dockerfile").read_text(encoding="utf-8")
+    first_from = next(line for line in dockerfile.splitlines() if line.startswith("FROM "))
+    prefix = "FROM python:3.12-slim@sha256:"
+    assert first_from.startswith(prefix)
+    digest = first_from[len(prefix):]
+    assert len(digest) == 64 and all(char in "0123456789abcdef" for char in digest)
+
+    dockerignore = Path(".dockerignore").read_text(encoding="utf-8").splitlines()
+    assert dockerignore == ["**", "!Dockerfile", "!requirements.txt", "!app/", "!app/*.py"]

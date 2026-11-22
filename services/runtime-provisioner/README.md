@@ -50,7 +50,7 @@ Terminate TLS at a trusted reverse proxy/load balancer. The public SULY API conn
 
 ## Runtime storage permissions
 
-The provisioner refuses to open its SQLite lease database when the configured path is relative, its parent directory is not owned by the provisioner UID with mode `0700`, or an existing database is not a regular singly-linked file owned by that UID with mode `0600`. The workspace root is subject to the same private-directory ownership and mode check. This is intentionally fail-closed: for an existing persistent volume, an operator must inspect ownership and permissions and correct them explicitly before starting the service. No automatic recursive chmod/chown is performed on mounted data.
+The provisioner refuses to open its SQLite lease database when the configured path is relative, its parent directory is not owned by the provisioner UID with mode `0700`, or an existing database is not a regular singly-linked file owned by that UID with mode `0600`. The workspace root is subject to the same private-directory ownership and mode check. This is intentionally fail-closed: for an existing persistent volume, an operator must inspect ownership and permissions and correct them explicitly before starting the service. No automatic recursive chmod/chown is performed on mounted data. The provisioner image pins its official Python base by immutable digest, and its `.dockerignore` allowlists only the Dockerfile, requirements, and Python application sources.
 
 ## Run the provisioner
 
