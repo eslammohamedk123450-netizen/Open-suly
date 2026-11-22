@@ -77,15 +77,15 @@ def test_worker_registry_accepts_a_new_reviewed_engine_without_builtin_changes(m
 
     class BrowserAdapter:
         def execute(self, request):
-            return EngineResult("browser-use", {"task_id": request.task_id, "ok": True})
+            return EngineResult("suly-test-browser", {"task_id": request.task_id, "ok": True})
 
     monkeypatch.setattr(worker_runtime, "get_settings", lambda: SimpleNamespace(
         worker_enabled=True, hermes_agent_enabled=False, opencode_enabled=False,
     ))
     manifest = EngineManifest(
-        engine_id="browser-use",
+        engine_id="suly-test-browser",
         display_name="Browser Use",
-        repository="https://github.com/browser-use/browser-use",
+        repository="https://github.com/suly-test-browser/suly-test-browser",
         revision="b" * 40,
         license_id="MIT",
         role="isolated browser automation",
@@ -95,12 +95,12 @@ def test_worker_registry_accepts_a_new_reviewed_engine_without_builtin_changes(m
         idempotency_key="suly-browser-extension-test",
         on_run_started=lambda _run_id: True,
         additional_manifests=(manifest,),
-        additional_runtime_overrides={"browser-use": (True, BrowserAdapter())},
+        additional_runtime_overrides={"suly-test-browser": (True, BrowserAdapter())},
     )
 
     result = EngineDispatcher(registry).execute(EngineRequest(
         task_id="task-browser-1", capability="browser.navigate",
         input_payload={"url": "https://example.invalid"}, timeout_seconds=30,
     ))
-    assert result.engine_id == "browser-use"
+    assert result.engine_id == "suly-test-browser"
     assert result.output["ok"] is True
