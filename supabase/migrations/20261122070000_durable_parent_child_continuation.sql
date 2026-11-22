@@ -2,6 +2,12 @@
 -- This migration changes code/schema only; it is not applied to any hosted database.
 
 alter table public.tasks drop constraint if exists tasks_status_check;
+alter table public.engine_collaboration_handoffs
+  add column if not exists review_decision text
+  check (review_decision is null or review_decision in (
+    'applied','rejected','re_review_applied','re_review_rejected','stale'
+  ));
+
 alter table public.tasks add constraint tasks_status_check
   check (status in (
     'queued','planning','ready','running','waiting_approval','waiting_children',
@@ -589,6 +595,7 @@ begin
       'capability',h.capability,
       'status',h.status,
       'error_code',h.error_code,
+      'review_decision',h.review_decision,
       'child_steps',(
         select coalesce(jsonb_agg(
           jsonb_build_object(
