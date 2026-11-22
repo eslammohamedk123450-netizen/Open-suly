@@ -221,3 +221,24 @@ def test_gateway_rejects_ollama_malformed_response(monkeypatch) -> None:
     with pytest.raises(ai_gateway.AIProviderError, match="invalid response"):
         asyncio.run(run())
 
+
+
+
+def test_gateway_retries_only_connection_establishment_failures(monkeypatch) -> None:
+    monkeypatch.setattr(ai_gateway, "get_settings", configured_settings)
+    attempts = {"count": 0}
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise httpx.ConnectError("temporary connection failure")
+        return httpx.Response(200, json={"choices": [{"message": {"content": "recovered"}}]})
+
+    async def run() -> str:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await ai_gateway.generate_reply(
+                [{"role": "user", "content": "hello"}], client=client
+            )
+
+    assert asyncio.run(run()) == "recovered"
+    assert attempts["count"] == 2
