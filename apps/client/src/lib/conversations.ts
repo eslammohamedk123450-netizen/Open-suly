@@ -66,6 +66,12 @@ export async function createConversation(title = "محادثة جديدة", proj
   });
 }
 
+export async function getConversation(conversationId: string): Promise<Conversation> {
+  return request<Conversation>(
+    "/v1/chat/conversations/" + encodeURIComponent(conversationId),
+  );
+}
+
 export async function listMessages(conversationId: string): Promise<ChatMessage[]> {
   const payload = await request<{ items: ChatMessage[] }>(
     "/v1/chat/conversations/" + encodeURIComponent(conversationId) + "/messages?limit=200",
@@ -73,13 +79,15 @@ export async function listMessages(conversationId: string): Promise<ChatMessage[
   return payload.items ?? [];
 }
 
-export async function sendUserMessage(conversationId: string, content: string): Promise<ChatMessage> {
+export async function sendUserMessage(
+  conversationId: string, content: string, attachments: string[] = [],
+): Promise<ChatMessage> {
   const cleanContent = content.trim();
   if (!cleanContent) throw new Error("اكتب رسالة قبل الإرسال.");
   if (cleanContent.length > 100000) throw new Error("الرسالة أطول من الحد المسموح.");
   return request<ChatMessage>(
     "/v1/chat/conversations/" + encodeURIComponent(conversationId) + "/messages",
-    { method: "POST", body: JSON.stringify({ content: cleanContent }) },
+    { method: "POST", body: JSON.stringify({ content: cleanContent, attachments }) },
   );
 }
 
