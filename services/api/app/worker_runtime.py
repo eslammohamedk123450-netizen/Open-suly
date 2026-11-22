@@ -1025,7 +1025,7 @@ class WorkerRuntime:
 def main() -> None:
     settings = get_settings()
     if not settings.worker_enabled:
-        raise SystemExit("Worker disabled. Set SULY_WORKER_ENABLED=true to start it.")
+        raise SystemExit("Worker disabled. Set WORKER_ENABLED=true to start it.")
     client = get_supabase_admin_client()
     if client is None:
         raise SystemExit("Worker requires server-only Supabase URL and secret key.")
