@@ -546,6 +546,7 @@ declare
   v_operation text;
   v_step_key text;
   v_step_order integer;
+  v_dependencies jsonb;
   v_inserted integer;
 begin
   if p_parent_task_id is null or p_parent_run_id is null or p_user_id is null then
@@ -676,6 +677,13 @@ begin
       from public.task_steps s
      where s.task_id = p_parent_task_id and s.user_id = p_user_id
   );
+  v_dependencies := (
+    select coalesce(jsonb_agg(s.step_key order by s.step_order),'[]'::jsonb)
+      from public.task_steps s
+     where s.task_id = p_parent_task_id
+       and s.user_id = p_user_id
+       and s.status in ('pending','ready','running')
+  );
 
   if v_parent_run.engine_id = 'hermes-agent' then
     v_operation := 'hermes.agent.turn';
@@ -714,7 +722,7 @@ begin
     p_parent_task_id,p_user_id,v_step_key,
     'Resume parent agent after delegated work',
     'Durable continuation step generated after all collaboration handoffs and outbox deliveries are terminal.',
-    v_step_order,'[]'::jsonb,v_input
+    v_step_order,v_dependencies,v_input
   )
   on conflict (task_id,step_key) do nothing;
   get diagnostics v_inserted = row_count;
