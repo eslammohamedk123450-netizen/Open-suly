@@ -257,3 +257,10 @@ def test_resume_and_post_apply_review_steps_can_continue_after_failed_parent_dep
     assert "left(s.step_key,19) = 'review_after_apply_'" in sql
     assert "dep.status in ('completed','failed','blocked','cancelled')" in sql
     assert "dep.status='completed'" in sql
+
+
+def test_parent_can_run_independent_dag_siblings_while_waiting_for_children():
+    sql = re.sub(r"\s+", " ", _parent_child_continuation_migration())
+    assert "t.status in ('ready','running') or t.status = 'waiting_children'" in sql
+    assert "when t.status='waiting_children' and left(v_step.step_key,7) <> 'resume_' then 'waiting_children'" in sql
+    assert "else 'running' end" in sql
