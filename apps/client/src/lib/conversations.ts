@@ -1,5 +1,6 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+
+const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim().replace(/\/$/, "");
 
 export type Conversation = {
   id: string;
@@ -21,65 +22,80 @@ export type ChatMessage = {
   created_at: string;
 };
 
-function getClient(): SupabaseClient {
-  if (!supabase) throw new Error("اتصال SULY بقاعدة البيانات غير مهيأ.");
-  return supabase;
-}
+/**
+ * All conversation writes and reads go through the authenticated SULY API.
+ * The client never supplies a user_id; the API derives ownership from the
+ * verified Supabase access token and applies owner filters server-side.
+ */
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  if (!apiBaseUrl) throw new Error("عنوان خدمة SULY API غير مضبوط بعد.");
+  if (!supabase) throw new Error("اتصال الحساب غير مهيأ.");
+  const { data, error } = await supabase.auth.getSession();
+  if (error || !data.session) throw new Error("انتهت جلسة الدخول. سجّل الدخول مرة أخرى.");
 
-async function getCurrentUserId(client: SupabaseClient): Promise<string> {
-  const { data, error } = await client.auth.getUser();
-  if (error || !data.user) throw new Error("يجب تسجيل الدخول أولًا.");
-  return data.user.id;
+  const response = await fetch(apiBaseUrl + path, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + data.session.access_token,
+      ...(init.headers ?? {}),
+    },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail = payload && typeof payload.detail === "string"
+      ? payload.detail
+      : "تعذر تنفيذ طلب المحادثة.";
+    throw new Error(detail);
+  }
+  return payload as T;
 }
 
 export async function listConversations(): Promise<Conversation[]> {
-  const client = getClient();
-  const { data, error } = await client.from("conversations").select("*").order("updated_at", { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as Conversation[];
+  const payload = await request<{ items: Conversation[] }>("/v1/chat/conversations?limit=100");
+  return payload.items ?? [];
 }
 
 export async function createConversation(title = "محادثة جديدة"): Promise<Conversation> {
-  const client = getClient();
-  const userId = await getCurrentUserId(client);
-  const { data, error } = await client.from("conversations").insert({ user_id: userId, title: title.trim() || "محادثة جديدة" }).select("*").single();
-  if (error) throw error;
-  return data as Conversation;
+  const cleanTitle = title.trim() || "محادثة جديدة";
+  if (cleanTitle.length > 200) throw new Error("عنوان المحادثة أطول من الحد المسموح.");
+  return request<Conversation>("/v1/chat/conversations", {
+    method: "POST",
+    body: JSON.stringify({ title: cleanTitle }),
+  });
 }
 
 export async function listMessages(conversationId: string): Promise<ChatMessage[]> {
-  const client = getClient();
-  const { data, error } = await client.from("messages").select("*").eq("conversation_id", conversationId).order("created_at", { ascending: true }).order("id", { ascending: true });
-  if (error) throw error;
-  return (data ?? []) as ChatMessage[];
+  const payload = await request<{ items: ChatMessage[] }>(
+    "/v1/chat/conversations/" + encodeURIComponent(conversationId) + "/messages?limit=200",
+  );
+  return payload.items ?? [];
 }
 
 export async function sendUserMessage(conversationId: string, content: string): Promise<ChatMessage> {
   const cleanContent = content.trim();
   if (!cleanContent) throw new Error("اكتب رسالة قبل الإرسال.");
   if (cleanContent.length > 100000) throw new Error("الرسالة أطول من الحد المسموح.");
-  const client = getClient();
-  const userId = await getCurrentUserId(client);
-  const { data, error } = await client.from("messages").insert({
-    conversation_id: conversationId,
-    user_id: userId,
-    content: cleanContent,
-  }).select("*").single();
-  if (error) throw error;
-  return data as ChatMessage;
+  return request<ChatMessage>(
+    "/v1/chat/conversations/" + encodeURIComponent(conversationId) + "/messages",
+    { method: "POST", body: JSON.stringify({ content: cleanContent }) },
+  );
 }
 
 export async function renameConversation(conversationId: string, title: string): Promise<Conversation> {
   const cleanTitle = title.trim();
-  if (!cleanTitle || cleanTitle.length > 200) throw new Error("عنوان المحادثة يجب أن يكون بين حرف واحد و200 حرف.");
-  const client = getClient();
-  const { data, error } = await client.from("conversations").update({ title: cleanTitle }).eq("id", conversationId).select("*").single();
-  if (error) throw error;
-  return data as Conversation;
+  if (!cleanTitle || cleanTitle.length > 200) {
+    throw new Error("عنوان المحادثة يجب أن يكون بين حرف واحد و200 حرف.");
+  }
+  return request<Conversation>(
+    "/v1/chat/conversations/" + encodeURIComponent(conversationId),
+    { method: "PATCH", body: JSON.stringify({ title: cleanTitle }) },
+  );
 }
 
 export async function deleteConversation(conversationId: string): Promise<void> {
-  const client = getClient();
-  const { error } = await client.from("conversations").delete().eq("id", conversationId);
-  if (error) throw error;
+  await request<{ deleted: boolean }>(
+    "/v1/chat/conversations/" + encodeURIComponent(conversationId),
+    { method: "DELETE" },
+  );
 }

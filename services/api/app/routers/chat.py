@@ -3,7 +3,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.config import get_settings
@@ -207,6 +207,10 @@ class AddUserMessageRequest(BaseModel):
     content: str
 
 
+class RenameConversationRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+
+
 def _chat_admin():
     admin = get_supabase_admin_client()
     if admin is None:
@@ -350,3 +354,60 @@ def add_user_message(
         raise
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Could not save message.") from exc
+
+
+
+@router.patch("/conversations/{conversation_id}")
+def rename_conversation(
+    conversation_id: UUID,
+    request: RenameConversationRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Rename only a conversation owned by the authenticated user."""
+    title = request.title.strip()
+    if not title:
+        raise HTTPException(status_code=422, detail="Conversation title cannot be blank.")
+    admin = _chat_admin()
+    try:
+        with admin:
+            rows = (
+                admin.table("conversations")
+                .update({"title": title})
+                .eq("id", str(conversation_id))
+                .eq("user_id", user.id)
+                .execute()
+                .data
+            )
+        if not rows:
+            raise HTTPException(status_code=404, detail="Conversation not found.")
+        return rows[0]
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Could not rename conversation.") from exc
+
+
+@router.delete("/conversations/{conversation_id}")
+def delete_conversation(
+    conversation_id: UUID,
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> dict[str, bool]:
+    """Delete only an owned conversation; message cleanup follows the DB FK policy."""
+    admin = _chat_admin()
+    try:
+        with admin:
+            rows = (
+                admin.table("conversations")
+                .delete()
+                .eq("id", str(conversation_id))
+                .eq("user_id", user.id)
+                .execute()
+                .data
+            )
+        if not rows:
+            raise HTTPException(status_code=404, detail="Conversation not found.")
+        return {"deleted": True}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Could not delete conversation.") from exc
