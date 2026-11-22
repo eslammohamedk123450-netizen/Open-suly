@@ -281,6 +281,6 @@ def test_all_new_collaboration_and_opencode_plpgsql_bodies_have_balanced_dollar_
         _collaboration_lifecycle_migration(),
         _opencode_post_apply_migration(),
     ):
-        assert len(re.findall(r"(?m)^as \\$\\$$", sql)) == len(re.findall(r"(?m)^\\$\\$;$", sql))
-        assert not re.search(r"(?m)^as \\$$", sql)
-        assert not re.search(r"(?m)^\\$;$", sql)
+        assert len(re.findall(r"(?m)^as \$\$$", sql)) == len(re.findall(r"(?m)^\$\$;$", sql))
+        assert not re.search(r"(?m)^as \$(?!\$)", sql)
+        assert not re.search(r"(?m)^\$;$", sql)
