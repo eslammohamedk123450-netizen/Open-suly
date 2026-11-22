@@ -107,6 +107,7 @@ def test_worker_registry_accepts_a_new_reviewed_engine_without_builtin_changes(m
 
 
 def test_collaboration_api_accepts_validated_future_engine_ids():
+    from pydantic import ValidationError
     from app.routers.engine_collaboration import CreateEngineHandoffRequest
 
     request = CreateEngineHandoffRequest(
@@ -118,7 +119,7 @@ def test_collaboration_api_accepts_validated_future_engine_ids():
     assert request.target_engine == "suly-test-browser"
     assert request.capability == "browser.navigate"
 
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         CreateEngineHandoffRequest(
             target_engine="Invalid Engine",
             capability="browser.navigate",
