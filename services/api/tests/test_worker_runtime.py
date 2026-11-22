@@ -1128,6 +1128,12 @@ def test_opencode_worker_handler_returns_review_ids_and_finishes_engine_run(monk
     monkeypatch.setattr(runtime, "get_settings", lambda: SimpleNamespace(worker_enabled=True, opencode_enabled=True))
     monkeypatch.setattr(runtime, "get_supabase_admin_client", lambda: object())
     monkeypatch.setattr(runtime, "OpenCodeTaskExecutor", FakeExecutor)
+    dispatch_calls = []
+    original_dispatch_execute = runtime.EngineDispatcher.execute
+    def observe_dispatch(self, request, *, preferred_engine_ids=()):
+        dispatch_calls.append((request.capability, tuple(preferred_engine_ids)))
+        return original_dispatch_execute(self, request, preferred_engine_ids=preferred_engine_ids)
+    monkeypatch.setattr(runtime.EngineDispatcher, "execute", observe_dispatch)
     step = make_step({
         "operation": "opencode.task.run",
         "project_id": project_id,
@@ -1149,7 +1155,9 @@ def test_opencode_worker_handler_returns_review_ids_and_finishes_engine_run(monk
         "status": "review_ready",
         "changed_count": 2,
         "requires_review": True,
+        "handoff_context": "OpenCode prepared change set change-set with 2 changed files; human review is required.",
     }
+    assert dispatch_calls == [("code.edit", ("opencode",))]
     assert finishes == [(engine_run_id, "succeeded", None)]
 
 
