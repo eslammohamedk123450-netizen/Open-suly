@@ -176,7 +176,7 @@ def list_task_collaboration(
                     "id,parent_task_id,child_task_id,parent_run_id,source_engine,target_engine,"
                     "capability,status,depth,max_child_tasks,max_parallel_children,"
                     "max_runtime_seconds,max_input_bytes,approved_at,started_at,"
-                    "finished_at,error_code,created_at,updated_at"
+                    "finished_at,error_code,review_decision,created_at,updated_at"
                 )
                 .eq("parent_task_id", str(task_id))
                 .eq("user_id", user.id)
