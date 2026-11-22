@@ -2,7 +2,7 @@ name: Engine integration verification
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, fix/hermes-upstream-tool-approval-gateway]
     paths:
       - "services/api/**"
       - ".github/workflows/engine-integration.yml"
@@ -30,7 +30,7 @@ jobs:
         working-directory: services/api
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt pytest
+          python -m pip install -r requirements.txt pytest pytest-asyncio
       - name: Compile API modules
         working-directory: services/api
         env:
