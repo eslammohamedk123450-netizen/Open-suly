@@ -175,6 +175,10 @@ class OpenCodeEngineAdapter:
                 "status": task_run.get("status", "review_ready"),
                 "changed_count": changes.get("changed_count", 0),
                 "requires_review": True,
+                "handoff_context": (
+                    f"OpenCode prepared change set {change_set.get('id')} "
+                    f"with {changes.get('changed_count', 0)} changed files; human review is required."
+                ),
             })
         except Exception:
             try:
@@ -660,6 +664,7 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
         "operation": "hermes.agent.turn",
         "engine": result.output["engine"],
         "content": result.output["content"],
+        "handoff_context": result.output["content"][:12_000],
         **({"session_id": result.output["session_id"]} if isinstance(result.output.get("session_id"), str) else {}),
     }
 
