@@ -166,7 +166,7 @@ else:
         assert result.exit_code == 0, output
         assert "host_services_blocked" in output
         assert "external_egress_blocked" in output
-finally:
+    finally:
         if container is not None:
             try:
                 container.remove(force=True)
