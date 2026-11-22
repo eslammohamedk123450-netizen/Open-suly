@@ -330,7 +330,12 @@ async def stream_reply(
                     choices = body.get("choices")
                     fragment = ""
                     if isinstance(choices, list) and choices:
-                        delta = (choices[0] or {}).get("delta") or {}
+                        choice = choices[0]
+                        if not isinstance(choice, dict):
+                            raise AIProviderError("The AI provider returned an invalid stream event.")
+                        delta = choice.get("delta") or {}
+                        if not isinstance(delta, dict):
+                            raise AIProviderError("The AI provider returned an invalid stream event.")
                         fragment = delta.get("content", "")
                         if isinstance(fragment, list):
                             fragment = "".join(
