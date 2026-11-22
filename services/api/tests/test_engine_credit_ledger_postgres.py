@@ -224,7 +224,7 @@ def test_release_and_expiry_refund_only_after_run_is_terminal(credit_db):
     _seed_run(credit_db, user_id, task_release, run_release)
     _grant(credit_db, user_id, 60, "grant:release:001")
     reservation_release = _reserve(
-        credit_db, user_id, task_release, run_release, "hermes-agent", 40, "reserve:release:001",
+        credit_db, user_id, task_release, run_release, "opencode", 40, "reserve:release:001",
     )
     credit_db.execute("update public.engine_runs set status='failed' where id=%s", (run_release,))
     release_args = (user_id, reservation_release, "engine_cancelled", "release:integration:001")
@@ -283,6 +283,7 @@ def test_concurrent_reservations_cannot_overdraw_available_credits(credit_db, cr
 
 def test_authenticated_rls_reads_only_own_account_and_cannot_write_or_grant(credit_db):
     user_id, other = str(uuid4()), str(uuid4())
+    credit_db.execute("insert into auth.users (id) values (%s),(%s)", (user_id, other))
     _grant(credit_db, user_id, 25, "grant:rls:001")
     _grant(credit_db, other, 75, "grant:rls:002")
     with credit_db.transaction():
