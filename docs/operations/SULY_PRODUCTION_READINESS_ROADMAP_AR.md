@@ -81,7 +81,7 @@ For every engine:
 - [ ] quota/usage ledger exactness and partial billing
 - [x] Read-only credits summary API + client history view (user-token/RLS, disabled by default)
 - [x] Disposable PostgreSQL credit-ledger integration: grant/reserve/settle/release/expiry, concurrency, RLS
-- [ ] Capture OpenAI-compatible/Ollama token usage in chat metadata and display in client (no billing)
+- [x] Capture OpenAI-compatible/Ollama token usage in chat metadata and display in client (no billing)
 - [ ] Redis only where needed; document failure behavior
 - [ ] structured logs with redaction, metrics, traces, alerting
 - [ ] object storage quotas, signed URLs, retention
@@ -572,3 +572,11 @@ For every engine:
 - Chat stores token counts in assistant message metadata only when the provider reports them; client shows the counts. No token estimation, monetary cost, credits charge, or usage ledger.
 - Commit `5e41f6753be9` Platform CI #1387 failed only on client TypeScript due a malformed JSX time tag; API tests were green. Fix landed in `d033fd274bfc`; its Platform CI #1388 API job passed **770 tests** while client job was still running. UI total-count polish is commit `075a90ab1b2d`; CI #1389 was still in progress.
 - Recount after adding this unchecked item: **60/156 (39%)**. Controlled Beta/Production readiness remains **~20%**; telemetry is not billing and no AI provider is enabled.
+
+
+## تحقق Chat token telemetry — 2026-11-22
+
+- Platform CI #1388/run `45000436704` على commit d033 و#1389/run `45000469647` على commit 075 نجحا؛ كل منهما **770 passed, 5 skipped, 5 warnings**. client typecheck، Expo compatibility، Web export green.
+- فشل #1387 على commit 5e41 بسبب JSX tag syntax؛ API job كان green. أصلحنا markup/null metadata في d033، ثم أظهرت #1388/#1389 green.
+- Repository baseline #1406/run `45000436695` و#1407/run `45000469682` green. أحدث docs commit c434 ما زال CI #1390/#1408 pending.
+- إعادة عد checklist: **61/157 (39%)**. Readiness milestone-weighted remains **~20%**؛ provider usage counts لا تساوي cost ولا credits ولا تمنح صلاحية provider.
