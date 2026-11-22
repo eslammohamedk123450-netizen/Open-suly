@@ -177,6 +177,34 @@ def test_worker_shutdown_requeues_active_step_without_committing_output():
     assert rpc.calls[-1][1]["p_error_code"] == "worker_shutdown"
 
 
+def test_worker_shutdown_notifies_cancel_aware_engine_before_requeue():
+    rpc = _RpcSequence([
+        STEP_DATA,
+        True,
+        {"accepted": True, "step_status": "pending"},
+    ])
+    worker = TaskWorker(rpc, "shutdown-cancel-worker", heartbeat_interval_seconds=0.05)
+    stop = Event()
+    observed_cancel = Event()
+
+    def handler(_step, cancel_event):
+        stop.set()
+        if cancel_event.wait(timeout=1.0):
+            observed_cancel.set()
+        raise RuntimeError("cooperative_shutdown")
+
+    result = worker.run_once(
+        lambda _step: {},
+        cancel_aware_handler=handler,
+        worker_stop_event=stop,
+    )
+
+    assert observed_cancel.is_set()
+    assert result == "failed_or_retry_scheduled"
+    assert rpc.calls[-1][0] == "fail_task_step"
+    assert rpc.calls[-1][1]["p_error_code"] == "worker_shutdown"
+
+
 def test_worker_does_not_complete_when_handler_output_is_not_object():
     rpc = _RpcSequence([
         STEP_DATA,
