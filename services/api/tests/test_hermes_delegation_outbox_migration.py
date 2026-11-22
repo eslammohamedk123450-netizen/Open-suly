@@ -294,4 +294,4 @@ def test_opencode_apply_guard_serializes_with_parent_child_cancellation():
     guard = sql[sql.index("create or replace function public.guard_opencode_change_set_apply_after_cancellation"):sql.index("drop trigger if exists opencode_changeset_guard_cancelled_task")]
     assert guard.index("from public.tasks t where t.id = v_parent_task_id") < guard.index("from public.tasks t where t.id = v_task_id") < guard.index("from public.engine_collaboration_handoffs h where h.child_task_id = v_task_id")
     assert "for share" in guard
-    assert "v_parent_status in ('cancel_requested','cancelled')" in guard
+    assert "v_parent_status in ('cancel_requested','cancelled','failed')" in guard
