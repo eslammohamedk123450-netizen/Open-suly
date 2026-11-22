@@ -59,7 +59,7 @@ def test_parent_cancellation_cascades_to_handoffs_and_child_tasks():
 
 
 def test_child_terminal_state_is_persisted_as_metadata_only_handoff_event():
-    sql = re.sub(r"\\s+", " ", _collaboration_lifecycle_migration())
+    sql = re.sub(r"\s+", " ", _collaboration_lifecycle_migration())
     assert "record_engine_collaboration_child_terminal" in sql
     assert "new.status not in ('completed','failed','cancelled')" in sql
     assert "when 'completed' then 'handoff.completed'" in sql
