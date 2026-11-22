@@ -1,4 +1,4 @@
-name: OpenCode upstream engine verification
+name: Pinned engine and runtime image verification
 
 on:
   push:
@@ -51,9 +51,9 @@ concurrency:
 
 jobs:
   verify-upstream:
-    name: Verify pinned upstream and server workspace
+    name: Verify pinned upstream engines and build isolated images
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 60
     steps:
       - name: Checkout SULY and pinned submodules
         uses: actions/checkout@v4
@@ -62,7 +62,15 @@ jobs:
           persist-credentials: false
 
       - name: Verify immutable upstream provenance
-        run: python engines/opencode/verify_upstream.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C engines/hermes/upstream rev-parse HEAD)" = "2de9f51b8008a7d49a49221c184f2f11cbfc4af1"
+          test "$(git -C engines/opencode/upstream rev-parse HEAD)" = "4cca18d80450a3dd6a9a4142028bde84ccb3116e"
+          test -s engines/hermes/upstream/LICENSE
+          test -s engines/hermes/upstream/Dockerfile
+          python engines/hermes/verify_upstream.py
+          python engines/opencode/verify_upstream.py
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -92,6 +100,14 @@ jobs:
       - name: Build isolated OpenCode runtime image
         run: docker build --pull=false -f engines/opencode/Dockerfile -t suly-opencode:ci .
 
+      - name: Build original Hermes runtime image
+        run: docker build --pull=false -f engines/hermes/upstream/Dockerfile -t suly-hermes-agent:ci engines/hermes/upstream
+
+      - name: Record original engine image identities
+        run: |
+          docker image inspect suly-opencode:ci --format='OpenCode image ID: {{.Id}}'
+          docker image inspect suly-hermes-agent:ci --format='Hermes image ID: {{.Id}}'
+
       - name: Smoke-test the original OpenCode server in Docker
         if: ${{ vars.SULY_ENABLE_ENGINE_RUNTIME_SMOKE == 'true' }}
         shell: bash
@@ -119,7 +135,7 @@ jobs:
   verify-docker-runtime:
     name: Verify isolated Docker runtime primitives
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -135,3 +151,6 @@ jobs:
           OPENCODE_RUNTIME_IMAGE: registry.example/opencode@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           RUNTIME_DB_PATH: /tmp/suly-runtime-ci/runtimes.sqlite3
         run: PYTHONPATH=. pytest -q tests
+
+      - name: Build isolated SULY runtime provisioner image
+        run: docker build --pull=false -f services/runtime-provisioner/Dockerfile -t suly-runtime-provisioner:ci services/runtime-provisioner
