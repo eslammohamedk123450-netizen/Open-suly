@@ -181,10 +181,20 @@ class OpenCodeEngineAdapter:
                 ),
             })
         except Exception:
+            # Preserve cancellation as a terminal state; do not downgrade it to
+            # a generic failure when the cooperative stop signal won the race.
+            cancelled = (
+                self.context.cancel_event is not None
+                and self.context.cancel_event.is_set()
+            )
             try:
-                run_store.finish(run_id, self.step, "failed", "opencode_execution_failed")
+                run_store.finish(
+                    run_id, self.step,
+                    "cancelled" if cancelled else "failed",
+                    None if cancelled else "opencode_execution_failed",
+                )
             except Exception:
-                logger.warning("OpenCode engine-run failure status was not persisted")
+                logger.warning("OpenCode engine-run terminal status was not persisted")
             raise
 
 def build_engine_registry(
