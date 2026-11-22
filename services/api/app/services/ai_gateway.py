@@ -39,7 +39,12 @@ def provider_capabilities(provider: str | None = None) -> dict[str, Any]:
 def selected_model_profile() -> dict[str, Any]:
     """Describe only the server-selected model; do not imply remote model discovery."""
     settings = get_settings()
-    configured = bool(settings.ai_provider in _PROVIDER_REGISTRY and settings.ai_model)
+    configured = bool(
+        settings.ai_provider in _PROVIDER_REGISTRY
+        and settings.ai_model
+        and settings.ai_base_url
+        and (settings.ai_provider != "openai-compatible" or settings.ai_api_key)
+    )
     capabilities = provider_capabilities(settings.ai_provider)
     return {
         "configured": configured,
