@@ -163,3 +163,22 @@ def test_openai_stream_extracts_final_usage_event(monkeypatch):
 
     assert asyncio.run(run()) == ["ok"]
     assert usage == [{"input_tokens": 14, "output_tokens": 6, "total_tokens": 20}]
+
+
+
+def test_model_registry_never_claims_remote_discovery(monkeypatch):
+    monkeypatch.setattr(
+        ai_gateway,
+        "get_settings",
+        lambda: Settings(
+            ai_provider="openai-compatible",
+            ai_model="operator-selected-model",
+            ai_base_url="https://provider.example",
+            ai_api_key="test-secret",
+            ai_max_output_tokens=900,
+        ),
+    )
+    registry = ai_gateway.model_registry()
+    assert registry["discovery"] == "server_configured_selection_only"
+    assert registry["items"][0]["id"] == "operator-selected-model"
+    assert registry["items"][0]["provider"] == "openai-compatible"
