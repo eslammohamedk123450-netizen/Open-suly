@@ -75,7 +75,7 @@ def test_engine_credit_idempotency_metadata_comparisons_are_null_safe():
 
 def test_conversation_project_scope_is_owner_matched_and_optional():
     source = (MIGRATIONS / "20261122100000_conversation_project_scope.sql").read_text(encoding="utf-8")
-    assert "add column project_id uuid" in source
+    assert "add column if not exists project_id uuid" in source
     assert "foreign key (project_id, user_id)" in source
     assert "references public.projects(id, user_id)" in source
     assert "on delete set null (project_id)" in source
