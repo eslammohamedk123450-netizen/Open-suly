@@ -1,3 +1,4 @@
+/** صفحة قراءة الرصيد والحجوزات؛ لا توفر شراءً أو تنفيذًا أو تعديلًا. */
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View,
@@ -84,7 +85,7 @@ export default function CreditsScreen() {
         <View style={styles.header}>
           <View style={styles.logo}><Text style={styles.logoText}>S</Text></View>
           <View style={styles.headerCopy}>
-            <Text style={styles.title}>الرصيد والاستخدام</Text>
+            <Text style={styles.title} accessibilityRole="header">الرصيد والاستخدام</Text>
             <Text style={styles.subtitle}>متابعة رصيد المحركات والحركات الأخيرة</Text>
           </View>
           <Pressable style={styles.back} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="رجوع">
@@ -115,17 +116,17 @@ export default function CreditsScreen() {
               </Pressable>
 
               {loading && <ActivityIndicator color={colors.gold} style={{ marginVertical: 24 }} />}
-              {!!error && <View style={styles.errorCard}><Text style={styles.error}>{error}</Text></View>}
+              {!!error && <View style={styles.errorCard}><Text style={styles.error}>{error}</Text>{!!summary && <Text style={styles.errorHint}>تعذر التحديث؛ البيانات الظاهرة هي آخر تحميل ناجح.</Text>}</View>}
 
               {!!summary && (
                 <>
                   <View style={styles.balanceGrid}>
-                    <View style={styles.balanceCard}>
+                    <View accessible accessibilityLabel={`الرصيد المتاح ${formatCredits(summary.account.available_credits)} credits`} style={styles.balanceCard}>
                       <Text style={styles.balanceCaption}>الرصيد المتاح</Text>
                       <Text style={styles.balanceValue}>{formatCredits(summary.account.available_credits)}</Text>
                       <Text style={styles.balanceUnit}>Credit</Text>
                     </View>
-                    <View style={styles.balanceCardSecondary}>
+                    <View accessible accessibilityLabel={`الرصيد المحجوز ${formatCredits(summary.account.reserved_credits)} credits`} style={styles.balanceCardSecondary}>
                       <Text style={styles.balanceCaption}>الرصيد المحجوز</Text>
                       <Text style={styles.balanceValueSecondary}>{formatCredits(summary.account.reserved_credits)}</Text>
                       <Text style={styles.balanceUnit}>Credit</Text>
@@ -133,7 +134,7 @@ export default function CreditsScreen() {
                   </View>
 
                   <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>حجوزات المحركات</Text>
+                    <Text style={styles.sectionTitle} accessibilityRole="header">حجوزات المحركات</Text>
                     <Text style={styles.count}>{summary.reservations.length}</Text>
                   </View>
                   {summary.reservations.length === 0 ? (
@@ -152,7 +153,7 @@ export default function CreditsScreen() {
                   ))}
 
                   <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>سجل الحركة</Text>
+                    <Text style={styles.sectionTitle} accessibilityRole="header">سجل الحركة</Text>
                     <Text style={styles.count}>{summary.transactions.length}</Text>
                   </View>
                   {summary.transactions.length === 0 ? (
@@ -226,4 +227,5 @@ const styles = StyleSheet.create({
   primaryText: { color: colors.background, fontSize: 12, fontWeight: "800" },
   errorCard: { borderRadius: 13, borderWidth: 1, borderColor: "#854F4F", backgroundColor: colors.surface, padding: 12 },
   error: { color: "#E88787", fontSize: 11, textAlign: "right", lineHeight: 18 },
+  errorHint: { color: colors.faint, fontSize: 9, textAlign: "right", lineHeight: 16, marginTop: 5 },
 });
