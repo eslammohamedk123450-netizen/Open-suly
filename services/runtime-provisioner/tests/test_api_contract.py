@@ -482,3 +482,83 @@ def test_execute_request_accepts_only_bounded_timeout_values():
         ExecuteRequest(prompt="too long", timeout_seconds=1801)
     with pytest.raises(ValidationError):
         ExecuteRequest(prompt="invalid", timeout_seconds=0)
+
+def test_runtime_database_is_created_with_private_permissions(tmp_path, monkeypatch):
+    import stat
+
+    database = tmp_path / "private" / "runtimes.sqlite3"
+    monkeypatch.setattr(runtime_api, "DATABASE", str(database))
+
+    db = runtime_api._db()
+    db.close()
+
+    assert stat.S_IMODE(database.parent.stat().st_mode) == 0o700
+    assert stat.S_IMODE(database.stat().st_mode) == 0o600
+
+
+def test_runtime_database_rejects_permissive_existing_directory(tmp_path, monkeypatch):
+    import pytest
+    from app.docker_runtime import RuntimeErrorSafe
+
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    shared.chmod(0o755)
+    database = shared / "runtimes.sqlite3"
+    monkeypatch.setattr(runtime_api, "DATABASE", str(database))
+
+    with pytest.raises(RuntimeErrorSafe, match="runtime_database_directory_permissions_invalid"):
+        runtime_api._db()
+    assert not database.exists()
+
+
+def test_runtime_database_rejects_permissive_existing_file(tmp_path, monkeypatch):
+    import pytest
+    from app.docker_runtime import RuntimeErrorSafe
+
+    database = tmp_path / "runtimes.sqlite3"
+    database.write_bytes(b"")
+    database.chmod(0o644)
+    monkeypatch.setattr(runtime_api, "DATABASE", str(database))
+
+    with pytest.raises(RuntimeErrorSafe, match="runtime_database_permissions_invalid"):
+        runtime_api._db()
+
+
+def test_runtime_database_rejects_symlink_path(tmp_path, monkeypatch):
+    import pytest
+    from app.docker_runtime import RuntimeErrorSafe
+
+    target = tmp_path / "target.sqlite3"
+    target.write_bytes(b"")
+    target.chmod(0o600)
+    database = tmp_path / "runtimes.sqlite3"
+    database.symlink_to(target)
+    monkeypatch.setattr(runtime_api, "DATABASE", str(database))
+
+    with pytest.raises(RuntimeErrorSafe, match="runtime_database_permissions_invalid"):
+        runtime_api._db()
+
+
+def test_runtime_database_rejects_hard_linked_path(tmp_path, monkeypatch):
+    import os
+    import pytest
+    from app.docker_runtime import RuntimeErrorSafe
+
+    target = tmp_path / "target.sqlite3"
+    target.write_bytes(b"")
+    target.chmod(0o600)
+    database = tmp_path / "runtimes.sqlite3"
+    os.link(target, database)
+    monkeypatch.setattr(runtime_api, "DATABASE", str(database))
+
+    with pytest.raises(RuntimeErrorSafe, match="runtime_database_permissions_invalid"):
+        runtime_api._db()
+
+
+def test_runtime_database_requires_absolute_path(monkeypatch):
+    import pytest
+    from app.docker_runtime import RuntimeErrorSafe
+
+    monkeypatch.setattr(runtime_api, "DATABASE", "runtimes.sqlite3")
+    with pytest.raises(RuntimeErrorSafe, match="runtime_database_path_invalid"):
+        runtime_api._db()

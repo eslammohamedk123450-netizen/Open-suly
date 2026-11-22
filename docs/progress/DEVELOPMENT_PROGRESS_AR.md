@@ -778,3 +778,14 @@ undefined
 - Repository baseline #1408/#1409/#1410 success.
 - Credits PostgreSQL disposable workflow #4: 5 passed.
 - Engine runtime build #232 failed with no jobs/logs; السبب غير معلوم.
+
+## جلسة تطوير — 2026-11-22 (خصوصية تخزين Runtime Provisioner)
+
+- نقطة البداية: `main` HEAD `2bd642a4fb88444b1dc7ae22e9dab0fc877b34fd`. تمت مراجعة حالة CI والـroadmap وملفات Runtime Provisioner واختباراته قبل التعديل. لم يتم دمج أو نسخ أي تغيير من Pull Requests غير المدمجة.
+- اكتُشف أن Dockerfile ينشئ `/var/lib/suly-runtime` بوضع افتراضي قد يكون `0755`، وأن SQLite كان يفتح قاعدة leases دون فحص صلاحيات الملف أو رفض symlink؛ قاعدة البيانات تحتوي معرفات المهام وتشغيل المحركات وبصمات رموز runtime.
+- أضيف تحقق fail-closed لمسار SQLite: المسار مطلق، مجلد الأب مملوك لمستخدم الخدمة وبوضع `0700`، والملف regular/singly-linked ومملوك للخدمة وبوضع `0600`. إنشاء الملف يتم ذريًا مع `O_EXCL` و`O_NOFOLLOW` عند توفره.
+- فُرضت شروط الخصوصية نفسها على workspace root، وضُبطت مجلدات الصورة الافتراضية إلى `0700`. أضيفت اختبارات للمجلدات والملفات permissive، symlink/hard-link، المسار النسبي، وصلاحيات الإنشاء.
+- لم يتم تشغيل pytest محليًا لأن المستودع غير متاح كـworking tree في هذه الجلسة؛ اختبارات Runtime Provisioner CI مطلوبة على commit هذه الدفعة. لا يثبت fake Docker اختبارًا حيًا.
+- لم تُطبق migrations، ولم يُشغّل Docker أو Worker أو Engine أو Provider، ولم يحدث deploy أو تعديل Production. لم تتغير upstream revisions أو تراخيصها أو dependencies.
+- المتبقي: تشغيل CI، ثم اختبار runtime storage على volume تجريبي فعلي؛ وبعده استكمال host firewall/egress gateway وSSRF isolation. هذه الدفعة تحسن خصوصية ملفات المضيف لكنها لا تثبت عزل الحاويات عن المضيف أو الشبكة.
+

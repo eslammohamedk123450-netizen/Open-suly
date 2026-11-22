@@ -281,3 +281,26 @@ def test_runtime_allows_nonsecret_environment_placeholders(tmp_path):
         files=[{"path": "config/example.env", "content": "API_KEY=${API_KEY}\\nPASSWORD=YOUR_PASSWORD"}],
     )
     assert len(fake.containers.items) == 1
+
+def test_workspace_root_rejects_group_or_world_accessible_directory(tmp_path):
+    from app.docker_runtime import RuntimeErrorSafe
+
+    shared_root = tmp_path / "shared"
+    shared_root.mkdir()
+    shared_root.chmod(0o755)
+
+    with pytest.raises(RuntimeErrorSafe, match="runtime_workspace_root_permissions_invalid"):
+        manager(shared_root)
+    assert not list(shared_root.iterdir())
+
+
+def test_workspace_root_rejects_symlinked_directory(tmp_path):
+    from app.docker_runtime import RuntimeErrorSafe
+
+    actual_root = tmp_path / "actual"
+    actual_root.mkdir(mode=0o700)
+    alias = tmp_path / "alias"
+    alias.symlink_to(actual_root, target_is_directory=True)
+
+    with pytest.raises(RuntimeErrorSafe, match="runtime_workspace_root_permissions_invalid"):
+        manager(alias)

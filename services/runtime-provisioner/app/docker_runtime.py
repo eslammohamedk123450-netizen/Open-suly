@@ -10,6 +10,7 @@ import os
 import re
 import secrets
 import shutil
+import stat
 import tempfile
 import time
 from dataclasses import dataclass
@@ -50,6 +51,29 @@ _SECRET_PATTERNS = (
 
 def _contains_secret_material(content: str) -> bool:
     return any(pattern.search(content) for pattern in _SECRET_PATTERNS)
+
+
+def _ensure_private_directory(path: str | Path, *, error_code: str) -> Path:
+    """Create or validate a private, owner-controlled runtime directory.
+
+    Runtime metadata and task workspaces must never inherit permissive modes
+    from a pre-existing volume or a host umask.
+    """
+    candidate = Path(path)
+    if not candidate.is_absolute() or candidate.resolve(strict=False) != candidate:
+        raise RuntimeErrorSafe(error_code)
+    try:
+        candidate.mkdir(parents=True, exist_ok=True, mode=0o700)
+        metadata = candidate.lstat()
+    except OSError as exc:
+        raise RuntimeErrorSafe(error_code) from exc
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+    ):
+        raise RuntimeErrorSafe(error_code)
+    return candidate
 
 
 class RuntimeErrorSafe(RuntimeError):
@@ -169,8 +193,10 @@ class DockerTaskRuntimeManager:
             raise ValueError("runtime_engine_not_allowed")
         self.engine_id = engine_id
         self.image = image
-        self.root = Path(workspace_root).resolve()
-        self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self.root = _ensure_private_directory(
+            workspace_root,
+            error_code="runtime_workspace_root_permissions_invalid",
+        )
         self.limits = limits or RuntimeLimits()
         self.limits.validate()
         self.client = client or docker.from_env()

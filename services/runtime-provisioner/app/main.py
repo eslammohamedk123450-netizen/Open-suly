@@ -12,12 +12,13 @@ import json
 import os
 import re
 import sqlite3
+import stat
 import tarfile
 import tempfile
 import time
 from threading import Lock
 from io import BytesIO
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any
 from uuid import UUID
 
@@ -26,7 +27,12 @@ from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.docker_runtime import DockerTaskRuntimeManager, RuntimeErrorSafe, validate_egress_disabled
+from app.docker_runtime import (
+    DockerTaskRuntimeManager,
+    RuntimeErrorSafe,
+    _ensure_private_directory,
+    validate_egress_disabled,
+)
 
 DATABASE = os.environ.get("RUNTIME_DB_PATH", "/var/lib/suly-runtime/runtimes.sqlite3")
 SULY_TOKEN = os.environ.get("SULY_PROVISIONER_TOKEN", "")
@@ -128,8 +134,34 @@ class RecoverRuntime(BaseModel):
 
 
 def _db() -> sqlite3.Connection:
-    os.makedirs(os.path.dirname(DATABASE), mode=0o700, exist_ok=True)
-    db = sqlite3.connect(DATABASE, timeout=10)
+    database_path = Path(DATABASE)
+    if not database_path.is_absolute() or not database_path.name:
+        raise RuntimeErrorSafe("runtime_database_path_invalid")
+    _ensure_private_directory(
+        database_path.parent,
+        error_code="runtime_database_directory_permissions_invalid",
+    )
+    # Create atomically with private permissions. Existing files are accepted
+    # only when they are regular, singly-linked, owned by this service UID, and
+    # exactly 0600; symlinks and permissive persistent-volume files fail closed.
+    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        database_fd = os.open(database_path, flags, 0o600)
+    except FileExistsError:
+        try:
+            metadata = database_path.lstat()
+        except OSError as exc:
+            raise RuntimeErrorSafe("runtime_database_permissions_invalid") from exc
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or stat.S_IMODE(metadata.st_mode) != 0o600
+            or metadata.st_nlink != 1
+        ):
+            raise RuntimeErrorSafe("runtime_database_permissions_invalid")
+    else:
+        os.close(database_fd)
+    db = sqlite3.connect(str(database_path), timeout=10)
     db.row_factory = sqlite3.Row
     db.execute("""CREATE TABLE IF NOT EXISTS runtimes (
         runtime_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, engine_run_id TEXT NOT NULL,

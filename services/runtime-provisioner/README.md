@@ -32,7 +32,7 @@ This is deliberately restrictive, not a claim that Hermes' complete capability s
 - RUNTIME_GATEWAY_ORIGIN: public HTTPS origin of this service.
 - OPENCODE_RUNTIME_IMAGE: immutable repository@sha256:<64 hex> image built from engines/opencode/Dockerfile.
 - HERMES_RUNTIME_IMAGE: immutable repository@sha256:<64 hex> image built from engines/hermes/upstream at its pinned submodule revision. Preserve its upstream MIT license.
-- RUNTIME_DB_PATH: persistent volume path (default /var/lib/suly-runtime/runtimes.sqlite3).
+- RUNTIME_DB_PATH: persistent volume path (default /var/lib/suly-runtime/runtimes.sqlite3). The database parent must be an absolute, service-owned `0700` directory; an existing database must be a regular, singly-linked, service-owned `0600` file. Symlinks and permissive volume modes are rejected at access time. The image creates the default runtime directories as `0700`; existing mounted volumes must be corrected by the operator before startup.
 - RUNTIME_WORKSPACE_ROOT: persistent host work-root for ephemeral runtime directories.
 - RUNTIME_ALLOW_EGRESS: must remain unset or a recognized false value (false, 0, no, off). Any truthy or unrecognized value causes provisioner startup to fail. Task networks are always Docker internal; direct egress is deliberately unavailable because no task-aware egress proxy is implemented or verified. Do not enable this setting as a workaround for provider connectivity.
 
@@ -47,6 +47,10 @@ Terminate TLS at a trusted reverse proxy/load balancer. The public SULY API conn
 5. Results are bounded UTF-8 snapshots. OpenCode applies only a reviewable changeset; Hermes must return a bounded task result that is validated against its task/run lease before SULY accepts it. Neither engine writes directly to Supabase.
 6. The gateway uses HTTP only on loopback between the trusted provisioner and runtime. Public access must always be HTTPS.
 7. Archive helpers may only create archives when exporting results. Never extract archives produced from task output without validating every member name, size, and type.
+
+## Runtime storage permissions
+
+The provisioner refuses to open its SQLite lease database when the configured path is relative, its parent directory is not owned by the provisioner UID with mode `0700`, or an existing database is not a regular singly-linked file owned by that UID with mode `0600`. The workspace root is subject to the same private-directory ownership and mode check. This is intentionally fail-closed: for an existing persistent volume, an operator must inspect ownership and permissions and correct them explicitly before starting the service. No automatic recursive chmod/chown is performed on mounted data.
 
 ## Run the provisioner
 
