@@ -818,3 +818,20 @@ undefined
 - `engine-runtime-build.yml` run `45016582043` فشل دون jobs أو logs؛ لا نعتبر Hermes image build متحققًا. Railway check `strong-gentleness - suly-api` فشل خارجيًا؛ لم يحدث deploy أو تعديل production.
 - هذه النتائج لا تثبت host isolation أو firewall أو SSRF/egress enforcement على مضيف فعلي، ولا tenant isolation على Docker daemon حي. لم تُطبق migrations أو staging changes، ولم يُشغّل أي provider/worker/engine.
 
+
+
+## دفعة البنود 3–5 — Worker / Engine Lifecycle / Runtime Integration (2026-11-22)
+
+- نقطة التنفيذ: فرع `main`، دون إنشاء Staging أو موارد مدفوعة ودون تشغيل أي محرك أو مزود خارجي.
+- راجعت `TaskWorker` و`WorkerRuntime` و`EngineRunStore` و`EngineRunReconciler` و`TaskScopedRuntimeBroker` و`OpenCodeTaskExecutor` وواجهات Runtime Provisioner.
+- أضيف `worker_stop_event` إلى عقد تنفيذ الخطوة؛ يراقب عامل heartbeat إشارة إيقاف الخدمة بفواصل قصيرة، ويرسل إلغاءً تعاونيًا للمحرك، ولا يعتمد الناتج بعد الإيقاف. تسجل الخطوة `worker_shutdown` عبر مسار الفشل القابل لإعادة المحاولة بدل تركها running أو حفظ ناتج جزئي.
+- أضيف تمرير إشارة الإيقاف من `WorkerRuntime` إلى `TaskWorker`، وإغلاق عميل Runtime Provisioner في `finally` حتى عند الخروج غير الطبيعي.
+- أضيفت اختبارات تغطي إعادة المهمة للطابور عند إيقاف العامل، ووصول إشارة الإلغاء إلى handler طويل التشغيل، وتمرير إشارة الإيقاف من Runtime.
+- أضيفت صورة مستقلة `services/api/Dockerfile.worker` بمستخدم غير root، وقاعدة Python مثبتة ببصمة SHA-256، وسياق بناء محدود في `services/api/.dockerignore`. لا يبدأ العامل مع API ولا يعمل افتراضيًا.
+- أضيفت إلى Platform CI خطوة بناء صورة العامل دون نشر، ثم smoke test يتأكد أن الصورة تستورد العامل وتبقى معطلة افتراضيًا. أضيف دليل تشغيل `services/api/WORKER.md`.
+- تم التحقق من قاعدة `SULY AI AGNIT` مباشرة: 53 migration مسجلة، وجداول `tasks`, `task_steps`, `engine_runs`, `engine_run_events`, `engine_runtime_catalog`, `hermes_delegation_outbox`, `project_file_revisions`, `opencode_change_sets`, `opencode_task_runs`, `agent_memories`, و`hermes_sessions` موجودة.
+- تحقق صلاحيات الجداول الداخلية: `anon` و`authenticated` لا يملكان أي SELECT/INSERT/UPDATE/DELETE على `engine_runtime_catalog` و`hermes_delegation_outbox` و`project_file_revisions`؛ `service_role` فقط يملكها. كما تحققت من أن RPCs الأساسية لحجز وتجديد وإكمال وفشل المهام وبدء سجلات المحركات وربط هويتها متاحة لـ`service_role` فقط.
+- نتائج Supabase advisors: 3 ملاحظات INFO لجداول داخلية بلا سياسات RLS (مقصودة مع عدم منح صلاحيات للأدوار العامة)، و5 ملاحظات INFO لمفاتيح أجنبية بلا فهارس تغطية، وتحذير أداء واحد لسياسة `agent_memories`، إضافة إلى unused-index INFO في قاعدة قليلة الاستخدام. هذه ملاحظات تحسين قاعدة البيانات وليست إثباتًا لاختبار حمل.
+- حالة التحقق: تعديلات الكود والاختبارات وملفات البناء حُفظت على `main` حتى commit `e8ed0c7b4c4946a81a3360c93d7182b02fcaba6c`. لم تتوفر في أداة GitHub نتيجة Platform CI لهذا commit بعد؛ لا يُعلن نجاح الاختبارات قبل ظهور نتيجة Actions.
+- حدود لا تزال تمنع إغلاق الجاهزية التشغيلية: لم يتم تشغيل Worker على خادم؛ لم يتم تشغيل Hermes أو OpenCode أو أي provider؛ Hermes image build لم يحصل على نتيجة CI موثوقة سابقًا (أحداث Actions رجعت jobs فارغة)؛ ولم يكتمل بعد تحقق host firewall وtask-aware egress/SSRF على مضيف إنتاج. Runtime Provisioner والـengines تظل معطلة افتراضيًا.
+- لم يتم نشر أو دمج أي خدمة خارجية، ولم تُكشف أسرار، ولم يحدث تعديل Production runtime.
