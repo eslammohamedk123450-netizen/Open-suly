@@ -63,3 +63,12 @@
 - Platform CI #1377/#1378 passed; API suite **764 passed, 5 warnings**; client typecheck, Expo compatibility, and web export passed.
 - API tests use a fake PostgREST client. No disposable PostgreSQL integration test or live RLS verification has been run.
 - The API remains disabled by default. Do not enable it until the ledger migration is validated in an isolated DB and applied only with explicit staging approval.
+
+
+## PostgreSQL disposable integration
+
+- Workflow `.github/workflows/credit-ledger-postgres.yml` يطبق migration على PostgreSQL 16 ephemeral، ولا يلمس Supabase أو staging.
+- `services/api/tests/test_engine_credit_ledger_postgres.py` يثبت grant/reserve/settle/release/expiry وidempotency/conflict، insufficient/cross-owner validation، concurrent reserve دون overdraw، وRLS owner-read للثلاث tables مع رفض direct write وRPC من authenticated.
+- Run #4 `45000017619` passed: **5 passed**. أول run #1/#2 failed بسبب test fixtures؛ الإصلاحات موثقة في progress.
+- Platform CI #1385: 764 passed، 5 skipped، 5 warnings. PostgreSQL tests تُskip دون DSN في suite العام وتُنفذ في workflow منفصل.
+- ما زالت migration غير مطبقة على live DB، ولا توجد cost policy أو usage metering أو engine lifecycle billing.

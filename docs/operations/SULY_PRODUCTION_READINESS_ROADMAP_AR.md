@@ -80,6 +80,7 @@ For every engine:
 - [ ] rate limits by user/IP/capability
 - [ ] quota/usage ledger exactness and partial billing
 - [x] Read-only credits summary API + client history view (user-token/RLS, disabled by default)
+- [x] Disposable PostgreSQL credit-ledger integration: grant/reserve/settle/release/expiry, concurrency, RLS
 - [ ] Redis only where needed; document failure behavior
 - [ ] structured logs with redaction, metrics, traces, alerting
 - [ ] object storage quotas, signed URLs, retention
@@ -110,7 +111,7 @@ For every engine:
 - Runtime profile code is restrictive, but production Docker host isolation, process-tree teardown after crashes, and task-aware egress proxy/host firewall enforcement are not verified.
 - No production API/worker deployment or live model provider is configured.
 - Latest CI on HEAD f3afbd9d098ed4ff7c80b1cd8141660c25c6930b exposed Worker syntax, Hermes toolset-default, and OpenCode test-double contract failures; commits 352800efe8400ae07d4373b41ec6406b5a173603 and fcea64cce7ff1c140542ca716686c14ed01dcf8a contain fixes. Their CI results must be confirmed before marking this repair complete.
-- OpenCode coding usage/credits metering, idempotent partial billing, and budget enforcement remain prerequisites before enabling user execution.
+- Credit ledger foundation/RPCs have disposable PostgreSQL integration coverage, but reserve/settle/release are not wired into OpenCode/Hermes task lifecycle. Pricing/token-to-credit conversion, usage metering, idempotent partial billing, and budget enforcement remain prerequisites before enabling user execution.
 
 ## Definition of ready for controlled beta
 - all schema migrations reviewed and applied to staging only
@@ -552,3 +553,13 @@ For every engine:
 - أحدث docs commit `dad1bbb8afc8`: Platform CI #1379 وRepository baseline #1397 ما زالان قيد التنفيذ وقت تحديث السجل.
 - Engine runtime image builds #217/#218/#219 فشلت مع jobs فارغة في Actions API؛ لا توجد logs أو سبب معروف. OpenCode upstream verification #316 ما زالت قيد التنفيذ على commit أسبق.
 - تم إعادة عد checklist: **59/154 (38%)**. Controlled Beta/Production Readiness لا تزال **نحو 20%**؛ API/UI read-only لا تثبت migrations/RLS على Postgres حقيقي ولا usage billing.
+
+
+## تحقق PostgreSQL — ledger (2026-11-22)
+
+- أُضيف workflow منفصل `Credit ledger PostgreSQL integration` يعمل على خدمة PostgreSQL 16 disposable في GitHub Actions، مع متغير يمنع reset خارج بيئة الاختبار.
+- اختبار integration commit `d5a7d9d67f17` run #3 (`44999917678`) نجح بعد إصلاح fixtures: **5 passed**.
+- التوسعة في commit `5a51b10a1c07` run #4 (`45000017619`) نجحت: **5 passed**؛ تشمل grants/idempotency، reserve/retry، settle/refund، release/expiry، insufficient/cross-user run، concurrency تمنع overdraw، وRLS على الحساب والحجز والledger مع رفض writes/RPC للـauthenticated.
+- Platform CI #1385/run `45000017691` نجح: **764 passed, 5 skipped, 5 warnings**؛ TypeScript/Expo/Web export نجحت. Repository baseline #1403/run `45000017591` نجح.
+- فشل أول run #1/#2 قبل الإصلاح في fixtures (engine ID mismatch وauth user FK). تم تشخيصها من logs وإصلاحها؛ لا نخفي المحاولات الفاشلة.
+- إعادة عد checklist: **60/155 (39%)**. Production readiness milestone-weighted تظل **نحو 20%**؛ tests لا تعني تطبيق migrations على staging أو تفعيل credits في المحركات.

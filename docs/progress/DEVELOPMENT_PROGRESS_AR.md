@@ -725,3 +725,23 @@ undefined
 - أحدث documentation commit `dad1bbb8afc8` ينتظر Platform CI #1379 وRepository baseline #1397.
 - Engine runtime image builds #217–#219 failed، لكن jobs returned empty؛ لا diagnostic logs متاحة.
 - CI لا يختبر RLS في Supabase الحقيقي، ولا migration apply، ولا provider أو engine runtime.
+
+
+## جلسة تطوير — 2026-11-22 (اختبارات PostgreSQL لدفتر الرصيد)
+
+- بداية slice: HEAD `58ef243786e8`; تم تطوير الاختبارات مباشرة على main، ثم تحديث RLS coverage.
+- Commits:
+  - `3a132086c39b` — workflow وdependency وPostgreSQL disposable tests.
+  - `373f7a0e26b9` — إصلاح fixture تكرار المستخدم وتغلق اتصالات concurrency.
+  - `5a51b10a1c07` — توسيع RLS tests إلى accounts/reservations/ledger وإثبات أن API query projection لا يتضمن metadata/task IDs.
+- PostgreSQL 16 integration run #3 `44999917678` على commit d5a7: **5 passed**؛ run #4 `45000017619` على commit 5a51: **5 passed**.
+- اختبارات حقيقية على disposable DB شملت grant/reserve/settle/release/expiry، idempotency/conflicts، insufficient balance، cross-user task/run، concurrent reservations لمنع overdraw، RLS owner-read للثلاث جداول، ورفض direct writes وgrant RPC للمستخدم authenticated.
+- Platform CI #1385 `45000017691`: **764 passed, 5 skipped, 5 warnings**؛ API compile، TypeScript، Expo compatibility، Web export نجحت. الخمس skipped هي DB integration tests دون DSN في Platform CI؛ workflow منفصل شغلها. Repository baseline #1403 `45000017591` نجح.
+- أول run #1/#2 فشل بسبب fixtures: engine_id غير مطابق في reserve، ومستخدم RLS غير موجود في auth.users. logs أظهرت السبب، وتم إصلاحه في d5a7 ثم تحقق green.
+- لم نستخدم Supabase الحقيقي، ولم نطبق migration على production/staging. CI فقط أنشأ PostgreSQL disposable. لا workers/engines/providers/paid services.
+- Checklist الحالية: **60/155 (39%)**؛ تقدير controlled-beta readiness ما يزال **~20%** لأن credits لم تُربط بالengine lifecycle ولا توجد policy أسعار أو usage metering.
+
+### متابعة
+1. افحص CI على أحدث commit documentation.
+2. لا تربط reserve/settle بالworker قبل تصميم policy usage واضحة؛ لا تختر أسعارًا أو token-to-credit conversion.
+3. تابع vertical slice مستقل وآمن (usage telemetry، أو مراجعة orchestration) مع الاختبارات.
