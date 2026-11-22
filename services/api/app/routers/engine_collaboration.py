@@ -16,7 +16,7 @@ router = APIRouter(prefix="/v1/tasks", tags=["engine-collaboration"])
 class CreateEngineHandoffRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    target_engine: Literal["hermes-agent", "opencode"]
+    target_engine: str = Field(min_length=2, max_length=63, pattern=r"^[a-z][a-z0-9-]{1,62}$")
     capability: str = Field(min_length=2, max_length=96, pattern=r"^[a-z][a-z0-9_.-]{1,95}$")
     prompt: str = Field(min_length=1, max_length=20_000)
     title: str | None = Field(default=None, min_length=1, max_length=120)
