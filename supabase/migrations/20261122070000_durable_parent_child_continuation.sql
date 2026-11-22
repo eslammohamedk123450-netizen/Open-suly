@@ -863,7 +863,7 @@ returns boolean
 language plpgsql
 security invoker
 set search_path = ''
-as $
+as $$
 declare
   v_handoff public.engine_collaboration_handoffs%rowtype;
   v_parent public.tasks%rowtype;
@@ -936,7 +936,7 @@ begin
 
   raise exception 'collaboration_handoff_not_cancellable' using errcode = '55000';
 end;
-$;
+$$;
 
 revoke all on function public.mark_task_waiting_for_collaboration() from public,anon,authenticated;
 revoke all on function public.mark_task_waiting_for_hermes_outbox() from public,anon,authenticated;
