@@ -295,3 +295,5 @@ def test_opencode_apply_guard_serializes_with_parent_child_cancellation():
     assert guard.index("from public.tasks t where t.id = v_parent_task_id") < guard.index("from public.tasks t where t.id = v_task_id") < guard.index("from public.engine_collaboration_handoffs h where h.child_task_id = v_task_id")
     assert "for share" in guard
     assert "v_parent_status in ('cancel_requested','cancelled','failed')" in guard
+
+    assert "(v_handoff_status is not null and v_handoff_status <> 'running')" in guard
