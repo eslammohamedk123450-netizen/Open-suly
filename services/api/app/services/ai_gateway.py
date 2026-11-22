@@ -1,6 +1,6 @@
-from typing import Any, Callable
-
+import asyncio
 import json
+from typing import Any, Callable
 
 import httpx
 
@@ -190,11 +190,23 @@ async def generate_reply(
                     pass
         return content
 
+    async def send_with_safe_retry(session: httpx.AsyncClient) -> str:
+        # Retry only connection-establishment failures: a read timeout may mean
+        # the provider already processed and billed the request.
+        for attempt in range(2):
+            try:
+                return await send(session)
+            except (httpx.ConnectError, httpx.ConnectTimeout):
+                if attempt == 1:
+                    raise
+                await asyncio.sleep(0.15)
+        raise AIProviderError("The AI provider could not be reached.")
+
     try:
         if client is not None:
-            return await send(client)
+            return await send_with_safe_retry(client)
         async with httpx.AsyncClient(timeout=settings.ai_timeout_seconds) as session:
-            return await send(session)
+            return await send_with_safe_retry(session)
     except httpx.TimeoutException as exc:
         raise AIProviderTimeout("The AI provider timed out.") from exc
     except httpx.HTTPStatusError as exc:
