@@ -985,6 +985,7 @@ def main() -> None:
                     "hermes-agent": stop_hermes_claim,
                     "opencode": stop_opencode_claim,
                 },
+                runtime_broker=runtime_broker,
             )
     WorkerRuntime(
         worker,
