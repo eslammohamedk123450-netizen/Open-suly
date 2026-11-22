@@ -374,11 +374,14 @@ async def create_runtime(request: Request, authorization: str | None = Header(de
         raise HTTPException(422, "runtime_profile_not_applicable")
     # Reject retries before allocating Docker resources. The unique SQLite
     # index below remains the cross-process race guard at registration time.
-    with _db() as db:
+    db = _db()
+    try:
         existing_attempt = db.execute(
             "SELECT 1 FROM runtimes WHERE task_id=? AND engine_run_id=? LIMIT 1",
             (task_id, run_id),
         ).fetchone()
+    finally:
+        db.close()
     if existing_attempt is not None:
         raise HTTPException(409, "runtime_attempt_already_exists")
     total_skill_bytes = 0

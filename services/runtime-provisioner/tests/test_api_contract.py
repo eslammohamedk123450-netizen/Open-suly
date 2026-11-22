@@ -38,8 +38,10 @@ def test_create_rejects_other_engines():
     assert response.status_code == 422
 
 
-def test_create_returns_unavailable_when_isolated_network_mode_is_unsupported(monkeypatch):
+def test_create_returns_unavailable_when_isolated_network_mode_is_unsupported(tmp_path, monkeypatch):
     from app.docker_runtime import RuntimeErrorSafe
+
+    monkeypatch.setattr(runtime_api, "DATABASE", str(tmp_path / "runtime.sqlite3"))
 
     class UnavailableManager:
         def create(self, **kwargs):

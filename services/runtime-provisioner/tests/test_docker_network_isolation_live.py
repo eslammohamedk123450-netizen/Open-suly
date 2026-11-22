@@ -56,7 +56,7 @@ def test_isolated_bridge_blocks_host_and_external_access_without_published_ports
         version = client.version().get("Version", "")
         version_match = re.match(r"^(\d+)\.(\d+)\.(\d+)", version)
         if not version_match or tuple(map(int, version_match.groups())) < (28, 0, 0):
-            pytest.fail("Docker Engine 28.0.0 or newer is required for isolated gateway mode")
+            pytest.fail("Docker Engine 28.0.0 or newer is required for inhibit_ipv4 task isolation")
 
         host_addresses = _host_ipv4_addresses()
         assert host_addresses, "CI host must expose at least one non-loopback IPv4 address"
