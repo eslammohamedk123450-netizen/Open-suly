@@ -6,7 +6,7 @@ import re
 
 def _migration() -> str:
     root = Path(__file__).resolve().parents[3]
-    return (root / "supabase" / "migrations" / "20261122050000_hermes_delegation_outbox.sql").read_text(encoding="utf-8")
+    return (root / "supabase" / "migrations" / "20261122111801_hermes_delegation_outbox.sql").read_text(encoding="utf-8")
 
 
 def test_outbox_is_server_only_and_durable():
@@ -43,7 +43,7 @@ def test_outbox_claim_and_completion_are_lease_guarded_and_retryable():
 
 def _collaboration_lifecycle_migration() -> str:
     root = Path(__file__).resolve().parents[3]
-    return (root / "supabase" / "migrations" / "20261122060000_engine_collaboration_lifecycle_guards.sql").read_text(encoding="utf-8")
+    return (root / "supabase" / "migrations" / "20261122111820_engine_collaboration_lifecycle_guards.sql").read_text(encoding="utf-8")
 
 
 def test_parent_cancellation_cascades_to_handoffs_and_child_tasks():
@@ -75,7 +75,7 @@ def test_child_terminal_state_is_persisted_as_metadata_only_handoff_event():
 
 def _parent_child_continuation_migration() -> str:
     root = Path(__file__).resolve().parents[3]
-    return (root / "supabase" / "migrations" / "20261122070000_durable_parent_child_continuation.sql").read_text(encoding="utf-8")
+    return (root / "supabase" / "migrations" / "20261122111838_durable_parent_child_continuation.sql").read_text(encoding="utf-8")
 
 
 def test_parent_wait_state_and_approval_support_multiple_sibling_handoffs():
@@ -142,7 +142,7 @@ def test_parent_resume_step_is_claimed_only_after_its_exact_run_barrier_is_clear
 
 def _opencode_post_apply_migration() -> str:
     root = Path(__file__).resolve().parents[3]
-    return (root / "supabase" / "migrations" / "20261122080000_opencode_post_apply_review_and_handoff_gate.sql").read_text(encoding="utf-8")
+    return (root / "supabase" / "migrations" / "20261122111850_opencode_post_apply_review_and_handoff_gate.sql").read_text(encoding="utf-8")
 
 
 def test_opencode_apply_queues_one_durable_post_apply_review_without_recursive_review_loops():
