@@ -77,7 +77,7 @@ def _build_prompt_messages(
             content = "[تم حجب محتوى يشبه سرًا حفاظًا على الأمان]"
         content_limit = min(8000, remaining_chars)
         if len(content) > content_limit:
-            marker = "\\n[… تم اختصار الجزء الأوسط للحفاظ على حدود السياق …]\\n"
+            marker = "\n[… تم اختصار الجزء الأوسط للحفاظ على حدود السياق …]\n"
             if content_limit <= len(marker) + 1:
                 bounded_content = content[:content_limit]
             else:
@@ -228,8 +228,8 @@ def _inject_target_attachments(
             total_chars += len(content)
             if total_chars > 12000:
                 raise HTTPException(status_code=422, detail="Attached file context exceeds the chat limit.")
-            parts.append(f"[Attached project file: {path}]\\n{content}")
-        target["content"] = str(target.get("content", "")) + "\\n\\n" + "\\n\\n".join(parts)
+            parts.append(f"[Attached project file: {path}]\n{content}")
+        target["content"] = str(target.get("content", "")) + "\n\n" + "\n\n".join(parts)
     except HTTPException:
         raise
     except Exception as exc:
