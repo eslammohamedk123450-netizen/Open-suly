@@ -792,7 +792,15 @@ undefined
 ### متابعة CI وتوسعة فحص صورة Provisioner — 2026-11-22
 
 - على commit `79ab8483d5fd095c1021c001371b9ca35d22918a`: Runtime Provisioner CI run `45015847028` نجح، **71 passed, 5 warnings**؛ compile وpytest اكتملتا. Repository baseline run `45015847002` نجح. Platform CI run `45015847068` نجح (API tests، client typecheck، Expo compatibility، Web export).
-- Engine integration/runtime primitives run `45015847057`: اختبارات Provisioner نجحت؛ التحقق من upstream pins نجح، تثبيت Bun وTypecheck نجحا، وبناء OpenCode image كان جاريًا وقت التحديث.
+- Engine integration/runtime primitives run `45015847057` اكتمل بنجاح: **135 API tests passed**، upstream OpenCode pin/license verification، Bun frozen-lockfile install، server Typecheck، Docker image build، و`/api/info` smoke test كلها green.
 - Workflow قديم `engine-runtime-build.yml` run `45015845696` فشل دون أن يعيد GitHub أي jobs؛ لا توجد logs أو سبب مؤكد، لذلك لا يُسجل كنجاح. حالة Railway `strong-gentleness - suly-api` خارجية وفاشلة؛ لم يتم deploy أو محاولة إصلاحها.
 - أضيف إلى Runtime Provisioner CI بناء صورة provisioner محليًا دون push أو نشر، حتى يفحص Dockerfile الجديد وصلاحيات مجلدات التخزين بدل الاكتفاء باختبارات fake Docker. نتيجة هذا البناء تنتظر CI التالي.
+
+### إغلاق نتائج CI لهذه الدفعة — 2026-11-22
+
+- على HEAD `17fa2fd43c99d67d992a78edd46aede3f1f0db9d`: Runtime Provisioner CI run `45016051739` نجح: **71 passed, 5 warnings**، ونجح بناء صورة `suly-runtime-provisioner:ci` دون نشر. Repository baseline run `45016051763` نجح. Platform CI run `45016051806` نجح: **770 passed, 5 skipped, 5 warnings**؛ TypeScript typecheck وExpo compatibility وWeb export نجحت.
+- OpenCode upstream engine verification run `45015847057` على commit `79ab8483d5fd095c1021c001371b9ca35d22918a` نجح: **135 passed**، وتحقق من upstream immutable SHA `4cca18d80450a3dd6a9a4142028bde84ccb3116e` وترخيص MIT، ثم Typecheck وبناء الصورة واختبار تشغيل `/api/info` داخل Docker.
+- `engine-runtime-build.yml` run `45016050525` فشل دون jobs أو logs؛ تكرر النمط في `45015845696`، والسبب غير معلوم. لذلك لا ندعي بناء Hermes image أو اكتمال build pipeline الموحد.
+- فحص Railway `strong-gentleness - suly-api` ما زال failure خارجيًا على HEAD الحالي. لم ننفذ deploy أو تعديل production أو إعادة تشغيل خدمة.
+- لا تزال اختبارات Runtime Provisioner تعتمد Fake Docker؛ بناء الصورة وOpenCode smoke test لا يثبتان host firewall أو host isolation أو task-aware egress أو tenant isolation على خادم فعلي. لا migrations أو staging acceptance في هذه الدفعة.
 
