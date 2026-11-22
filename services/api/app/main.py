@@ -2,6 +2,7 @@ from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from urllib.parse import urlsplit
+from uuid import uuid4
 
 from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.config import get_settings
