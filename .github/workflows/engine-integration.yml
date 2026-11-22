@@ -51,4 +51,5 @@ jobs:
             tests/test_engine_run_reconciler.py \
             tests/test_engine_run_store.py \
             tests/test_opencode_task_executor.py \
-            tests/test_runtime_broker_contract.py
+            tests/test_runtime_broker_contract.py \
+            tests/test_engine_catalog_migration.py
