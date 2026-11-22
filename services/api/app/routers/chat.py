@@ -241,14 +241,6 @@ async def respond_to_message(
                 .data
             )
             messages = list(reversed(rows or []))
-            _inject_target_attachments(
-                messages, str(request.message_id), user.id, owned_conversation[0].get("project_id")
-            )
-            memory_context = _load_chat_memory_context(
-                user.id, owned_conversation[0].get("project_id"), str(request.conversation_id)
-            )
-            prompt_messages = _build_prompt_messages(messages, str(request.message_id), memory_context)
-
             existing = next(
                 (
                     row for row in messages
@@ -259,6 +251,14 @@ async def respond_to_message(
             )
             if existing is not None:
                 return existing
+
+            _inject_target_attachments(
+                messages, str(request.message_id), user.id, owned_conversation[0].get("project_id")
+            )
+            memory_context = _load_chat_memory_context(
+                user.id, owned_conversation[0].get("project_id"), str(request.conversation_id)
+            )
+            prompt_messages = _build_prompt_messages(messages, str(request.message_id), memory_context)
 
             usage_summary: dict[str, int] | None = None
 
@@ -641,18 +641,21 @@ async def stream_response_to_message(
             .order("created_at", desc=True).limit(30).execute().data
         )
         messages = list(reversed(rows or []))
-        _inject_target_attachments(
-            messages, str(request.message_id), user.id, owned[0].get("project_id")
-        )
-        memory_context = _load_chat_memory_context(
-            user.id, owned[0].get("project_id"), str(request.conversation_id)
-        )
-        prompt = _build_prompt_messages(messages, str(request.message_id), memory_context)
         existing = next((
             row for row in messages
             if row.get("role") == "assistant"
             and (row.get("metadata") or {}).get("in_reply_to") == str(request.message_id)
         ), None)
+        if existing is None:
+            _inject_target_attachments(
+                messages, str(request.message_id), user.id, owned[0].get("project_id")
+            )
+            memory_context = _load_chat_memory_context(
+                user.id, owned[0].get("project_id"), str(request.conversation_id)
+            )
+            prompt = _build_prompt_messages(messages, str(request.message_id), memory_context)
+        else:
+            prompt = []
     except HTTPException:
         raise
     except Exception as exc:
