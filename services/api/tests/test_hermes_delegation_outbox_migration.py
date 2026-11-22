@@ -273,3 +273,14 @@ def test_collaboration_approval_and_cancellation_share_parent_first_lock_order()
     assert approval.index("from public.tasks where id = v_handoff.parent_task_id") < approval.index("from public.engine_collaboration_handoffs where id = p_handoff_id and user_id = p_user_id for update")
     assert cancellation.index("from public.tasks where id = v_handoff.parent_task_id") < cancellation.index("from public.tasks where id = v_handoff.child_task_id") < cancellation.index("from public.engine_collaboration_handoffs where id = p_handoff_id and user_id = p_user_id for update")
     assert "waiting_children','cancel_requested'" in cancellation
+
+
+def test_all_new_collaboration_and_opencode_plpgsql_bodies_have_balanced_dollar_quotes():
+    for sql in (
+        _parent_child_continuation_migration(),
+        _collaboration_lifecycle_migration(),
+        _opencode_post_apply_migration(),
+    ):
+        assert len(re.findall(r"(?m)^as \\$\\$$", sql)) == len(re.findall(r"(?m)^\\$\\$;$", sql))
+        assert not re.search(r"(?m)^as \\$$", sql)
+        assert not re.search(r"(?m)^\\$;$", sql)
