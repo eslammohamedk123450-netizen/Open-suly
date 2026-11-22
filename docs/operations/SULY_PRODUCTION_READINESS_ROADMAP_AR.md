@@ -79,6 +79,7 @@ For every engine:
 - [ ] idempotency for user requests, task admissions, billing and tool actions
 - [ ] rate limits by user/IP/capability
 - [ ] quota/usage ledger exactness and partial billing
+- [ ] Read-only credits summary API + client history view (user-token/RLS, disabled by default)
 - [ ] Redis only where needed; document failure behavior
 - [ ] structured logs with redaction, metrics, traces, alerting
 - [ ] object storage quotas, signed URLs, retention
@@ -524,3 +525,20 @@ For every engine:
 - Engine runtime image build run `44933678909` (#44) failed, but the Actions API returned zero jobs and no logs were available. The cause remains unknown; no engine image build success is claimed.
 - The combined commit status also reports an external `strong-gentleness - suly-api` failure. No Railway deployment or live service action was performed.
 - These results are tied to commit `1387b8960cd48056ea236485c749bab9d9712cb4`; local pytest was not run.
+
+
+## جلسة تطوير — 2026-11-22 (عرض الرصيد وسجل الحركات، دون تفعيل الفوترة)
+
+- راجعنا HEAD والـroadmap وسجل التطوير وتعليمات AGENTS والملفات والـcommits والـActions قبل التغيير. بداية الجلسة: `69c129140ec0881a95b119499e11d6fbc493aee6`.
+- أضيف API قراءة `GET /v1/credits`، يستخدم bearer الخاص بالمستخدم مع Supabase publishable client وRLS، ويعيد الحساب وحجوزات آخر 25 وسجل آخر 50 حركة. لا يعيد metadata أو معرفات المهام. الاستعلامات تضيف user_id filter مع حدود ثابتة.
+- أُضيف `ENGINE_CREDITS_ENABLED=false` في إعدادات API و`.env.example`. عند تعطيله يرفض إنشاء DB client لدفتر الرصيد قبل أي query. endpoint قراءة فقط، ولا ينشئ account ولا يمنح/يخصم/يحجز رصيدًا.
+- أُضيفت صفحة `/credits` في Expo ووصلة من الإعدادات؛ تعرض available/reserved والحجوزات والحركات، مع refresh، login-required، حالات empty/loading/error، وتوضيح أن الشراء والتشغيل غير مفعّلين.
+- أضيفت 7 API tests لرفض unauthenticated، gate قبل DB client، ربط client بتوكن المستخدم، owner filtering، حدود النتائج، projection دون metadata، account-zero، أخطاء DB sanitized، وقيم account غير سليمة.
+- لا pytest محلي؛ Platform CI للـAPI commit `2467140c` نجح (#1376 / run `44999253902`). Platform CI للـgate commit #1377 كان جاريًا، وللواجهة #1378 كان جاريًا وقت تسجيل هذا checkpoint. Repository baseline #1395 نجح، و#1396 كان جاريًا. Engine runtime build #217/#218 فشل دون jobs/logs، لذلك السبب مجهول. OpenCode upstream verification #316 كان جاريًا على commit أسبق.
+- التحقق لا يثبت تطبيق migration أو RLS في قاعدة فعلية. Migration دفتر credits لم تُطبق؛ flag يظل false؛ لا deploy، ولا worker/engine/provider، ولا payment، ولا secrets.
+- إعادة عد roadmap الحالية: **58/153 (38%)** checkbox قبل إضافة هذا العنصر؛ العنصر الجديد ما زال غير checked إلى أن يكتمل CI. نسبة Controlled Beta/Production Readiness تظل **نحو 20%** milestone-weighted؛ واجهة القراءة وحدها لا تُكمل usage metering أو billing أو staging/runtime gates.
+
+### الخطوة التالية
+1. تأكد من Platform CI على commit واجهة الرصيد؛ أصلح أي regression قبل اعتماد feature.
+2. بعد ذلك أضف PostgreSQL disposable tests للـledger (concurrency/idempotency/NULL) إذا كانت CI environment تسمح، دون Supabase production.
+3. اربط reserve/settle/release بدورة engine runs خلف cost policy server-side واضحة، approval وbudget gates، مع اختبار cancel/retry/recovery قبل أي تشغيل.

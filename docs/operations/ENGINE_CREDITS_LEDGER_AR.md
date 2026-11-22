@@ -34,7 +34,8 @@
 
 - لم تُطبق migration على أي قاعدة بيانات.
 - لم نحدد أسعارًا أو token-to-credit conversion، ولم نربط reserve/settle/release بمسار تشغيل OpenCode أو Hermes بعد.
-- لا يوجد endpoint لعرض الرصيد أو سجل المستخدم، ولا واجهة إدارة/منح رصيد.
+- أضيف endpoint قراءة `GET /v1/credits` وصفحة `/credits` في Expo لعرض available/reserved والحجوزات الأخيرة (25) والحركات (50). تعتمد على user JWT وRLS مع owner filter إضافي، وتستبعد metadata ومعرفات المهام.
+- API/client العرض gated بإعداد `ENGINE_CREDITS_ENABLED=false` افتراضيًا، ولا ينشئ الحساب أو يمنح/يخصم الرصيد أو يشغل محركًا. لا توجد واجهة شراء أو منح رصيد.
 - لا يوجد دفع أو شراء أو مكافأة مجانية؛ لم تُفعّل خدمة مدفوعة.
 - يلزم اختبار تنافسية الحجوزات والتسوية على PostgreSQL disposable، ثم ربط الميزانية الفعلية بالمحرك، وإضافة اختبارات cancel/retry/recovery قبل تفعيل أي worker.
 
@@ -46,3 +47,12 @@
 - `services/api/tests/test_sql_migration_static.py`
 
 هذه مرحلة تأسيس محاسبي فقط، وليست إعلانًا عن جاهزية الفوترة أو تشغيل المحركات.
+
+
+## API/UI قراءة الرصيد (مضاف 2026-11-22)
+
+- `GET /v1/credits`: account summary، آخر 25 reservation، وآخر 50 ledger entry. لا يتيح pagination بعد.
+- يستخدم API bearer user token مع Supabase publishable client؛ استعلامات owner-filtered وتخضع لـRLS. الـprojection محدود، ولا يعيد metadata أو task IDs.
+- `ENGINE_CREDITS_ENABLED` يظل `false` افتراضيًا. يجب مراجعة/تطبيق migration في بيئة disposable/staging فقط، ثم ضبط flag يدويًا بعد التحقق.
+- شاشة Expo `/credits` مربوطة من الإعدادات. لا شراء، grant، reservation، settlement، ولا تشغيل engines من الشاشة.
+- اختبارات API الجديدة عبر fake PostgREST client؛ PostgreSQL integration وlive RLS لم تُنفذ بعد.

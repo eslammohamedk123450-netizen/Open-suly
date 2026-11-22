@@ -698,3 +698,21 @@ undefined
 - **Engine runtime image build #44 / run `44933678909`: فشل.** GitHub Actions API أعاد `total_count=0` للـjobs، ولم تتوفر logs؛ لذلك لا يمكن تحديد هل الفشل في checkout أو build أو runner، ولا نعتبر بناء صور Hermes/OpenCode أو provisioner ناجحًا.
 - Combined commit status أظهر check خارجيًا `strong-gentleness - suly-api` بحالة failure. لم ننفذ deploy ولم نتصل بخدمة Railway؛ هذا status خارجي لا يغيّر نتيجة Platform CI.
 - نتيجة التحقق تخص commit `1387b8960cd48056ea236485c749bab9d9712cb4` تحديدًا. لا يوجد pytest محلي؛ إثبات الاختبارات هو run CI المذكور.
+
+
+## جلسة تطوير — 2026-11-22 (Credits API وواجهة القراءة)
+
+- بداية الجلسة: `69c129140ec0881a95b119499e11d6fbc493aee6`; بعد مراجعة roadmap/status/commits/CI تم العمل مباشرة على `main`.
+- Commits:
+  - `2467140c8bf16aebb6d0d15cedd5b6370be75779` — API summary, tests, config gate, router registration, .env example.
+  - `129efc636c10141ef086ce2aaabdfe1a7b27ed19` — gate credit feature before client creation, test that the user JWT is passed to the scoped DB client.
+  - `eee5d8a497fe540091ca9fda3221c92be4cc00be` — Expo read-only credits page and Settings navigation.
+- API projection is bounded (25 reservations / 50 ledger entries), owner-filtered, RLS-backed via user token, and excludes task IDs and free-form metadata. No writes or engine activation.
+- Client route `/credits` displays available/reserved balances, recent reservations, ledger deltas, refresh, loading/error/empty states, and a login entry. It is explicitly informational; purchases and execution are absent.
+- 7 API tests added. Local pytest was not run. Platform CI #1376 succeeded for API commit; CI #1377 (backend gate) and #1378 (client) were still running when this note was written. Repository baseline #1395 succeeded; #1396 was pending. Runtime image build failed with no jobs/logs; cause unknown. Upstream engine verification #316 pending on an earlier commit.
+- No migration applied, no deploy, no worker/runtime/provider enabled, no payments or new secret.
+- Checkbox recount from the actual roadmap file before adding the new unchecked item: **58/153 (38%)**. Controlled Beta/Production readiness remains **~20%** pending integration and staging evidence.
+
+### Follow-up
+- Verify CI #1377/#1378; amend this checkpoint with the actual results in a later commit.
+- Continue with disposable PostgreSQL ledger integration tests or the next safe engine/credits vertical slice, without live DB access.
