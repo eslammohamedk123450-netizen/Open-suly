@@ -71,12 +71,29 @@ child tasks. Child task completion, failure, and cancellation are also reflected
 as durable handoff terminal events; the actual child result remains in its
 owner-scoped task-step checkpoint rather than being copied into event metadata.
 
-The following lifecycle remains open: suspend the parent while approved child
-tasks run, return the child result to Hermes, resume the parent after child
-completion, and cover those transitions with crash/recovery integration tests.
-Until those paths close, describe Hermes as a primary orchestrator with a
-working proposal-and-handoff pipeline, not as a fully closed autonomous
-multi-agent lifecycle.
+The durable parent/child continuation lifecycle is now implemented in
+migration `20261122070000_durable_parent_child_continuation.sql`. A parent moves
+to `waiting_children` as soon as a delegation outbox row or handoff is created.
+The approval RPC accepts additional sibling approvals while the parent is in
+that state. Terminal handoff and outbox transitions re-check the complete
+barrier; once all sibling handoffs and deliveries are terminal, SULY inserts a
+single idempotent continuation step keyed by the original parent engine run.
+The continuation contains bounded owner-scoped child step outputs and handoff
+statuses as explicitly untrusted context, then returns the parent task to
+`ready` for ordinary worker claiming. Hermes and OpenCode continuation
+operations are supported by their existing task adapters. Parent cancellation
+prevents resumption, and the existing cancellation cascade requests child
+cancellation. The child terminal synchronizer is reduced to one trigger to
+avoid duplicate writers.
+
+The continuation step is durable database state, not worker memory: a worker
+restart does not lose the resume request. Its unique task/step key makes the
+insert idempotent, and the final readiness update rechecks pending outbox and
+handoff rows to avoid resuming while sibling work is still active. Static
+migration invariants are covered in CI. Database execution, concurrent
+transaction behavior, hosted runtime startup, and real engine acceptance
+remain part of the separately deferred non-production/external acceptance
+test; CI is not represented as proof of those external behaviors.
 
 ## External acceptance test boundary
 
