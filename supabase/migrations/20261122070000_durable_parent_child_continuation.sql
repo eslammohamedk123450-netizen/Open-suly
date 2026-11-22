@@ -98,15 +98,6 @@ begin
   if v_task.status not in ('running','completed','waiting_children') or v_task.cancel_requested_at is not null then
     raise exception 'collaboration_parent_task_not_available' using errcode = '55000';
   end if;
-  if exists (
-    select 1 from public.task_steps s
-     where s.task_id = p_parent_task_id
-       and s.user_id = p_user_id
-       and s.step_key = 'resume_' || replace(p_parent_run_id::text,'-','')
-  ) then
-    raise exception 'collaboration_parent_run_already_resumed' using errcode = '55000';
-  end if;
-
   select * into v_run
     from public.engine_runs
    where id = p_parent_run_id
@@ -165,6 +156,15 @@ begin
       raise exception 'collaboration_idempotency_conflict' using errcode = '55000';
     end if;
     return v_existing.id;
+  end if;
+
+  if exists (
+    select 1 from public.task_steps s
+     where s.task_id = p_parent_task_id
+       and s.user_id = p_user_id
+       and s.step_key = 'resume_' || replace(p_parent_run_id::text,'-','')
+  ) then
+    raise exception 'collaboration_parent_run_already_resumed' using errcode = '55000';
   end if;
 
   select count(*)::integer,
