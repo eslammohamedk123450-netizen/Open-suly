@@ -195,8 +195,8 @@ def build_engine_registry(
 ) -> EngineRegistry:
     """Build pinned engines with only explicitly configured live adapters enabled."""
     settings = get_settings()
-    hermes_enabled = bool(settings.worker_enabled and settings.hermes_agent_enabled and runtime_lease is not None)
-    opencode_enabled = bool(settings.worker_enabled and settings.opencode_enabled and opencode_adapter is not None)
+    hermes_enabled = bool(settings.worker_enabled and getattr(settings, "hermes_agent_enabled", False) and runtime_lease is not None)
+    opencode_enabled = bool(settings.worker_enabled and getattr(settings, "opencode_enabled", False) and opencode_adapter is not None)
     hermes_adapter = HermesAgentAdapter(
         cancel_event, idempotency_key=idempotency_key, on_run_started=on_run_started,
         on_event=on_event, on_session_created=on_session_created, runtime_lease=runtime_lease,
