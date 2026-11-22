@@ -95,8 +95,9 @@ def test_parent_resumes_only_after_all_sibling_handoffs_and_outbox_rows_are_term
     assert "new.status in ('completed','failed','cancelled','rejected')" in sql
     assert "on conflict (task_id,step_key) do nothing" in sql
     assert "v_step_key := 'resume_' || replace(p_parent_run_id::text,'-','')" in sql
-    assert "set status = 'ready'" in sql
+    assert "set status = 'ready'" not in sql
     assert "t.status = 'waiting_children'" in sql
+    assert "set status='running'" in sql
     assert "t.cancel_requested_at is null" in sql
 
 
