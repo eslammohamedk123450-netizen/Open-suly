@@ -94,3 +94,16 @@ def test_prompt_redacts_secret_like_message_content():
 
     assert "API_KEY" not in prompt[1]["content"]
     assert "حجب محتوى يشبه سرًا" in prompt[1]["content"]
+
+
+
+def test_prompt_truncation_preserves_message_start_and_attachment_tail():
+    content = "START-INSTRUCTION " + ("x" * 12000) + " ATTACHED-FILE-END"
+    prompt = _build_prompt_messages(
+        [{"id": "u1", "role": "user", "content": content}],
+        "u1",
+    )
+    bounded = prompt[-1]["content"]
+    assert bounded.startswith("START-INSTRUCTION")
+    assert bounded.endswith("ATTACHED-FILE-END")
+    assert len(bounded) <= 8000
