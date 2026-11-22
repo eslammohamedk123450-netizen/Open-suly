@@ -6,6 +6,7 @@ export type Conversation = {
   id: string;
   user_id: string;
   title: string;
+  project_id?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -56,12 +57,12 @@ export async function listConversations(): Promise<Conversation[]> {
   return payload.items ?? [];
 }
 
-export async function createConversation(title = "محادثة جديدة"): Promise<Conversation> {
+export async function createConversation(title = "محادثة جديدة", projectId?: string): Promise<Conversation> {
   const cleanTitle = title.trim() || "محادثة جديدة";
   if (cleanTitle.length > 200) throw new Error("عنوان المحادثة أطول من الحد المسموح.");
   return request<Conversation>("/v1/chat/conversations", {
     method: "POST",
-    body: JSON.stringify({ title: cleanTitle }),
+    body: JSON.stringify({ title: cleanTitle, ...(projectId ? { project_id: projectId } : {}) }),
   });
 }
 
