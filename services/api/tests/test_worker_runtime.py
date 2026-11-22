@@ -1219,6 +1219,7 @@ def test_opencode_adapter_preserves_cancelled_terminal_state(monkeypatch):
         step,
         ToolExecutionContext(
             cancel_event=cancel_event,
+            engine_run_store=FakeRunStore(),
             runtime_broker=object(),
         ),
     )
