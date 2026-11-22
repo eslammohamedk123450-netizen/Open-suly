@@ -205,3 +205,44 @@ def test_outbox_delivers_to_pending_handoff_then_checkpoints_submission():
     assert handoff_params["p_max_child_tasks"] == 1
     assert handoff_params["p_max_parallel_children"] == 1
     assert client.calls[2][1]["p_result"]["handoffs"][0]["status"] == "pending_approval"
+
+
+
+def test_outbox_retries_transient_handoff_failure_under_same_claim_lease():
+    class FailingCall(OutboxCall):
+        def execute(self):
+            self.client.calls.append((self.name, self.params))
+            if self.name == "claim_hermes_delegation_plan":
+                return FakeResponse([{
+                    "plan_id": str(uuid4()),
+                    "task_id": str(uuid4()),
+                    "step_id": str(uuid4()),
+                    "user_id": str(uuid4()),
+                    "parent_run_id": str(uuid4()),
+                    "payload": plan(),
+                    "lease_token": str(uuid4()),
+                }])
+            if self.name == "create_engine_collaboration_handoff":
+                raise RuntimeError("database temporarily unavailable")
+            if self.name == "fail_hermes_delegation_plan":
+                return FakeResponse(True)
+            return FakeResponse(False)
+
+    class FailingClient:
+        def __init__(self):
+            self.calls = []
+        def rpc(self, name, params):
+            return FailingCall(self, name, params)
+
+    client = FailingClient()
+    bridge = HermesDelegationBridge(client=client, agent_manager=manager())
+    outbox = HermesDelegationOutbox(
+        client=client, bridge=bridge, worker_id="suly-worker-retry"
+    )
+    assert outbox.process_once() == "retry_scheduled"
+    assert [name for name, _ in client.calls] == [
+        "claim_hermes_delegation_plan",
+        "create_engine_collaboration_handoff",
+        "fail_hermes_delegation_plan",
+    ]
+    assert client.calls[-1][1]["p_error_code"] == "delegation_delivery_failed"
