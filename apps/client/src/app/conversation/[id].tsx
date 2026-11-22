@@ -55,6 +55,7 @@ export default function ConversationScreen() {
     setProjectFiles([]);
     setSelectedAttachments([]);
     setPendingMessageId(null);
+    setSending(false);
     getConversation(id).then(async (conversation) => {
       if (!active || !conversation.project_id) return;
       setProjectId(conversation.project_id);
