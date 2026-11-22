@@ -122,6 +122,7 @@ begin
    where c.engine_id = v_run.engine_id
      and c.enabled and c.collaboration_enabled;
   if not found
+     or v_run.engine_id not in ('hermes-agent','opencode')
      or v_run.engine_id = p_target_engine
      or v_source_step.output->>'engine' is distinct from v_run.engine_id
      or v_source_step.output->>'operation' is distinct from v_source_catalog.task_operation
