@@ -530,6 +530,8 @@ begin
     return false;
   end if;
 
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(p_parent_task_id::text,0));
+
   select * into v_parent
     from public.tasks t
    where t.id = p_parent_task_id and t.user_id = p_user_id;
@@ -692,28 +694,9 @@ begin
   on conflict (task_id,step_key) do nothing;
   get diagnostics v_inserted = row_count;
 
-  -- Recheck the barrier in the UPDATE predicate to close races with a new
-  -- handoff/outbox insert. The unique step key makes retries idempotent.
-  update public.tasks t
-     set status = 'ready',
-         completed_at = null,
-         error_code = null,
-         error_message = null,
-         updated_at = now()
-   where t.id = p_parent_task_id
-     and t.user_id = p_user_id
-     and t.status = 'waiting_children'
-     and t.cancel_requested_at is null
-     and not exists (
-       select 1 from public.hermes_delegation_outbox o
-        where o.task_id = p_parent_task_id and o.parent_run_id = p_parent_run_id
-          and o.user_id = p_user_id and o.status in ('pending','processing')
-     )
-     and not exists (
-       select 1 from public.engine_collaboration_handoffs h
-        where h.parent_task_id = p_parent_task_id and h.parent_run_id = p_parent_run_id
-          and h.user_id = p_user_id and h.status in ('pending_approval','approved','running')
-     );
+  -- The parent remains waiting_children until claim_task_step observes the
+  -- same durable barrier. This avoids taking a parent-row lock from a child
+  -- terminal trigger (and therefore avoids parent/child cancellation lock inversion).
 
   return v_inserted = 1 or exists (
     select 1 from public.task_steps s
@@ -842,3 +825,156 @@ comment on function public.maybe_queue_engine_parent_continuation(uuid,uuid,uuid
   'Idempotently queues a parent engine continuation only after all handoffs and delegation outbox records for its successful run are terminal.';
 comment on function public.approve_engine_collaboration_handoff(uuid,uuid) is
   'Owner approval atomically creates a durable isolated child task; the parent remains waiting_children until every sibling handoff and outbox delivery is terminal.';
+
+
+-- A durable continuation step is claimable only while its exact parent run's
+-- outbox and sibling handoffs are terminal. Claiming atomically moves the parent
+-- from waiting_children to running under the normal worker lease protocol.
+create or replace function public.claim_task_step(
+  p_worker_id text,
+  p_lease_seconds integer default 90
+)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_step public.task_steps%rowtype;
+begin
+  if p_worker_id is null or char_length(btrim(p_worker_id)) not between 1 and 120
+     or p_lease_seconds not between 15 and 900 then
+    raise exception 'invalid_worker_claim_parameters';
+  end if;
+
+  -- Expired leases are retried only while attempts remain.
+  update public.task_steps
+     set status = case when attempt_count < max_attempts then 'pending' else 'failed' end,
+         lease_owner = null, lease_token = null, lease_expires_at = null,
+         available_at = now(),
+         error_code = case when attempt_count >= max_attempts then 'lease_expired' else error_code end,
+         error_message = case when attempt_count >= max_attempts then 'Worker lease expired after maximum attempts.' else error_message end
+   where status = 'running' and lease_expires_at <= now();
+
+  update public.tasks t
+     set status = 'failed', error_code = 'step_attempts_exhausted',
+         error_message = 'A task step exhausted its retry attempts.', completed_at = now()
+   where t.status in ('ready','running')
+     and exists (select 1 from public.task_steps s where s.task_id=t.id and s.status='failed');
+
+  -- Cancellation is cooperative: revoke leases and stop unclaimed work.
+  update public.task_steps s
+     set status = 'cancelled', lease_owner = null, lease_token = null,
+         lease_expires_at = null, completed_at = coalesce(completed_at, now())
+    from public.tasks t
+   where s.task_id=t.id and t.status='cancel_requested'
+     and s.status in ('pending','ready','running');
+
+  update public.tasks t
+     set status='cancelled', completed_at=coalesce(completed_at,now())
+   where t.status='cancel_requested'
+     and not exists (select 1 from public.task_steps s where s.task_id=t.id and s.status='running');
+
+  -- Promote fully completed plans to a terminal task state.
+  update public.tasks t
+     set status='completed', completed_at=coalesce(completed_at,now())
+   where t.status in ('ready','running')
+     and exists (select 1 from public.task_steps s where s.task_id=t.id)
+     and not exists (select 1 from public.task_steps s where s.task_id=t.id and s.status <> 'completed');
+
+  select s.* into v_step
+    from public.task_steps s
+    join public.tasks t on t.id=s.task_id
+   where s.status='pending'
+     and s.available_at <= now()
+     and t.cancel_requested_at is null
+     and (
+       t.status in ('ready','running')
+       or (
+         t.status = 'waiting_children'
+         and left(s.step_key,7) = 'resume_'
+         and s.input->>'operation' in ('hermes.agent.turn','opencode.task.run')
+         and exists (
+           select 1 from public.engine_runs r
+            where r.id::text = s.input->>'continuation_of_run_id'
+              and r.task_id = t.id and r.user_id = t.user_id
+              and r.status = 'succeeded'
+              and r.engine_id = case
+                when s.input->>'operation' = 'hermes.agent.turn' then 'hermes-agent'
+                else 'opencode'
+              end
+         )
+         and not exists (
+           select 1 from public.hermes_delegation_outbox o
+            where o.task_id = t.id and o.user_id = t.user_id
+              and o.parent_run_id::text = s.input->>'continuation_of_run_id'
+              and o.status in ('pending','processing')
+         )
+         and not exists (
+           select 1 from public.engine_collaboration_handoffs h
+            where h.parent_task_id = t.id and h.user_id = t.user_id
+              and h.parent_run_id::text = s.input->>'continuation_of_run_id'
+              and h.status in ('pending_approval','approved','running')
+         )
+       )
+     )
+     and not exists (
+       select 1
+         from jsonb_array_elements_text(s.depends_on) d(step_key)
+         where not exists (
+           select 1 from public.task_steps dep
+            where dep.task_id=s.task_id
+              and dep.step_key=d.step_key
+              and dep.status='completed'
+         )
+     )
+   order by t.created_at, s.step_order
+   for update of s skip locked
+   limit 1;
+
+  if not found then
+    return null;
+  end if;
+
+  update public.task_steps
+     set status='running', attempt_count=attempt_count+1,
+         lease_owner=btrim(p_worker_id), lease_token=pg_catalog.gen_random_uuid(),
+         lease_expires_at=now() + pg_catalog.make_interval(secs => p_lease_seconds),
+         started_at=coalesce(started_at,now()), error_code=null, error_message=null
+   where id=v_step.id
+   returning * into v_step;
+
+  update public.tasks
+     set status='running', started_at=coalesce(started_at,now())
+   where id=v_step.task_id
+     and status in ('ready','waiting_children')
+     and cancel_requested_at is null;
+
+  if not exists (
+    select 1 from public.tasks t
+     where t.id = v_step.task_id
+       and t.user_id = v_step.user_id
+       and t.status = 'running'
+       and t.cancel_requested_at is null
+  ) then
+    update public.task_steps
+       set status='cancelled', lease_owner=null, lease_token=null,
+           lease_expires_at=null, completed_at=coalesce(completed_at,now())
+     where id=v_step.id and status='running' and lease_token=v_step.lease_token;
+    return null;
+  end if;
+
+  return pg_catalog.jsonb_build_object(
+    'step_id',v_step.id,'task_id',v_step.task_id,'user_id',v_step.user_id,
+    'step_key',v_step.step_key,'title',v_step.title,'description',v_step.description,
+    'input',v_step.input,'attempt_count',v_step.attempt_count,
+    'max_attempts',v_step.max_attempts,'lease_token',v_step.lease_token,
+    'lease_expires_at',v_step.lease_expires_at
+  );
+end;
+$$;
+
+revoke all on function public.claim_task_step(text,integer) from public,anon,authenticated;
+grant execute on function public.claim_task_step(text,integer) to service_role;
+comment on function public.claim_task_step(text,integer) is
+  'Atomically claims dependency-ready steps and only claims parent continuation steps after their exact collaboration barrier is terminal.';
