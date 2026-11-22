@@ -87,12 +87,22 @@ def _load_chat_memory_context(
         from app.services.project_workspace_store import contains_secret_material
 
         with admin:
-            entries = HermesStateStore(admin).context_for_task(
+            user_rows = (
+                admin.table("agent_memories")
+                .select("memory_key,content")
+                .eq("user_id", user_id).eq("status", "active")
+                .order("updated_at", desc=True).limit(30).execute().data
+            ) or []
+            entries = [
+                {"scope": "user", "memory_key": row.get("memory_key"), "content": row.get("content")}
+                for row in user_rows if isinstance(row, dict)
+            ]
+            entries.extend(HermesStateStore(admin).context_for_task(
                 user_id=user_id,
                 project_id=project_id,
                 conversation_id=conversation_id,
                 max_bytes=8192,
-            )
+            ))
         rendered: list[str] = []
         remaining = 4000
         for entry in entries:
