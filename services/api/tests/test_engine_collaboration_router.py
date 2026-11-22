@@ -243,3 +243,11 @@ def test_create_handoff_rejects_hermes_runtime_budget_above_300_seconds(monkeypa
     assert error.value.status_code == 422
     assert client.rpc_calls == []
     assert client.table_calls == []
+
+
+def test_replayed_handoff_after_parent_resume_maps_to_conflict():
+    with pytest.raises(HTTPException) as exc:
+        collaboration._raise_collaboration_error(
+            RuntimeError("collaboration_parent_run_already_resumed")
+        )
+    assert exc.value.status_code == 409
