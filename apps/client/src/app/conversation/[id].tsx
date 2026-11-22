@@ -5,7 +5,8 @@ import { router, useLocalSearchParams } from "expo-router";
 import { colors } from "@/theme/tokens";
 /** واجهة المحادثة تعرض بيانات usage التي أرسلها مزود الخدمة دون تقدير سعر أو خصم credits. */
 import { useAuth } from "@/providers/AuthProvider";
-import { listMessages, sendUserMessage, type ChatMessage } from "@/lib/conversations";
+import { getConversation, listMessages, sendUserMessage, type ChatMessage } from "@/lib/conversations";
+import { listProjectFiles, type ProjectFile } from "@/lib/project-files";
 import { requestAssistantReplyStream } from "@/lib/chat-api";
 
 function tokenUsage(metadata: ChatMessage["metadata"] | null | undefined): { input_tokens: number; output_tokens: number; total_tokens: number } | null {
@@ -31,6 +32,9 @@ export default function ConversationScreen() {
   const [error, setError] = useState("");
   const [engineNotice, setEngineNotice] = useState("");
   const [streamingText, setStreamingText] = useState("");
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
+  const [selectedAttachments, setSelectedAttachments] = useState<string[]>([]);
   const activeRequest = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -39,6 +43,15 @@ export default function ConversationScreen() {
     activeRequest.current?.abort();
     activeRequest.current = null;
     setStreamingText("");
+    setProjectId(null);
+    setProjectFiles([]);
+    setSelectedAttachments([]);
+    getConversation(id).then(async (conversation) => {
+      if (!active || !conversation.project_id) return;
+      setProjectId(conversation.project_id);
+      const files = await listProjectFiles(conversation.project_id);
+      if (active) setProjectFiles(files);
+    }).catch((e) => { if (active) setEngineNotice(e instanceof Error ? e.message : "تعذر تحميل مرفقات المشروع."); });
     setMessages([]);
     setError("");
     setEngineNotice("");
@@ -80,8 +93,9 @@ export default function ConversationScreen() {
     const controller = new AbortController();
     activeRequest.current = controller;
     try {
-      const saved = await sendUserMessage(id, content);
+      const saved = await sendUserMessage(id, content, selectedAttachments);
       setMessages((current) => [...current, saved]);
+      setSelectedAttachments([]);
       try {
         const reply = await requestAssistantReplyStream(id, saved.id, { signal: controller.signal, onDelta: (part) => setStreamingText((current) => current + part) });
         setMessages((current) => current.some((row) => row.id === reply.id) ? current : [...current, reply]);
@@ -133,6 +147,27 @@ export default function ConversationScreen() {
             </View>
           )}
         </ScrollView>
+        {projectId && projectFiles.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.attachmentPicker}>
+            {projectFiles.map((file) => {
+              const selected = selectedAttachments.includes(file.id);
+              return (
+                <Pressable
+                  key={file.id}
+                  style={[styles.attachmentChip, selected && styles.attachmentChipSelected]}
+                  onPress={() => setSelectedAttachments((current) => selected
+                    ? current.filter((value) => value !== file.id)
+                    : current.length < 5 ? [...current, file.id] : current)}
+                  accessibilityState={{ selected }}
+                >
+                  <Text style={selected ? styles.attachmentSelectedText : styles.attachmentText} numberOfLines={1}>
+                    {selected ? "✓ " : "＋ "}{file.path}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        )}
         <View style={styles.composer}>
           <TextInput value={draft} onChangeText={setDraft} placeholder="اكتب رسالتك..." placeholderTextColor={colors.faint} style={styles.input} multiline textAlign="right" textAlignVertical="center" />
           {sending ? (
@@ -162,6 +197,7 @@ const styles = StyleSheet.create({
   userText: { color: colors.text, fontSize: 13, lineHeight: 22, textAlign: "right" }, assistantText: { color: colors.muted, fontSize: 13, lineHeight: 22, textAlign: "left" }, time: { color: colors.faint, fontSize: 9, marginTop: 7, textAlign: "left" }, usage: { color: colors.faint, fontSize: 9, marginTop: 5, textAlign: "left" },
   noticeBox: { alignItems: "center", gap: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   engineNotice: { color: colors.faint, fontSize: 10, textAlign: "center", marginTop: 8 }, permissionButton: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 9, borderWidth: 1, borderColor: colors.goldDark }, permissionText: { color: colors.gold, fontSize: 10, fontWeight: "700" }, error: { color: "#F08B8B", fontSize: 11, textAlign: "center" },
+  attachmentPicker: { width: "100%", maxWidth: 760, alignSelf: "center", paddingHorizontal: 12, paddingTop: 8, gap: 7 }, attachmentChip: { maxWidth: 190, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }, attachmentChipSelected: { borderColor: colors.gold, backgroundColor: colors.surfaceSecondary }, attachmentText: { color: colors.muted, fontSize: 9 }, attachmentSelectedText: { color: colors.gold, fontSize: 9, fontWeight: "700" },
   composer: { width: "100%", maxWidth: 760, alignSelf: "center", padding: 12, flexDirection: "row", alignItems: "flex-end", gap: 9, borderTopWidth: 1, borderTopColor: colors.border }, input: { flex: 1, minHeight: 48, maxHeight: 130, borderRadius: 15, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, color: colors.text, paddingHorizontal: 13, paddingVertical: 12, fontSize: 13 },
   sendButton: { width: 46, height: 46, borderRadius: 15, backgroundColor: colors.gold, alignItems: "center", justifyContent: "center" }, stopButton: { backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.goldDark }, sendText: { color: colors.background, fontSize: 25, fontWeight: "900" }, disabled: { opacity: 0.45 },
 });
