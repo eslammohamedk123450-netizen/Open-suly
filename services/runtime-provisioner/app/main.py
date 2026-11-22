@@ -19,7 +19,7 @@ import time
 import unicodedata
 from threading import Lock
 from io import BytesIO
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -699,7 +699,6 @@ async def execute(runtime_id: str, body: ExecuteRequest, authorization: str | No
         raise HTTPException(502, "opencode_runtime_unreachable") from exc
 
 
-@app.get("/v1/runtimes/{runtime_id}/results")
 _RESULT_BLOCKED_PARTS = {
     ".git", "node_modules", ".ssh", ".aws", ".azure", ".gcloud",
     ".docker", ".kube", ".gnupg", ".env", ".npmrc", ".pypirc",
@@ -713,7 +712,13 @@ _WINDOWS_DEVICE_NAME = re.compile(r"^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$", re
 
 def _safe_runtime_result_path(raw_name: str) -> str | None:
     """Return a portable workspace-relative path, or omit unsafe archive names."""
-    if not isinstance(raw_name, str) or not raw_name or len(raw_name.encode("utf-8")) > 1024:
+    if not isinstance(raw_name, str) or not raw_name:
+        return None
+    try:
+        encoded_name = raw_name.encode("utf-8")
+    except UnicodeEncodeError:
+        return None
+    if len(encoded_name) > 1024:
         return None
     if "\\" in raw_name or unicodedata.normalize("NFC", raw_name) != raw_name:
         return None
@@ -745,6 +750,7 @@ def _safe_runtime_result_path(raw_name: str) -> str | None:
     return "/".join(parts)
 
 
+@app.get("/v1/runtimes/{runtime_id}/results")
 def runtime_results(runtime_id: str, authorization: str | None = Header(default=None)):
     row = _runtime(runtime_id, _runtime_token_from_request(authorization))
     # This endpoint exports OpenCode's reviewable workspace changeset only.
@@ -799,7 +805,7 @@ def runtime_results(runtime_id: str, authorization: str | None = Header(default=
                 # The engine can read its own runtime credential from its
                 # environment. Never return that token or secret-like files to
                 # the caller as a workspace changeset.
-                if runtime_token and runtime_token in text or _contains_secret_material(text):
+                if (runtime_token and runtime_token in text) or _contains_secret_material(text):
                     continue
                 files.append({"path": result_path, "content": text,
                               "sha256": hashlib.sha256(data).hexdigest()})

@@ -772,6 +772,7 @@ def test_runtime_results_omit_unsafe_paths_and_secret_material(monkeypatch):
         ("workspace/.env.local", "PASSWORD=hidden"),
         ("workspace/credentials.json", '{"token":"hidden"}'),
         ("workspace/secrets.txt", "token = runtime-token-should-never-be-exported"),
+        ("workspace/runtime.txt", "runtime-token-should-never-be-exported"),
         ("workspace/../escape.py", "outside"),
         (r"workspace\\windows.txt", "windows path"),
         ("workspace/C:/escape.txt", "alternate data stream"),
