@@ -183,3 +183,29 @@ def test_model_registry_never_claims_remote_discovery(monkeypatch):
     assert registry["discovery"] == "server_configured_selection_only"
     assert registry["items"][0]["id"] == "operator-selected-model"
     assert registry["items"][0]["provider"] == "openai-compatible"
+
+
+
+def test_stream_reply_rejects_missing_terminal_event(monkeypatch):
+    monkeypatch.setattr(
+        ai_gateway,
+        "get_settings",
+        lambda: Settings(
+            ai_provider="openai-compatible",
+            ai_base_url="https://provider.example",
+            ai_api_key="test-secret",
+            ai_model="test-model",
+        ),
+    )
+    event = 'data: {"choices":[{"delta":{"content":"partial"}}]}\\n\\n'
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, text=event)
+        )) as client:
+            return [part async for part in ai_gateway.stream_reply(
+                [{"role": "user", "content": "hello"}], client=client
+            )]
+
+    with pytest.raises(ai_gateway.AIProviderError, match="ended before completion"):
+        asyncio.run(run())
