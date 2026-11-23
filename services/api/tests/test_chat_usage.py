@@ -145,8 +145,8 @@ def test_chat_usage_is_owner_and_assistant_scoped_and_never_returns_metadata(mon
             "total_tokens": 20,
             "truncated": False,
             "sample_limit": 500,
-            "period_start": "2026-11-23T10:00:00Z",
-            "period_end": "2026-11-23T09:55:00Z",
+            "period_start": "2026-11-23T09:55:00Z",
+            "period_end": "2026-11-23T10:00:00Z",
         }
         assert len(fake.queries) == 1
         query = fake.queries[0]
