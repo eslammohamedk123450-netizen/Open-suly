@@ -112,3 +112,22 @@ export async function deleteConversation(conversationId: string): Promise<void> 
     { method: "DELETE" },
   );
 }
+
+export type ChatExportConversation = Pick<Conversation, "id" | "title" | "created_at" | "updated_at">;
+export type ChatExportMessage = Pick<ChatMessage, "id" | "conversation_id" | "role" | "content" | "created_at">;
+
+export type ChatExportPayload = {
+  export_version: 1;
+  scope: "chat";
+  exported_at: string;
+  conversation_count: number;
+  message_count: number;
+  truncated: boolean;
+  truncation_reason: "conversation_limit" | "message_limit" | "size_limit" | null;
+  conversations: ChatExportConversation[];
+  messages: ChatExportMessage[];
+};
+
+export async function exportChatData(): Promise<ChatExportPayload> {
+  return request<ChatExportPayload>("/v1/chat/export");
+}

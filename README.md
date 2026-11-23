@@ -39,6 +39,7 @@ Arabic-first with correct RTL, English support, a chat-first home screen, a dedi
 - [Supabase clean-slate record](./docs/operations/supabase-clean-slate.md)
 - [Agent runtime local smoke test](./docs/testing/AGENT_RUNTIME_SMOKE_TEST.md)
 - [AI provider setup (Ollama and OpenAI-compatible)](./docs/operations/AI_PROVIDER_SETUP.md)
+- [Chat data export (Arabic)](./docs/operations/CHAT_DATA_EXPORT_AR.md)
 - [Hermes integration status](./docs/architecture/HERMES_CAPABILITY_INTEGRATION_STATUS.md)
 - [OpenCode upstream engine source and pin](./engines/opencode/README.md)
 

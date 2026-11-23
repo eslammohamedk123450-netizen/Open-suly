@@ -854,3 +854,16 @@ undefined
 1. تحقق من Platform CI وRepository baseline للـcommit الناتج، وأصلح أي regression قبل احتساب هذه الدفعة.
 2. افحص أحدث نتائج Engine runtime build وOpenCode verification؛ لا تخمّن سبب فشل run بلا jobs/logs.
 3. تابع ربط usage telemetry بدورة engine runs فقط بعد تعريف cost policy صريحة؛ لا تخترع تحويل tokens إلى credits ولا تفعّل التنفيذ.
+
+
+## جلسة تطوير — 2026-11-23 (تصدير المحادثات من إعدادات الحساب)
+
+- نقطة البداية: تم التحقق من أحدث HEAD على `main` (`ba0a00346a97a33a006c1a35d2ab4729c1588311`)، والخطة وسجل التقدم والملفات وCI قبل التغيير.
+- أضيف `GET /v1/chat/export` لتصدير محادثات المالك والرسائل المرتبطة فقط، بفلتر `user_id` مشتق من التوكن، صفحات 200 سجل، وحقول allowlist لا تشمل `metadata` أو `user_id`.
+- حدود التصدير: 1,000 محادثة، 10,000 رسالة، و2 MiB؛ يوضح JSON حالة `truncated` وسبب الحد عند الاقتطاع. Rate limit محافظ (2/min/user) وCache-Control no-store.
+- أضيف إجراء في Settings: تنزيل JSON في Web ومشاركة JSON عبر Share sheet في Android/iOS، مع loading/error/partial states.
+- أضيفت اختبارات authentication، عزل مالك المحادثة، استبعاد metadata، pagination، size limit، وrate limiting. لا تتطلب migration.
+- أضيف دليل عربي `docs/operations/CHAT_DATA_EXPORT_AR.md`، وربط في README وتوضيح أن export/delete الحساب الكامل لا يزال جزئيًا في roadmap.
+- اختبارات هذه الدفعة لم تُشغل محليًا؛ سيتم الاعتماد على Platform CI وRepository baseline بعد commit، ولن تُحسب نتيجة قبل اكتمال run.
+- لم تُطبق migrations، ولم تُستخدم قاعدة الإنتاج أو provider، ولم يُنشر التطبيق أو يُفعّل Worker/engine.
+- تقدير checklist/readiness لا يُرفع: هذه الميزة تغطي جزءًا فقط من data export/privacy، ولا تفي ببند export/delete الكامل.

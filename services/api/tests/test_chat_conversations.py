@@ -358,3 +358,182 @@ def test_message_history_loads_only_the_owned_conversation(monkeypatch):
 
     assert response.status_code == 200
     assert [row["id"] for row in response.json()["items"]] == ["user-message", "assistant-message"]
+
+
+# Fake paginated export store; the tests never call a live Supabase project.
+class _ChatExportQuery:
+    def __init__(self, admin, table):
+        self.admin = admin
+        self.table_name = table
+        self.fields = []
+        self.filters = {}
+        self.in_filters = {}
+        self.orders = []
+        self.start = 0
+        self.end = None
+
+    def select(self, columns):
+        self.fields = columns.split(",")
+        return self
+
+    def eq(self, key, value):
+        self.filters[key] = value
+        return self
+
+    def in_(self, key, values):
+        self.in_filters[key] = list(values)
+        return self
+
+    def order(self, key, desc=False):
+        self.orders.append((key, desc))
+        return self
+
+    def range(self, start, end):
+        self.start, self.end = start, end
+        return self
+
+    def execute(self):
+        rows = list(self.admin.rows[self.table_name])
+        rows = [row for row in rows if all(row.get(k) == v for k, v in self.filters.items())]
+        rows = [row for row in rows if all(row.get(k) in values for k, values in self.in_filters.items())]
+        for key, desc in reversed(self.orders):
+            rows.sort(key=lambda row: row.get(key) or "", reverse=desc)
+        if self.end is not None:
+            rows = rows[self.start:self.end + 1]
+        return type("Result", (), {"data": [
+            {field: row.get(field) for field in self.fields} for row in rows
+        ]})()
+
+
+class _ChatExportAdmin:
+    def __init__(self, conversations, messages):
+        self.rows = {"conversations": conversations, "messages": messages}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def table(self, name):
+        assert name in self.rows
+        return _ChatExportQuery(self, name)
+
+
+def _export_request(monkeypatch, admin, user_id):
+    from app.core.auth import get_current_user
+    from app.routers import chat as chat_module
+
+    app.dependency_overrides[get_current_user] = lambda: _as_user(user_id)
+    monkeypatch.setattr(chat_module, "get_supabase_admin_client", lambda: admin)
+    try:
+        return client.get("/v1/chat/export")
+    finally:
+        app.dependency_overrides.clear()
+
+
+def _export_conversation(conversation_id, owner_id, title="Chat"):
+    return {
+        "id": conversation_id,
+        "user_id": owner_id,
+        "title": title,
+        "created_at": "2026-11-22T09:00:00Z",
+        "updated_at": "2026-11-22T09:01:00Z",
+    }
+
+
+def _export_message(message_id, conversation_id, owner_id, content="text"):
+    return {
+        "id": message_id,
+        "conversation_id": conversation_id,
+        "user_id": owner_id,
+        "role": "assistant",
+        "content": content,
+        "metadata": {"internal": "excluded"},
+        "created_at": "2026-11-22T09:01:00Z",
+    }
+
+
+def test_chat_export_requires_authentication():
+    response = client.get("/v1/chat/export")
+    assert response.status_code == 401
+
+
+def test_chat_export_is_owner_scoped_and_omits_metadata(monkeypatch):
+    admin = _ChatExportAdmin(
+        [
+            _export_conversation("conversation-a", "owner-a", "My chat"),
+            _export_conversation("conversation-b", "owner-b", "Private chat"),
+        ],
+        [
+            _export_message("message-a", "conversation-a", "owner-a", "my message"),
+            _export_message("message-b", "conversation-b", "owner-b", "private message"),
+        ],
+    )
+    response = _export_request(monkeypatch, admin, "owner-a")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store, private"
+    assert "attachment" in response.headers["content-disposition"]
+    payload = response.json()
+    assert payload["scope"] == "chat"
+    assert payload["truncated"] is False
+    assert [row["id"] for row in payload["conversations"]] == ["conversation-a"]
+    assert [row["id"] for row in payload["messages"]] == ["message-a"]
+    assert "metadata" not in payload["messages"][0]
+    assert "user_id" not in payload["messages"][0]
+    assert "private message" not in response.text
+
+
+def test_chat_export_paginates_messages(monkeypatch):
+    conversation_id = "conversation-page"
+    messages = [
+        _export_message(f"message-{index:03}", conversation_id, "owner-pages", f"item {index}")
+        for index in range(201)
+    ]
+    admin = _ChatExportAdmin(
+        [_export_conversation(conversation_id, "owner-pages")],
+        messages,
+    )
+    response = _export_request(monkeypatch, admin, "owner-pages")
+
+    assert response.status_code == 200
+    assert response.json()["message_count"] == 201
+    assert len(response.json()["messages"]) == 201
+    assert response.json()["truncated"] is False
+
+
+def test_chat_export_marks_size_limit(monkeypatch):
+    from app.routers import chat as chat_module
+
+    monkeypatch.setattr(chat_module, "CHAT_EXPORT_MAX_BYTES", 1800)
+    conversation_id = "conversation-size"
+    admin = _ChatExportAdmin(
+        [_export_conversation(conversation_id, "owner-size")],
+        [
+            _export_message("message-one", conversation_id, "owner-size", "x" * 700),
+            _export_message("message-two", conversation_id, "owner-size", "y" * 700),
+        ],
+    )
+    response = _export_request(monkeypatch, admin, "owner-size")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["message_count"] == 1
+    assert payload["truncated"] is True
+    assert payload["truncation_reason"] == "size_limit"
+
+
+def test_chat_export_rate_limit_is_two_per_minute(monkeypatch):
+    from app.core.rate_limit import reset_limiters
+
+    reset_limiters()
+    admin = _ChatExportAdmin([], [])
+    first = _export_request(monkeypatch, admin, "owner-limiter")
+    second = _export_request(monkeypatch, admin, "owner-limiter")
+    third = _export_request(monkeypatch, admin, "owner-limiter")
+    reset_limiters()
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert third.status_code == 429

@@ -97,7 +97,7 @@ For every engine:
 - [ ] CI: lint, typecheck, tests, security/dependency scan, migration validation, build
 - [ ] smoke tests after deployment
 - [ ] disaster recovery, rollback, incident runbook
-- [ ] user data export/delete and privacy policy
+- [ ] user data export/delete and privacy policy (جزئي: تصدير JSON للمحادثات فقط؛ لا يشمل projects/files/memories/credits ولا حذف الحساب)
 - [ ] final production checklist and known limitations
 
 ## تعليم الكود

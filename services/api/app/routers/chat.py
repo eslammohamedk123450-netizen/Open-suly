@@ -1,8 +1,11 @@
+import json
 import logging
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.core.auth import AuthenticatedUser, get_current_user
@@ -24,6 +27,18 @@ from app.services.ai_provider_config import (
 
 router = APIRouter(prefix="/v1/chat", tags=["chat"])
 logger = logging.getLogger("suly.api.chat")
+
+# حدود تصدير المحادثات لحماية الموارد والحد من حجم الملف.
+CHAT_EXPORT_PAGE_SIZE = 200
+CHAT_EXPORT_MAX_CONVERSATIONS = 1000
+CHAT_EXPORT_MAX_MESSAGES = 10000
+CHAT_EXPORT_MAX_BYTES = 2 * 1024 * 1024
+_CHAT_EXPORT_RESERVED_BYTES = 512
+
+
+def _export_row_size(row: dict[str, Any]) -> int:
+    """حجم JSON لسجل مع مساحة بسيطة للفاصل بين السجلات."""
+    return len(json.dumps(row, ensure_ascii=False, separators=(",", ":")).encode("utf-8")) + 1
 
 
 def _build_prompt_messages(
@@ -243,6 +258,160 @@ def _chat_admin():
             detail="Server-side Supabase secret is not configured.",
         )
     return admin
+
+
+
+
+@router.get("/export")
+def export_chat_data(
+    user: AuthenticatedUser = Depends(get_current_user),
+    _rate_limit: None = Depends(rate_limit("chat_export")),
+) -> JSONResponse:
+    """تصدير محادثات المالك فقط مع حذف metadata من الملف."""
+    admin = _chat_admin()
+    conversations: list[dict[str, Any]] = []
+    messages: list[dict[str, Any]] = []
+    used_bytes = _CHAT_EXPORT_RESERVED_BYTES
+    truncated = False
+    truncation_reason: str | None = None
+    page_size = CHAT_EXPORT_PAGE_SIZE
+
+    try:
+        with admin:
+            # نجلب المحادثات بصفحات ثابتة وترتيب واضح.
+            offset = 0
+            while offset < CHAT_EXPORT_MAX_CONVERSATIONS:
+                page = (
+                    admin.table("conversations")
+                    .select("id,title,created_at,updated_at")
+                    .eq("user_id", user.id)
+                    .order("created_at", desc=False)
+                    .order("id", desc=False)
+                    .range(offset, offset + page_size - 1)
+                    .execute()
+                    .data
+                ) or []
+                if not page:
+                    break
+                for raw in page:
+                    row = {
+                        "id": raw.get("id"),
+                        "title": raw.get("title"),
+                        "created_at": raw.get("created_at"),
+                        "updated_at": raw.get("updated_at"),
+                    }
+                    row_size = _export_row_size(row)
+                    if used_bytes + row_size > CHAT_EXPORT_MAX_BYTES:
+                        truncated = True
+                        truncation_reason = "size_limit"
+                        break
+                    conversations.append(row)
+                    used_bytes += row_size
+                if truncated or len(page) < page_size:
+                    break
+                offset += len(page)
+
+            # نتحقق من وجود سجلات بعد حد المحادثات دون إضافتها.
+            if not truncated and len(conversations) >= CHAT_EXPORT_MAX_CONVERSATIONS:
+                extra = (
+                    admin.table("conversations")
+                    .select("id")
+                    .eq("user_id", user.id)
+                    .range(CHAT_EXPORT_MAX_CONVERSATIONS, CHAT_EXPORT_MAX_CONVERSATIONS)
+                    .execute()
+                    .data
+                ) or []
+                if extra:
+                    truncated = True
+                    truncation_reason = "conversation_limit"
+
+            # نقرأ الرسائل على دفعات IDs قصيرة لتجنب استعلام ضخم.
+            if not truncated:
+                for batch_start in range(0, len(conversations), 100):
+                    batch_ids = [row["id"] for row in conversations[batch_start:batch_start + 100]]
+                    message_offset = 0
+                    while True:
+                        page = (
+                            admin.table("messages")
+                            .select("id,conversation_id,role,content,created_at")
+                            .eq("user_id", user.id)
+                            .in_("conversation_id", batch_ids)
+                            .order("created_at", desc=False)
+                            .order("id", desc=False)
+                            .range(message_offset, message_offset + page_size - 1)
+                            .execute()
+                            .data
+                        ) or []
+                        if not page:
+                            break
+                        for raw in page:
+                            if len(messages) >= CHAT_EXPORT_MAX_MESSAGES:
+                                truncated = True
+                                truncation_reason = "message_limit"
+                                break
+                            row = {
+                                "id": raw.get("id"),
+                                "conversation_id": raw.get("conversation_id"),
+                                "role": raw.get("role"),
+                                "content": raw.get("content"),
+                                "created_at": raw.get("created_at"),
+                            }
+                            row_size = _export_row_size(row)
+                            if used_bytes + row_size > CHAT_EXPORT_MAX_BYTES:
+                                truncated = True
+                                truncation_reason = "size_limit"
+                                break
+                            messages.append(row)
+                            used_bytes += row_size
+                        if truncated or len(page) < page_size:
+                            break
+                        message_offset += len(page)
+                    if truncated:
+                        break
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # لا نسجل محتوى المحادثات أو استثناءات قد تحمل بيانات المستخدم.
+        logger.warning("chat_export_failed")
+        raise HTTPException(status_code=503, detail="تعذر تجهيز تصدير المحادثات الآن.") from exc
+
+    payload: dict[str, Any] = {
+        "export_version": 1,
+        "scope": "chat",
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "conversation_count": len(conversations),
+        "message_count": len(messages),
+        "truncated": truncated,
+        "truncation_reason": truncation_reason,
+        "conversations": conversations,
+        "messages": messages,
+    }
+    # نتحقق من الحجم النهائي الدقيق؛ reserve bytes يغطي غلاف JSON.
+    while len(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")) > CHAT_EXPORT_MAX_BYTES:
+        if messages:
+            messages.pop()
+            truncation_reason = "size_limit"
+        elif conversations:
+            conversations.pop()
+            truncation_reason = "size_limit"
+        else:
+            break
+        truncated = True
+        payload.update({
+            "conversation_count": len(conversations),
+            "message_count": len(messages),
+            "truncated": truncated,
+            "truncation_reason": truncation_reason,
+        })
+    filename = datetime.now(timezone.utc).strftime("suly-chat-export-%Y%m%d.json")
+    return JSONResponse(
+        content=payload,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store, private",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.get("/conversations")

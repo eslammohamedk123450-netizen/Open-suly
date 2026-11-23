@@ -152,6 +152,7 @@ def rate_limit(scope: str) -> Callable[..., None]:
             "chat_respond": settings.rate_limit_chat_respond_per_minute,
             "chat_conversations": settings.rate_limit_chat_conversations_per_minute,
             "chat_messages": settings.rate_limit_chat_messages_per_minute,
+            "chat_export": settings.rate_limit_chat_export_per_minute,
             "owner_ai_provider": getattr(settings, "rate_limit_owner_ai_provider_per_minute", 5),
         }
         if scope not in limits:

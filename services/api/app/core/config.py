@@ -56,6 +56,8 @@ class Settings(BaseSettings):
     rate_limit_chat_respond_per_minute: int = Field(default=10, ge=0, le=1000)
     rate_limit_chat_conversations_per_minute: int = Field(default=10, ge=0, le=1000)
     rate_limit_chat_messages_per_minute: int = Field(default=30, ge=0, le=1000)
+    # حد محافظ لتصدير النصوص لكل مستخدم.
+    rate_limit_chat_export_per_minute: int = Field(default=2, ge=0, le=1000)
     rate_limit_owner_ai_provider_per_minute: int = Field(default=5, ge=0, le=1000)
 
     # Worker runtime is opt-in; never starts merely because the API boots.
