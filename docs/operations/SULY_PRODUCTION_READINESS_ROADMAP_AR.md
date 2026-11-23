@@ -597,3 +597,12 @@ For every engine:
 - The response re-checks Vault and reports a server environment fallback as `source=environment`; deleting the Vault secret is not represented as disabling a provider when fallback credentials remain configured.
 - This completes the in-product Vault removal path only. Provider/model smoke remains approval-gated; no provider, worker, or engine was activated. No migration was applied and no deployment occurred.
 - Implementation commit: [`50c6d7449fab6cd98eca98c14583914985bf6925`](https://github.com/eslammohamedk123450-netizen/Open-suly/commit/50c6d7449fab6cd98eca98c14583914985bf6925). Tests were added for non-owner denial, secret non-disclosure, successful Vault removal, environment fallback, and safe RPC failure. Platform CI and repository baseline were queued at the last check; the engine build workflow failed without exposing jobs/logs. No green result is claimed until CI completes.
+
+
+## تحديث تحقق الخصوصية — 2026-11-23
+
+- تم تقليل صفحة قراءة الرسائل في `GET /v1/chat/export` إلى 25 سجلًا بدل 200 لتقليل الذاكرة المؤقتة لكل استعلام؛ صفحة المحادثات بقيت 200.
+- أضيفت اختبارات تمنع تصدير رسالة مربوطة بمحادثة لا يملكها صاحب الطلب، وتتحقق من حدود الرسائل والمحادثات والصفحات.
+- التنفيذ: [كود التصدير](https://github.com/eslammohamedk123450-netizen/Open-suly/commit/bfd9b63c52322ae97e5eafba649a805ec45f151d) و[اختبارات الخصوصية](https://github.com/eslammohamedk123450-netizen/Open-suly/commit/6ddc7a17e69748dfb79997c604a3471881f54fe1).
+- حد `chat_export` الحالي محلي لكل عملية API، وليس موزعًا؛ global ingress rate limit ما زال blocker قبل اعتبار حماية الاستخراج ضد التوزيع/التوسع مكتملة.
+- لا يتغير تقدير الجاهزية أو حالة بند export/delete الكامل: التصدير لا يزال للمحادثات فقط، ولا توجد وظيفة حذف حساب كاملة.
