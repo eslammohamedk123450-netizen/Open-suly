@@ -15,6 +15,7 @@ from app.routers.opencode_tasks import router as opencode_tasks_router
 from app.routers.engine_collaboration import router as engine_collaboration_router
 from app.routers.agent_memories import router as agent_memories_router
 from app.routers.credits import router as credits_router
+from app.routers.usage import router as usage_router
 from app.routers.owner_ai_provider import router as owner_ai_provider_router
 from app.services.runtime_broker_contract import TaskScopedRuntimeBroker
 from app.services.runtime_provisioner_http import HTTPSRuntimeLeaseProvider
@@ -40,6 +41,7 @@ app.include_router(opencode_tasks_router)
 app.include_router(engine_collaboration_router)
 app.include_router(agent_memories_router)
 app.include_router(credits_router)
+app.include_router(usage_router)
 app.include_router(owner_ai_provider_router)
 
 @app.on_event("startup")

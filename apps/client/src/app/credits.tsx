@@ -9,6 +9,7 @@ import { colors } from "@/theme/tokens";
 import { BottomNavigation } from "@/components/BottomNavigation";
 import { useAuth } from "@/providers/AuthProvider";
 import { getEngineCredits, type EngineCredits, type CreditTransaction } from "@/lib/engine-credits";
+import { getChatUsageSummary, type ChatUsageSummary } from "@/lib/chat-usage";
 
 function formatDate(value: string | null): string {
   if (!value) return "التاريخ غير متاح";
@@ -53,6 +54,10 @@ export default function CreditsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [chatUsage, setChatUsage] = useState<ChatUsageSummary | null>(null);
+  const [usageLoading, setUsageLoading] = useState(true);
+  const [usageRefreshing, setUsageRefreshing] = useState(false);
+  const [usageError, setUsageError] = useState("");
 
   const load = useCallback(async (refresh = false) => {
     if (!user) {
@@ -77,7 +82,30 @@ export default function CreditsScreen() {
     }
   }, [user?.id]);
 
-  useEffect(() => { void load(); }, [load]);
+  const loadChatUsage = useCallback(async (refresh = false) => {
+    if (!user) {
+      setChatUsage(null);
+      setUsageLoading(false);
+      setUsageRefreshing(false);
+      return;
+    }
+    if (refresh) setUsageRefreshing(true);
+    else {
+      setChatUsage(null);
+      setUsageLoading(true);
+    }
+    setUsageError("");
+    try {
+      setChatUsage(await getChatUsageSummary());
+    } catch (cause) {
+      setUsageError(cause instanceof Error ? cause.message : "تعذر تحميل استهلاك المحادثات.");
+    } finally {
+      setUsageLoading(false);
+      setUsageRefreshing(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => { void load(); void loadChatUsage(); }, [load, loadChatUsage]);
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -111,8 +139,42 @@ export default function CreditsScreen() {
             </View>
           ) : (
             <>
-              <Pressable style={styles.refresh} onPress={() => void load(true)} disabled={refreshing || loading} accessibilityRole="button" accessibilityLabel="تحديث الرصيد">
-                {refreshing ? <ActivityIndicator color={colors.gold} /> : <Text style={styles.refreshText}>تحديث البيانات</Text>}
+              <View style={styles.usageCard}>
+                <Text style={styles.sectionTitle} accessibilityRole="header">استهلاك Tokens للمحادثات</Text>
+                <Text style={styles.usageIntro}>الأرقام من usage الذي يرجعه مزود AI. لا تشمل المحركات أو Credits أو تقدير التكلفة.</Text>
+                {usageLoading ? (
+                  <ActivityIndicator color={colors.gold} style={{ marginVertical: 14 }} />
+                ) : chatUsage ? (
+                  <>
+                    <View style={styles.usageGrid}>
+                      <View style={styles.usageItem}>
+                        <Text style={styles.usageLabel}>Input</Text>
+                        <Text style={styles.usageValue} accessibilityLabel={`Input ${formatCredits(chatUsage.input_tokens)} tokens`}>{formatCredits(chatUsage.input_tokens)}</Text>
+                      </View>
+                      <View style={styles.usageItem}>
+                        <Text style={styles.usageLabel}>Output</Text>
+                        <Text style={styles.usageValue} accessibilityLabel={`Output ${formatCredits(chatUsage.output_tokens)} tokens`}>{formatCredits(chatUsage.output_tokens)}</Text>
+                      </View>
+                      <View style={styles.usageItemTotal}>
+                        <Text style={styles.usageLabel}>Total</Text>
+                        <Text style={styles.usageValueTotal} accessibilityLabel={`Total ${formatCredits(chatUsage.total_tokens)} tokens`}>{formatCredits(chatUsage.total_tokens)}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.usageNote}>تم العثور على usage في {formatCredits(chatUsage.usage_records)} من {formatCredits(chatUsage.assistant_messages_checked)} رسالة مساعد.</Text>
+                    {chatUsage.truncated ? (
+                      <Text style={styles.usageWarning}>الملخص محدود بآخر 500 رسالة مساعد؛ قد يكون إجمالي الحساب أكبر.</Text>
+                    ) : (
+                      <Text style={styles.usageNote}>يشمل كل رسائل المساعد المتاحة ضمن هذا الحساب.</Text>
+                    )}
+                  </>
+                ) : (
+                  <Text style={styles.usageNote}>لا توجد بيانات Tokens مسجلة حتى الآن.</Text>
+                )}
+                {!!usageError && <Text style={styles.usageError}>{usageError}</Text>}
+              </View>
+
+              <Pressable style={styles.refresh} onPress={() => { void load(true); void loadChatUsage(true); }} disabled={refreshing || loading || usageRefreshing || usageLoading} accessibilityRole="button" accessibilityLabel="تحديث الرصيد والاستهلاك">
+                {refreshing || usageRefreshing ? <ActivityIndicator color={colors.gold} /> : <Text style={styles.refreshText}>تحديث البيانات</Text>}
               </Pressable>
 
               {loading && <ActivityIndicator color={colors.gold} style={{ marginVertical: 24 }} />}
@@ -219,6 +281,17 @@ const styles = StyleSheet.create({
   transactionDelta: { color: colors.text, fontSize: 11, textAlign: "right" },
   meta: { color: colors.faint, fontSize: 10, textAlign: "right" },
   updatedAt: { color: colors.faint, fontSize: 9, textAlign: "center", marginTop: 8 },
+  usageCard: { borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: 15, gap: 10 },
+  usageIntro: { color: colors.muted, fontSize: 10, lineHeight: 18, textAlign: "right" },
+  usageGrid: { flexDirection: "row", gap: 8 },
+  usageItem: { flex: 1, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary, padding: 10, gap: 6 },
+  usageItemTotal: { flex: 1, borderRadius: 12, borderWidth: 1, borderColor: colors.goldDark, backgroundColor: colors.surfaceSecondary, padding: 10, gap: 6 },
+  usageLabel: { color: colors.muted, fontSize: 10, textAlign: "right" },
+  usageValue: { color: colors.text, fontSize: 17, fontWeight: "700", textAlign: "right" },
+  usageValueTotal: { color: colors.gold, fontSize: 17, fontWeight: "800", textAlign: "right" },
+  usageNote: { color: colors.faint, fontSize: 10, lineHeight: 17, textAlign: "right" },
+  usageWarning: { color: "#E4A254", fontSize: 10, lineHeight: 17, textAlign: "right" },
+  usageError: { color: "#E07A7A", fontSize: 10, lineHeight: 17, textAlign: "right" },
   empty: { borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: 18, alignItems: "center", gap: 9 },
   emptyInline: { borderRadius: 13, backgroundColor: colors.surface, padding: 14, alignItems: "center" },
   emptyTitle: { color: colors.text, fontSize: 13, fontWeight: "800" },
