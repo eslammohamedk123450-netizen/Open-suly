@@ -390,6 +390,7 @@ class _ChatExportQuery:
 
     def range(self, start, end):
         self.start, self.end = start, end
+        self.admin.range_calls.append((self.table_name, start, end))
         return self
 
     def execute(self):
@@ -408,6 +409,7 @@ class _ChatExportQuery:
 class _ChatExportAdmin:
     def __init__(self, conversations, messages):
         self.rows = {"conversations": conversations, "messages": messages}
+        self.range_calls = []
 
     def __enter__(self):
         return self
@@ -468,6 +470,8 @@ def test_chat_export_is_owner_scoped_and_omits_metadata(monkeypatch):
         [
             _export_message("message-a", "conversation-a", "owner-a", "my message"),
             _export_message("message-b", "conversation-b", "owner-b", "private message"),
+            # A matching user_id must not export a message linked to another owner's conversation.
+            _export_message("message-cross-link", "conversation-b", "owner-a", "must never export"),
         ],
     )
     response = _export_request(monkeypatch, admin, "owner-a")
@@ -483,6 +487,8 @@ def test_chat_export_is_owner_scoped_and_omits_metadata(monkeypatch):
     assert "metadata" not in payload["messages"][0]
     assert "user_id" not in payload["messages"][0]
     assert "private message" not in response.text
+    assert "must never export" not in response.text
+    assert response.headers["x-content-type-options"] == "nosniff"
 
 
 def test_chat_export_paginates_messages(monkeypatch):
@@ -501,6 +507,61 @@ def test_chat_export_paginates_messages(monkeypatch):
     assert response.json()["message_count"] == 201
     assert len(response.json()["messages"]) == 201
     assert response.json()["truncated"] is False
+    message_ranges = [
+        end - start + 1
+        for table, start, end in admin.range_calls
+        if table == "messages"
+    ]
+    assert len(message_ranges) == 9
+    assert max(message_ranges) == 25
+
+
+def test_chat_export_marks_message_limit(monkeypatch):
+    from app.routers import chat as chat_module
+
+    monkeypatch.setattr(chat_module, "CHAT_EXPORT_MAX_MESSAGES", 2)
+    conversation_id = "conversation-message-limit"
+    admin = _ChatExportAdmin(
+        [_export_conversation(conversation_id, "owner-message-limit")],
+        [
+            _export_message(f"message-{index}", conversation_id, "owner-message-limit", f"item {index}")
+            for index in range(3)
+        ],
+    )
+    response = _export_request(monkeypatch, admin, "owner-message-limit")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["message_count"] == 2
+    assert payload["truncated"] is True
+    assert payload["truncation_reason"] == "message_limit"
+
+
+def test_chat_export_never_reads_past_conversation_limit(monkeypatch):
+    from app.routers import chat as chat_module
+
+    monkeypatch.setattr(chat_module, "CHAT_EXPORT_MAX_CONVERSATIONS", 2)
+    admin = _ChatExportAdmin(
+        [
+            _export_conversation("conversation-1", "owner-conversation-limit"),
+            _export_conversation("conversation-2", "owner-conversation-limit"),
+            _export_conversation("conversation-3", "owner-conversation-limit"),
+        ],
+        [],
+    )
+    response = _export_request(monkeypatch, admin, "owner-conversation-limit")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["conversation_count"] == 2
+    assert payload["truncated"] is True
+    assert payload["truncation_reason"] == "conversation_limit"
+    conversation_ranges = [
+        end - start + 1
+        for table, start, end in admin.range_calls
+        if table == "conversations"
+    ]
+    assert conversation_ranges[0] == 2
 
 
 def test_chat_export_marks_size_limit(monkeypatch):
