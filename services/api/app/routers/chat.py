@@ -28,8 +28,9 @@ from app.services.ai_provider_config import (
 router = APIRouter(prefix="/v1/chat", tags=["chat"])
 logger = logging.getLogger("suly.api.chat")
 
-# حدود تصدير المحادثات لحماية الموارد والحد من حجم الملف.
-CHAT_EXPORT_PAGE_SIZE = 200
+# حدود مستقلة للصفحات: المحادثات أقل كلفة، والرسائل أصغر لتقليل تضخم الذاكرة المؤقتة.
+CHAT_EXPORT_CONVERSATION_PAGE_SIZE = 200
+CHAT_EXPORT_MESSAGE_PAGE_SIZE = 25
 CHAT_EXPORT_MAX_CONVERSATIONS = 1000
 CHAT_EXPORT_MAX_MESSAGES = 10000
 CHAT_EXPORT_MAX_BYTES = 2 * 1024 * 1024
@@ -274,7 +275,6 @@ def export_chat_data(
     used_bytes = _CHAT_EXPORT_RESERVED_BYTES
     truncated = False
     truncation_reason: str | None = None
-    page_size = CHAT_EXPORT_PAGE_SIZE
 
     try:
         with admin:
@@ -287,7 +287,10 @@ def export_chat_data(
                     .eq("user_id", user.id)
                     .order("created_at", desc=False)
                     .order("id", desc=False)
-                    .range(offset, offset + page_size - 1)
+                    .range(
+                        offset,
+                        min(offset + CHAT_EXPORT_CONVERSATION_PAGE_SIZE, CHAT_EXPORT_MAX_CONVERSATIONS) - 1,
+                    )
                     .execute()
                     .data
                 ) or []
@@ -307,7 +310,7 @@ def export_chat_data(
                         break
                     conversations.append(row)
                     used_bytes += row_size
-                if truncated or len(page) < page_size:
+                if truncated or len(page) < CHAT_EXPORT_CONVERSATION_PAGE_SIZE:
                     break
                 offset += len(page)
 
@@ -338,7 +341,10 @@ def export_chat_data(
                             .in_("conversation_id", batch_ids)
                             .order("created_at", desc=False)
                             .order("id", desc=False)
-                            .range(message_offset, message_offset + page_size - 1)
+                            .range(
+                                message_offset,
+                                message_offset + CHAT_EXPORT_MESSAGE_PAGE_SIZE - 1,
+                            )
                             .execute()
                             .data
                         ) or []
@@ -363,7 +369,7 @@ def export_chat_data(
                                 break
                             messages.append(row)
                             used_bytes += row_size
-                        if truncated or len(page) < page_size:
+                        if truncated or len(page) < CHAT_EXPORT_MESSAGE_PAGE_SIZE:
                             break
                         message_offset += len(page)
                     if truncated:
