@@ -867,3 +867,15 @@ undefined
 - اختبارات هذه الدفعة لم تُشغل محليًا؛ سيتم الاعتماد على Platform CI وRepository baseline بعد commit، ولن تُحسب نتيجة قبل اكتمال run.
 - لم تُطبق migrations، ولم تُستخدم قاعدة الإنتاج أو provider، ولم يُنشر التطبيق أو يُفعّل Worker/engine.
 - تقدير checklist/readiness لا يُرفع: هذه الميزة تغطي جزءًا فقط من data export/privacy، ولا تفي ببند export/delete الكامل.
+
+
+## جلسة تطوير — 2026-11-23 (تقليل تضخم قراءة تصدير المحادثات)
+
+- نقطة البداية: HEAD على `main` كان `6ae332944f6c82caf19f5f2bc9d375c1e39b5b91`؛ راجعت diff والـroadmap وسجل التقدم ونتيجة status قبل التعديل.
+- التنفيذ محفوظ في commitين: [`bfd9b63c52322ae97e5eafba649a805ec45f151d`](https://github.com/eslammohamedk123450-netizen/Open-suly/commit/bfd9b63c52322ae97e5eafba649a805ec45f151d) للكود، و[`6ddc7a17e69748dfb79997c604a3471881f54fe1`](https://github.com/eslammohamedk123450-netizen/Open-suly/commit/6ddc7a17e69748dfb79997c604a3471881f54fe1) للاختبارات.
+- فصلت حجم صفحات المحادثات (200) عن صفحات الرسائل (25)؛ الرسائل تحمل محتوى نصيًا كبيرًا، لذلك كان استخدام 200 سجل في كل استعلام يرفع الذاكرة المؤقتة المطلوبة قبل تطبيق حد 2 MiB النهائي.
+- جعلت نهاية استعلام المحادثات لا تتجاوز حد `CHAT_EXPORT_MAX_CONVERSATIONS` حتى عند تغيير الحد إلى قيمة ليست من مضاعفات حجم الصفحة.
+- وسعت اختبارات الخصوصية لتغطية رسالة ذات `user_id` صحيح لكن مرتبطة بمحادثة مستخدم آخر، واختبارات message cap وconversation cap وأحجام صفحات الرسائل ورأس `nosniff`.
+- وثّقت أن rate limit الحالي process-local وليس موزعًا بين نسخ API؛ يلزم حد عام عند ingress قبل اعتبار هذا ضابط إساءة استخدام على مستوى الخدمة.
+- لا تغيير في schema أو migrations أو upstream dependencies. لا Docker أو Worker أو Provider أو Engine أو staging أو deploy في هذه الدفعة.
+- لم تتوفر بيئة محلية للمستودع؛ CI على آخر commit مطلوب لإثبات الاختبارات. لا تُحتسب الاختبارات ناجحة قبل green موثق.
