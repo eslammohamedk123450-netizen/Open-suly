@@ -910,3 +910,12 @@ undefined
 - `py_compile` للنسخة المحلية من router/test نجح. محاولة clone الكامل للمستودع تعذرت بسبب DNS؛ الحزمة `supabase` غير متاحة محليًا، لذلك لم نُشغّل suite المشروع.
 - CI على HEAD `a29dee8`: Repository baseline #1454 وPlatform CI #1576 queued. Engine runtime build #466 failure مع 0 jobs. Platform CI الأقدم #1573 على commit `92b3584` بقي API tests in-progress لساعات؛ تنزيل logs رجع BlobNotFound، لذلك لا توجد تشخيصات موثوقة. لم نلغِ run أو نعيد تشغيله.
 - تقدير الجاهزية ~20% unchanged. لا deployment أو migration أو provider أو engine.
+
+
+
+### متابعة HEAD وCI بعد استعادة دليل Tokens — 2026-11-23
+
+- تم فحص tree بعد commit الاختبارات واكتشاف أن commit `a29dee8` أنشئ على tree قديم من commit الكود، فأسقط ملفات docs التي أضيفت في `8be095a`. تمت استعادة README/roadmap/provider setup/chat usage/progress إلى `main` في [`a116d3cafdd57d65b7d53db5a5f5484858557cda`](https://github.com/eslammohamedk123450-netizen/Open-suly/commit/a116d3cafdd57d65b7d53db5a5f5484858557cda)، والتحقق من tree الحالي أنه يحتوي دليل `CHAT_USAGE_AR.md` وملف progress. لم تعد المستندات مفقودة.
+- أحدث HEAD الآن `a116d3c`. Repository baseline #1455 وPlatform CI #1577 queued؛ Engine runtime build #467 failure مع 0 jobs. كذلك code commit #a18 baseline #1452/platform #1574 queued وtest commit #a29 baseline #1454/platform #1576 queued. لا يوجد green CI للدفعة حتى الآن.
+- API tests في Platform CI القديم #1573 ظلت in-progress (API tests)؛ job logs تعذر تنزيلها (BlobNotFound). لا نملك تشخيصًا ولا نلغي/rerun jobs.
+- لا تغيير upstream أو secrets أو migrations/live DB أو providers/workers/engines/deployment.
