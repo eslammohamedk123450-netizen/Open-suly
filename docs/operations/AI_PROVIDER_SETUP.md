@@ -63,3 +63,6 @@ After setting server and client configuration, verify `/health` and `/ready`, th
 - عند إرجاع OpenAI-compatible provider لحقل `usage` يحتوي `prompt_tokens` و`completion_tokens`، أو Ollama لحقلَي `prompt_eval_count` و`eval_count`، يحفظ chat counts bounded في assistant message metadata ويعرضها في المحادثة.
 - Counts هي أرقام provider-report فقط؛ missing/malformed usage لا يضيف metadata. إجمالي tokens يتم جمع input/output validated.
 - هذه telemetry لا تقدّر التكلفة ولا تخصم credits ولا تنشئ ledger مالي. Provider calls ما زالت تحتاج إعداد server-side وموافقة `ai.provider.run`.
+- `GET /v1/usage/chat` يعرض ملخصًا read-only لـInput/Output/Total في صفحة الرصيد والاستخدام، باستخدام JWT المستخدم وRLS. يجمع أحدث 500 رسالة مساعد كحد أقصى ويُظهر `truncated` عند وجود المزيد؛ لا يعرض نص المحادثة أو metadata الخام.
+- الملخص يقتصر على المحادثات التي سجلت usage من المزود؛ لا يشمل Hermes/OpenCode أو استهلاك agents/tools أو Cached Tokens منفصلة أو التكلفة المالية. حد الاستخدام 20 طلبًا/دقيقة لكل مستخدم داخل عملية API، وليس rate limit موزعًا.
+- تحقق route tests: 5 passed في FastAPI mock app محلي؛ هذا لا يغني عن Platform CI الكامل أو RLS/live test.
