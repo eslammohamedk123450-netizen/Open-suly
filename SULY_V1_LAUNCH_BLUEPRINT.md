@@ -41,6 +41,7 @@ This roadmap applies to the standalone SULY product.
 
 ## Phase 6 — Usage, plans, and administration
 - Add server-authoritative usage ledger and configurable product plans.
+- Implemented a read-only chat token summary API and display in the credits/usage screen (provider-reported counts only; latest 500 assistant messages; not engine metering or financial cost).
 - Add admin workflows with role-based access and audit logs.
 - Add operational metrics and provider health monitoring.
 

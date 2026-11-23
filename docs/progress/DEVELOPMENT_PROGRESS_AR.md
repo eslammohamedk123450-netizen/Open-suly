@@ -879,3 +879,24 @@ undefined
 - وثّقت أن rate limit الحالي process-local وليس موزعًا بين نسخ API؛ يلزم حد عام عند ingress قبل اعتبار هذا ضابط إساءة استخدام على مستوى الخدمة.
 - لا تغيير في schema أو migrations أو upstream dependencies. لا Docker أو Worker أو Provider أو Engine أو staging أو deploy في هذه الدفعة.
 - لم تتوفر بيئة محلية للمستودع؛ CI على آخر commit مطلوب لإثبات الاختبارات. لا تُحتسب الاختبارات ناجحة قبل green موثق.
+
+
+
+## جلسة تطوير — 2026-11-23 (ملخص Tokens لمحادثات AI)
+
+- نقطة البداية: تم التحقق من أحدث `main` HEAD `92b35843a15620499d8ba52873bc22d3baf5f150`، والـroadmap وسجل progress والملفات ذات الصلة وسجل commits وCI. لم يُعتمد HEAD قديم.
+- Commit الكود: [`a18c30f6a6a67e1332c9a564237ca040da47f6da`](https://github.com/eslammohamedk123450-netizen/Open-suly/commit/a18c30f6a6a67e1332c9a564237ca040da47f6da).
+- أضيف `GET /v1/usage/chat` بقراءة user-JWT client وRLS، مع فلاتر صريحة لمالك الرسائل ودور assistant؛ يقرأ `metadata,created_at` فقط ولا يرجع النص أو metadata الخام.
+- الملخص bounded: يطلب 501 ويحتسب أحدث 500 رسالة مساعد، validates provider input/output counters ويعيد total محسوبًا؛ `truncated` وcoverage يوضحان إذا كان الملخص غير شامل.
+- أضيفت شاشة عرض Tokens منفصلة عن credits في صفحة الرصيد والاستخدام، مع تحميل/تحديث/error states، ولا تعتمد على تفعيل دفتر credits.
+- أضيفت 5 اختبارات: auth، تمرير user token دون service-role، owner/role scope وعدم تسريب metadata، حد 500، وإخفاء أخطاء DB.
+- فحص syntax عبر `py_compile` للنسخة المحلية المهيأة من router/test نجح. لم تُشغّل pytest: تعذر clone بسبب DNS في بيئة التشغيل المحلية، وحزمة `supabase` غير مثبتة؛ لا ندعي نجاح suite.
+- CI للكود الجديد: Repository baseline #1452 وPlatform CI #1574 وOpenCode verification #391 كانت queued عند آخر فحص. Engine runtime build #464 فشل مع صفر jobs بلا logs تشخيصية؛ لا نخمن السبب. Baseline سابق #1451 نجح على commit أقدم، ولا يُنسب نجاحه للتغيير الحالي.
+- لا migration أو DB/live provider أو worker أو engine أو deployment؛ لا secrets أو خدمات مدفوعة.
+- تقدير الجاهزية milestone-based يبقى ~20%، ولا يتغير لأن usage summary read-only لا يحقق ledger/cost policy أو engine token metering.
+
+### نقطة متابعة الجلسة القادمة
+1. تحقق من Platform CI وRepository baseline وOpenCode verification على HEAD الجديد؛ أصلح أي regressions وفق logs.
+2. عالج عطل Engine runtime build فقط عند توفر diagnostics فعلية.
+3. ادرس usage events للمحركات داخل SULY-owned lifecycle، وحدد cost/budget policy منفصلة قبل ربط reserve/settle أو credits.
+4. استمر في العمل على milestones آمنة؛ engines والـworkers/providers تبقى disabled، ولا deploy أو migration live.
