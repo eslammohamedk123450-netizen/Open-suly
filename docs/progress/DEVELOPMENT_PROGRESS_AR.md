@@ -988,3 +988,14 @@ undefined
 - أصلحت race في heartbeat: بعد wakeup يعيد فحص stop event قبل renew؛ وإذا heartbeat renew فشل/رجع false أثناء shutdown، يرسل cancellation ويحاول token-checked fail RPC بدل اعتبار lease lost تلقائيًا. هذا لا يسمح checkpoint بعد فقد lease، والـfail RPC هو تأكيد إعادة الجدولة.
 - عدّلت test shutdown timing إلى 0.5s لإثبات عدم تنفيذ heartbeat إضافي بعد stop event، وأضافت race test حيث renewal الثاني يرجع false بعد shutdown signal، ويجب أن يثبت fail RPC قبول إعادة الجدولة.
 - commit `c658d5f` السابق صحح fake WorkerRuntime signatures؛ هذا التغيير يضيف fixes جديدة. CI على هذه النسخة مطلوب؛ لا توجد نتيجة green بعد.
+
+
+## CI verification after API suite corrections — 2026-11-24
+
+- Platform CI #1586 على commit `7be18e4` نجح بالكامل: API suite **834 passed, 5 skipped, 5 warnings in 3.89s**؛ Client typecheck، Expo compatibility check، Web export، وChat export security job كلها green.
+- Chat export security job: **8 passed, 5 warnings in 0.84s**. Repository baseline checks #1464 نجحت.
+- #1585 (قبل fixes الأخيرة) كشف 11 failure و822 pass و5 skip؛ تم إصلاح 6 tests التي لم ترسل Bearer/user client، و4 settings mocks الناقصة، وshutdown heartbeat race. الـCI #1586 أثبت النسخة المصححة.
+- Platform CI #1584 على commit أقدم `1553236d` انتهى failure exit 124 بعد timeout؛ لا يُحسب نتيجة على آخر code.
+- Engine runtime build #476 على commit `7be18e4` فشل بدون jobs أو diagnostic logs؛ runtime image build ما زال blocker.
+- Railway status check ما زال failure خارجيًا؛ لا تم نشر أو تغيير الخدمة، ولا توجد logs متاحة هنا لتشخيص السبب.
+- هذه نتائج CI، لا تحقق runtime isolation/live database/provider. Worker وengines تظل disabled افتراضيًا؛ لا migrations أو secrets أو paid services.
