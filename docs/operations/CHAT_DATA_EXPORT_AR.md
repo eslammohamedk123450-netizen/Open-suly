@@ -7,6 +7,11 @@
 - على Android/iOS: فتح مشاركة النظام مع JSON كنص؛ اختيار الوجهة متروك للمستخدم.
 - Endpoint: `GET /v1/chat/export` مع Supabase access token.
 
+## المصادقة وعزل قاعدة البيانات
+
+- يمرر API نفس Bearer token الخاص بالمستخدم إلى PostgREST؛ لا يستخدم service-role في مسار التصدير. لذلك يخضع الاستعلام لسياسات RLS إضافة إلى فلاتر owner الصريحة.
+- اختبار client dependency يثبت تمرير JWT المستخدم ويرفض fallback إلى admin client عند التصدير.
+
 ## الحماية والحدود
 
 - API يشتق المالك من التوكن، ولا يقبل user_id من الطلب.

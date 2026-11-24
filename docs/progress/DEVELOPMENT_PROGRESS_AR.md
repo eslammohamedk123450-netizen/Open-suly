@@ -919,3 +919,13 @@ undefined
 - أحدث HEAD الآن `a116d3c`. Repository baseline #1455 وPlatform CI #1577 queued؛ Engine runtime build #467 failure مع 0 jobs. كذلك code commit #a18 baseline #1452/platform #1574 queued وtest commit #a29 baseline #1454/platform #1576 queued. لا يوجد green CI للدفعة حتى الآن.
 - API tests في Platform CI القديم #1573 ظلت in-progress (API tests)؛ job logs تعذر تنزيلها (BlobNotFound). لا نملك تشخيصًا ولا نلغي/rerun jobs.
 - لا تغيير upstream أو secrets أو migrations/live DB أو providers/workers/engines/deployment.
+
+
+## جلسة تطوير — 2026-11-24 (تصدير محادثات عبر RLS وتشخيص CI المتوقف)
+
+- تم التحقق من HEAD الحالي `21fb476adab2e9087e84dd4a0067c1d8f51183a8`، tree والـroadmap وسجل commits والـCI. Baseline #1456 على HEAD نجح. Platform CI #1578: client typecheck/web export نجح، لكن API tests أظهرت 6 failures أثناء العرض (5 عند ~70% وواحدة عند ~96%) ثم ظلت العملية دون summary وانتهت canceled بعد ~6 ساعات. لا توجد تفاصيل traceback بسبب إعداد pytest الحالي.
+- استبدل مسار `GET /v1/chat/export` استخدام service-role client بمستخدم JWT client؛ يظل user_id filter صريحًا وتطبق RLS. لا يغيّر صلاحيات أي جدول ولا migration.
+- أضفنا `test_chat_export.py` للتحقق من bearer/RLS client، عدم استخدام admin، المصادقة، owner filters، projection لمنع metadata/user_id، pagination، conversation cap، rate limit، وإخفاء تفاصيل DB error.
+- CI الآن يعرض traceback مختصرًا و25 test durations، مع faulthandler بعد 120 ثانية، وحد job API 20 دقيقة، وحد shell 15 دقيقة؛ هذه التشخيصات تمنع تكرار انتظار runner 6 ساعات بلا نتائج.
+- لم تُشغّل tests محليًا في runtime هذه الجلسة؛ التحقق التالي يعتمد على CI الذي يبدأ عند push. لا migrations، live DB، provider، worker، engine، deployment أو paid services.
+- تقدير الجاهزية لم يتغير (~20% Controlled Beta/Production Readiness). التصدير لا يزال Chat-only ولا يشمل deletion/account/projects/files/memories/credits.

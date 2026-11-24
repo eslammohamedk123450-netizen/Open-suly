@@ -6,12 +6,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
 from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.config import get_settings
 from app.core.rate_limit import rate_limit
-from app.core.supabase import get_supabase_admin_client
+from app.core.supabase import get_supabase_admin_client, get_supabase_client
 from app.services.tool_approvals import ToolApprovalStore
 from app.services.ai_gateway import (
     AIProviderError,
@@ -27,6 +28,7 @@ from app.services.ai_provider_config import (
 
 router = APIRouter(prefix="/v1/chat", tags=["chat"])
 logger = logging.getLogger("suly.api.chat")
+_export_bearer = HTTPBearer(auto_error=False)
 
 # حدود مستقلة للصفحات: المحادثات أقل كلفة، والرسائل أصغر لتقليل تضخم الذاكرة المؤقتة.
 CHAT_EXPORT_CONVERSATION_PAGE_SIZE = 200
@@ -251,6 +253,25 @@ class RenameConversationRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
 
 
+def get_chat_export_client(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_export_bearer),
+) -> Any:
+    """Use the caller's JWT so chat export remains subject to database RLS."""
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Bearer access token required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    client = get_supabase_client(credentials.credentials)
+    if client is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Chat export is not configured.",
+        )
+    return client
+
+
 def _chat_admin():
     admin = get_supabase_admin_client()
     if admin is None:
@@ -266,10 +287,10 @@ def _chat_admin():
 @router.get("/export")
 def export_chat_data(
     user: AuthenticatedUser = Depends(get_current_user),
+    client: Any = Depends(get_chat_export_client),
     _rate_limit: None = Depends(rate_limit("chat_export")),
 ) -> JSONResponse:
-    """تصدير محادثات المالك فقط مع حذف metadata من الملف."""
-    admin = _chat_admin()
+    """تصدير محادثات المالك عبر JWT/RLS مع حذف metadata من الملف."""
     conversations: list[dict[str, Any]] = []
     messages: list[dict[str, Any]] = []
     used_bytes = _CHAT_EXPORT_RESERVED_BYTES
@@ -277,7 +298,7 @@ def export_chat_data(
     truncation_reason: str | None = None
 
     try:
-        with admin:
+        with client:
             # نجلب المحادثات بصفحات ثابتة وترتيب واضح.
             offset = 0
             while offset < CHAT_EXPORT_MAX_CONVERSATIONS:

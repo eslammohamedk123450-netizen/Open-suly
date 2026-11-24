@@ -37,6 +37,7 @@ jobs:
   api:
     name: API tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,7 +55,7 @@ jobs:
 
       - name: Run API tests
         working-directory: services/api
-        run: python -m pytest -q
+        run: timeout --signal=TERM --kill-after=30s 15m python -m pytest -q --tb=short --durations=25 -o faulthandler_timeout=120
 
       - name: Build dedicated worker image without publishing
         working-directory: services/api
