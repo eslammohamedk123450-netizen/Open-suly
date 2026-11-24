@@ -34,10 +34,30 @@ jobs:
       - name: Export web build
         run: npm run export:web --workspace @suly/client
 
+  chat-export:
+    name: Chat export security tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install API test dependencies
+        run: pip install -r services/api/requirements-dev.txt
+
+      - name: Run focused chat export tests
+        working-directory: services/api
+        run: timeout --signal=TERM --kill-after=15s 3m python -m pytest -q tests/test_chat_export.py --tb=short
+
   api:
     name: API tests
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -55,7 +75,7 @@ jobs:
 
       - name: Run API tests
         working-directory: services/api
-        run: timeout --signal=TERM --kill-after=30s 15m python -m pytest -q --tb=short --durations=25 -o faulthandler_timeout=120
+        run: timeout --signal=TERM --kill-after=30s 5m python -m pytest -q --tb=short --durations=25 -o faulthandler_timeout=120
 
       - name: Build dedicated worker image without publishing
         working-directory: services/api

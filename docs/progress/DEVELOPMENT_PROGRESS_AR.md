@@ -935,3 +935,10 @@ undefined
 
 - Platform CI #1579 فشل أثناء collection بسبب استيراد `reset_limiters` من اسم module خاطئ؛ وظيفة reset موجودة في `app.core.rate_limit` (singular)، وكذلك إعدادات route rate-limit في نفس الوحدة. الخطأ كان في الاختبار الجديد وليس في production router. Compile API نجح قبل test collection.
 - صححنا imports في `test_chat_export.py` ووجهنا monkeypatch إعداد rate limit إلى الوحدة المستخدمة فعلًا. Commit إصلاح الاختبارات مستقل. Platform CI الجديدة ستعيد التحقق.
+
+
+### CI فصل اختبارات الخصوصية — 2026-11-24
+
+- Platform CI #1580 (commit `eca8487`) ما زال API suite قيد التنفيذ وقت آخر فحص، ولم تتوفر logs. Client typecheck/Web export نجح. لا ننسب suite نجاحًا قبل انتهاء run.
+- أضفنا job مستقلًا `chat-export` لتشغيل `test_chat_export.py` دون انتظار بقية API suite، بحد 3 دقائق/5 دقائق job. خفّضنا full API job إلى 5 دقائق shell و10 دقائق job مع faulthandler وdurations؛ suite سابقًا كان يتوقف 6 ساعات بلا diagnostics، لذا أصبح timeout محدودًا.
+- CI الجديد سيختبر focused export وfull suite؛ لا تُحسب النتائج قبل وصول conclusion.
