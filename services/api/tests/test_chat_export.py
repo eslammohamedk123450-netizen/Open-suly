@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.core.auth import AuthenticatedUser, get_current_user
-from app.core.ratelimit import reset_limiters
+from app.core.rate_limit import reset_limiters
 from app.main import app
 from app.routers import chat as chat_module
 
@@ -219,7 +219,7 @@ def test_export_reports_conversation_cap_without_querying_messages(monkeypatch):
 
 def test_export_rate_limit_applies_before_database_reads(monkeypatch):
     from app.core.config import Settings
-    import app.core.ratelimit as limiter_module
+    import app.core.rate_limit as limiter_module
 
     monkeypatch.setattr(
         limiter_module, "get_settings",

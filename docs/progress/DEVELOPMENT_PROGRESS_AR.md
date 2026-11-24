@@ -929,3 +929,9 @@ undefined
 - CI الآن يعرض traceback مختصرًا و25 test durations، مع faulthandler بعد 120 ثانية، وحد job API 20 دقيقة، وحد shell 15 دقيقة؛ هذه التشخيصات تمنع تكرار انتظار runner 6 ساعات بلا نتائج.
 - لم تُشغّل tests محليًا في runtime هذه الجلسة؛ التحقق التالي يعتمد على CI الذي يبدأ عند push. لا migrations، live DB، provider، worker، engine، deployment أو paid services.
 - تقدير الجاهزية لم يتغير (~20% Controlled Beta/Production Readiness). التصدير لا يزال Chat-only ولا يشمل deletion/account/projects/files/memories/credits.
+
+
+### إصلاح CI لدفعة تصدير RLS — 2026-11-24
+
+- Platform CI #1579 فشل أثناء collection بسبب استيراد `reset_limiters` من اسم module خاطئ؛ وظيفة reset موجودة في `app.core.rate_limit` (singular)، وكذلك إعدادات route rate-limit في نفس الوحدة. الخطأ كان في الاختبار الجديد وليس في production router. Compile API نجح قبل test collection.
+- صححنا imports في `test_chat_export.py` ووجهنا monkeypatch إعداد rate limit إلى الوحدة المستخدمة فعلًا. Commit إصلاح الاختبارات مستقل. Platform CI الجديدة ستعيد التحقق.
