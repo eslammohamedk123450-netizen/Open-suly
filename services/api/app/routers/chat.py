@@ -303,7 +303,7 @@ def export_chat_data(
             offset = 0
             while offset < CHAT_EXPORT_MAX_CONVERSATIONS:
                 page = (
-                    admin.table("conversations")
+                    client.table("conversations")
                     .select("id,title,created_at,updated_at")
                     .eq("user_id", user.id)
                     .order("created_at", desc=False)
@@ -338,7 +338,7 @@ def export_chat_data(
             # نتحقق من وجود سجلات بعد حد المحادثات دون إضافتها.
             if not truncated and len(conversations) >= CHAT_EXPORT_MAX_CONVERSATIONS:
                 extra = (
-                    admin.table("conversations")
+                    client.table("conversations")
                     .select("id")
                     .eq("user_id", user.id)
                     .range(CHAT_EXPORT_MAX_CONVERSATIONS, CHAT_EXPORT_MAX_CONVERSATIONS)
@@ -356,7 +356,7 @@ def export_chat_data(
                     message_offset = 0
                     while True:
                         page = (
-                            admin.table("messages")
+                            client.table("messages")
                             .select("id,conversation_id,role,content,created_at")
                             .eq("user_id", user.id)
                             .in_("conversation_id", batch_ids)
@@ -399,7 +399,7 @@ def export_chat_data(
         raise
     except Exception as exc:
         # لا نسجل محتوى المحادثات أو استثناءات قد تحمل بيانات المستخدم.
-        logger.warning("chat_export_failed")
+        logger.warning("chat_export_failed (error type: %s)", type(exc).__name__)
         raise HTTPException(status_code=503, detail="تعذر تجهيز تصدير المحادثات الآن.") from exc
 
     payload: dict[str, Any] = {

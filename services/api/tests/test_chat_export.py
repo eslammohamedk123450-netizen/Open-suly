@@ -103,6 +103,13 @@ def auth_owner():
     return AuthenticatedUser(id=OWNER, email=None)
 
 
+def forbid_admin(monkeypatch):
+    monkeypatch.setattr(
+        chat_module, "get_supabase_admin_client",
+        lambda: (_ for _ in ()).throw(AssertionError("chat export must not use service-role")),
+    )
+
+
 def setup_export(store):
     app.dependency_overrides[get_current_user] = auth_owner
     app.dependency_overrides[chat_module.get_chat_export_client] = lambda: store
@@ -150,7 +157,7 @@ def test_export_client_rejects_missing_bearer_and_missing_configuration(monkeypa
     assert unavailable.value.status_code == 503
 
 
-def test_export_is_owner_scoped_and_drops_metadata_and_unselected_fields():
+def test_export_is_owner_scoped_and_drops_metadata_and_unselected_fields(monkeypatch):
     store = ExportStore(
         conversations=[
             conversation(C1, OWNER, "محادثة خاصة", "2026-11-23T08:00:00Z"),
@@ -164,6 +171,7 @@ def test_export_is_owner_scoped_and_drops_metadata_and_unselected_fields():
         ],
     )
     setup_export(store)
+    forbid_admin(monkeypatch)
     response = client.get("/v1/chat/export")
     assert response.status_code == 200
     payload = response.json()

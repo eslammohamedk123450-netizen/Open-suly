@@ -942,3 +942,10 @@ undefined
 - Platform CI #1580 (commit `eca8487`) ما زال API suite قيد التنفيذ وقت آخر فحص، ولم تتوفر logs. Client typecheck/Web export نجح. لا ننسب suite نجاحًا قبل انتهاء run.
 - أضفنا job مستقلًا `chat-export` لتشغيل `test_chat_export.py` دون انتظار بقية API suite، بحد 3 دقائق/5 دقائق job. خفّضنا full API job إلى 5 دقائق shell و10 دقائق job مع faulthandler وdurations؛ suite سابقًا كان يتوقف 6 ساعات بلا diagnostics، لذا أصبح timeout محدودًا.
 - CI الجديد سيختبر focused export وfull suite؛ لا تُحسب النتائج قبل وصول conclusion.
+
+
+### إصلاح أخطاء focused export CI — 2026-11-24
+
+- Job `Chat export security tests` في Platform CI #1581 كشف 4 failures و4 passes. سبب الـ503: بعد تحويل context manager إلى user client بقيت استعلامات export تستعمل الاسم القديم `admin.table`؛ المتغير غير معرف في route.
+- استبدلنا مراجع admin المتبقية بـclient داخل export فقط، وأضفنا assertions في route tests تمنع أي service-role fallback. Logger يعرض نوع exception فقط (بدون message/data) للمساعدة في التشخيص الآمن.
+- هذا إصلاح code/test جديد؛ ننتظر CI بعده. لا نعتبر اختبارات export خضراء حتى اكتمال focused job.
