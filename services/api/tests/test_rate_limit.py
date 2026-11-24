@@ -25,6 +25,7 @@ def _override_settings(monkeypatch, respond: int, conversations: int, messages: 
             rate_limit_chat_respond_per_minute=respond,
             rate_limit_chat_conversations_per_minute=conversations,
             rate_limit_chat_messages_per_minute=messages,
+            rate_limit_chat_export_per_minute=2,
         ),
     )
 
@@ -94,6 +95,7 @@ def test_chat_write_routes_enforce_independent_scopes(monkeypatch, route, body, 
             rate_limit_chat_respond_per_minute=limits["respond"],
             rate_limit_chat_conversations_per_minute=limits["conversations"],
             rate_limit_chat_messages_per_minute=limits["messages"],
+            rate_limit_chat_export_per_minute=2,
         ),
     )
     monkeypatch.setattr(chat_module, "get_supabase_admin_client", lambda: None)

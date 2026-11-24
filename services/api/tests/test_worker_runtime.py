@@ -199,7 +199,7 @@ def test_worker_shutdown_notifies_cancel_aware_engine_before_requeue():
         True,
         {"accepted": True, "step_status": "pending"},
     ])
-    worker = TaskWorker(rpc, "shutdown-cancel-worker", heartbeat_interval_seconds=0.05)
+    worker = TaskWorker(rpc, "shutdown-cancel-worker", heartbeat_interval_seconds=0.5)
     stop = Event()
     observed_cancel = Event()
 
@@ -217,7 +217,58 @@ def test_worker_shutdown_notifies_cancel_aware_engine_before_requeue():
 
     assert observed_cancel.is_set()
     assert result == "failed_or_retry_scheduled"
-    assert rpc.calls[-1][0] == "fail_task_step"
+    assert [call[0] for call in rpc.calls] == [
+        "claim_task_step", "renew_task_step_lease", "fail_task_step"
+    ]
+    assert rpc.calls[-1][1]["p_error_code"] == "worker_shutdown"
+
+
+def test_heartbeat_failure_during_shutdown_still_records_retry():
+    stop = Event()
+
+    class ShutdownRaceRpc:
+        def __init__(self):
+            self.calls = []
+            self.renewals = 0
+
+        def rpc(self, name, args):
+            self.calls.append((name, args))
+            if name == "claim_task_step":
+                value = STEP_DATA
+            elif name == "renew_task_step_lease":
+                self.renewals += 1
+                if self.renewals == 1:
+                    value = True
+                else:
+                    stop.set()
+                    value = False
+            elif name == "fail_task_step":
+                value = {"accepted": True, "step_status": "pending"}
+            else:
+                raise AssertionError(f"Unexpected RPC: {name}")
+            return SimpleNamespace(execute=lambda: SimpleNamespace(data=value))
+
+    rpc = ShutdownRaceRpc()
+    worker = TaskWorker(rpc, "shutdown-race-worker", heartbeat_interval_seconds=0.05)
+    observed_cancel = Event()
+
+    def handler(_step, cancel_event):
+        if cancel_event.wait(timeout=1.0):
+            observed_cancel.set()
+        raise RuntimeError("cooperative_shutdown")
+
+    result = worker.run_once(
+        lambda _step: {},
+        cancel_aware_handler=handler,
+        worker_stop_event=stop,
+    )
+
+    assert observed_cancel.is_set()
+    assert result == "failed_or_retry_scheduled"
+    assert [call[0] for call in rpc.calls] == [
+        "claim_task_step", "renew_task_step_lease",
+        "renew_task_step_lease", "fail_task_step",
+    ]
     assert rpc.calls[-1][1]["p_error_code"] == "worker_shutdown"
 
 

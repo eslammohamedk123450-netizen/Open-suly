@@ -427,9 +427,17 @@ def _export_request(monkeypatch, admin, user_id):
     from app.routers import chat as chat_module
 
     app.dependency_overrides[get_current_user] = lambda: _as_user(user_id)
-    monkeypatch.setattr(chat_module, "get_supabase_admin_client", lambda: admin)
+    monkeypatch.setattr(chat_module, "get_supabase_client", lambda _token: admin)
+    monkeypatch.setattr(
+        chat_module,
+        "get_supabase_admin_client",
+        lambda: (_ for _ in ()).throw(AssertionError("export must not use admin client")),
+    )
     try:
-        return client.get("/v1/chat/export")
+        return client.get(
+            "/v1/chat/export",
+            headers={"Authorization": "Bearer test-user-jwt"},
+        )
     finally:
         app.dependency_overrides.clear()
 

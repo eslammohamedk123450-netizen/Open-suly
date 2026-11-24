@@ -978,3 +978,13 @@ undefined
 - حدّثت fake-worker signatures لتطابق عقد `TaskWorker.run_once` الحالية، مع assertion على event وتمرير stop event من runtime. التعديل test-only، لا يغيّر تشغيل worker production.
 - Platform CI #1584 على commit limiter: Chat export security job نجح، Client typecheck/web export نجح؛ API tests ما زالت in-progress أثناء هذا التوثيق. سيعاد تشغيل suite بعد هذا الإصلاح.
 - لا توجد نتائج traceback كاملة للفشل السابق؛ بقية assertions الفاشلة لا يمكن تحديدها دون إعادة CI بعد إصلاح hang.
+
+
+## إصلاح failures في API suite — 2026-11-24
+
+- Platform CI #1585 على commit limiter اكتمل فشلًا: **11 failed, 822 passed, 5 skipped, 5 warnings (6.36s)**. Client typecheck/web export وChat export security job نجحا.
+- failures الـ11 محددة من summary: 6 legacy chat-export tests كانت تطلب endpoint بعد RLS conversion دون Authorization bearer/JWT user-client stub؛ و4 rate-limit tests كانت SimpleNamespace mocks ناقصة إعداد `rate_limit_chat_export_per_minute`; وواحد worker shutdown race.
+- عدّلت helper export لتستخدم mocked user-JWT client مع Bearer header وتمنع service-role fallback. أكملت fake Settings values لscope export.
+- أصلحت race في heartbeat: بعد wakeup يعيد فحص stop event قبل renew؛ وإذا heartbeat renew فشل/رجع false أثناء shutdown، يرسل cancellation ويحاول token-checked fail RPC بدل اعتبار lease lost تلقائيًا. هذا لا يسمح checkpoint بعد فقد lease، والـfail RPC هو تأكيد إعادة الجدولة.
+- عدّلت test shutdown timing إلى 0.5s لإثبات عدم تنفيذ heartbeat إضافي بعد stop event، وأضافت race test حيث renewal الثاني يرجع false بعد shutdown signal، ويجب أن يثبت fail RPC قبول إعادة الجدولة.
+- commit `c658d5f` السابق صحح fake WorkerRuntime signatures؛ هذا التغيير يضيف fixes جديدة. CI على هذه النسخة مطلوب؛ لا توجد نتيجة green بعد.

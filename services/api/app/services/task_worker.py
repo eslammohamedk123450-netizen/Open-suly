@@ -215,16 +215,30 @@ class TaskWorker:
                 remaining = max(0.0, next_renewal - monotonic())
                 if heartbeat_stop.wait(min(0.25, remaining)):
                     return
+                # Re-check shutdown after waking: a stop signal during the wait
+                # must not trigger a needless renewal that consumes a fail RPC mock
+                # response or turns an orderly shutdown into a lease-lost result.
+                if worker_stop_event is not None and worker_stop_event.is_set():
+                    cancel_event.set()
+                    return
                 if monotonic() < next_renewal:
                     continue
                 try:
-                    if not self.renew(step):
+                    renewed = self.renew(step)
+                    if not renewed:
+                        if worker_stop_event is not None and worker_stop_event.is_set():
+                            cancel_event.set()
+                            return
                         lease_lost.set()
                         cancel_event.set()
                         return
                     next_renewal = monotonic() + self.heartbeat_interval_seconds
                 except Exception:
-                    # Failed heartbeat means ownership can no longer be proven.
+                    # Shutdown cancellation still attempts a token-checked fail RPC;
+                    # a lost lease is confirmed by that RPC rather than this heartbeat.
+                    if worker_stop_event is not None and worker_stop_event.is_set():
+                        cancel_event.set()
+                        return
                     lease_lost.set()
                     cancel_event.set()
                     return
