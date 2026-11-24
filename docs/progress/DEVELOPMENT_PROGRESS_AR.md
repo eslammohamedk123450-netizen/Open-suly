@@ -949,3 +949,12 @@ undefined
 - Job `Chat export security tests` في Platform CI #1581 كشف 4 failures و4 passes. سبب الـ503: بعد تحويل context manager إلى user client بقيت استعلامات export تستعمل الاسم القديم `admin.table`؛ المتغير غير معرف في route.
 - استبدلنا مراجع admin المتبقية بـclient داخل export فقط، وأضفنا assertions في route tests تمنع أي service-role fallback. Logger يعرض نوع exception فقط (بدون message/data) للمساعدة في التشخيص الآمن.
 - هذا إصلاح code/test جديد؛ ننتظر CI بعده. لا نعتبر اختبارات export خضراء حتى اكتمال focused job.
+
+
+### نتيجة focused CI بعد إصلاح مسار RLS — 2026-11-24
+
+- Platform CI #1582: Job `Chat export security tests` نجح، **8 passed, 5 warnings in 0.65s**. يغطي dependency JWT، عدم استخدام admin client، auth، owner-filter projections، metadata exclusion، message pagination، conversation cap، rate limit، sanitization.
+- Client typecheck + Expo compatibility + web export نجحت على #1582.
+- Repository baseline checks #1460 نجحت على HEAD `2063fa1`.
+- Full API suite على #1582 ما زال in-progress؛ لا نحتسبه نجاحًا أو failure قبل اكتمال job. Engine runtime build #472 انتهى failure مع 0 jobs، ولا يوجد diagnostic log.
+- لا deploy أو live DB/migration أو runtime تشغيل؛ لا تغيير نسبة الجاهزية.

@@ -25,5 +25,5 @@
 
 - لا توجد migration جديدة ولا تغيير في صلاحيات RLS.
 - الخدمة تستخدم server-side Supabase client الموجود بالفعل؛ لا تضيف client credentials.
-- الاختبارات تستخدم fake PostgREST store وتغطي authentication، owner scope المزدوج للمستخدم والمحادثة، استبعاد metadata، حدود الصفحات، message/conversation caps، حجم التصدير وrate limit المحلي.
+- الاختبارات تستخدم fake PostgREST store وتغطي authentication، owner scope المزدوج للمستخدم والمحادثة، استبعاد metadata، حدود الصفحات، message/conversation caps، حجم التصدير وrate limit المحلي. Focused CI على commit `2063fa1` نجح: 8 passed (5 warnings) بعد إصلاح مراجع admin القديمة في route.
 - هذا ليس تصديرًا كاملًا لكل بيانات الحساب، ولا يتضمن حذف الحساب. يجب توسيع scope (projects, memories, credits, storage) ومراجعة سياسة الاحتفاظ قبل الادعاء بتوفير export/delete كامل.
