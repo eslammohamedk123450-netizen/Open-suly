@@ -1011,7 +1011,7 @@ undefined
 - الملفات: `services/api/app/worker_runtime.py`, `services/api/tests/test_worker_runtime.py`, `services/api/tests/test_agent_memory_context.py`, `docs/operations/HERMES_CONTEXT_BUDGET_AR.md`, roadmap، وسجل progress.
 - اختبارات جديدة تغطي shared budget، حد المحادثة، limit استرجاع المهارات، اختيار أحدث الرسائل وذاكرة المستخدم.
 - Platform CI #1588 (run `45417500786`) كشف failure واحد في test context الجديد، مع **837 passed, 5 skipped, 5 warnings** (3.95s). سبب failure: test marker كان في أول الرسالة بينما الكود يحتفظ بآخر 1,000 حرف؛ عدّلنا بيانات test لتضع marker في النهاية ونثبت أن أحدث الرسائل تُختار. Compile API نجح، وChat export job نجح، client job كان ما يزال in progress وقت التشخيص.
-- Commit الإصلاح test-only على main؛ CI جديد pending. لا توجد pytest محلية هنا.
+- Platform CI #1589 على commit `1d857517` نجح بالكامل: API suite **838 passed, 5 skipped, 5 warnings (3.51s)**؛ Compile API، Client typecheck/Expo compatibility/Web export، Chat export security (**8 passed**) وبناء worker image بدون نشر، والتحقق من بقاء التشغيل disabled كلها green. Repository baseline #1467 نجح أيضًا. لا توجد pytest محلية؛ النتائج CI فقط.
 - قدرات/مرحلة: لا تغيير في تشغيل المحركات أو APIs أو DB. تحسين محدود لخفض context الإضافي؛ الجاهزية milestone لا تتغير.
 - المخاطر/المؤجل: token counts الحقيقية وprompt caching داخلي Hermes غير مقاسة؛ مراجعة runtime CI الفاشلة بلا jobs/logs؛ لا migrations/production/deploy/provider activation.
 
@@ -1020,10 +1020,12 @@ undefined
 2. إذا نجحا، حدّث checkpoint بالنتائج؛ إن فشلا، أصلح أول regression في logs.
 3. بعد التحقق، ارجع للـroadmap: credits usage metering/idempotency أو runtime reconciliation حسب CI والأدلة.
 
-- Test correction checkpoint: latest-message identifiers now sit in the retained suffix (the production trimming behavior remains unchanged); next run must confirm the test suite green.
+- Test correction checkpoint validated by Platform CI #1589: identifiers now sit in the retained suffix; production trimming behavior unchanged.
 
 
 ## CI correction follow-up — 2026-11-24
 
 - Main contains test-only correction commit `2394546d4aa886dff4841c77d4abce24c760a0b9`: message IDs moved to the retained suffix so the test validates the production 1,000-character trimming rule.
-- The Git Data ref update did not yet show a new workflow run for that correction when checked. This documentation-only Contents API commit is intended to provide a normal push event; tests remain pending and are not claimed green.
+- At the first check after the Git Data update, the correction run had not appeared yet; the subsequent Contents API checkpoint triggered Platform CI #1589, which validated the corrected test suite.
+
+- Engine runtime build #479 (run `45418044944`) failed with zero jobs/no diagnostic logs; no runtime conclusion is inferred. External Railway status check on #1589 is failure; no service was accessed or changed.
