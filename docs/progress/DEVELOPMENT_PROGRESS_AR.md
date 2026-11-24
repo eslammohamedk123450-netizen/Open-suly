@@ -969,3 +969,12 @@ undefined
 - أضيف دليل تشغيل عربي للـAPI rate limiting مع توضيح أنه process-local وليس distributed، وأن limit=0 تعطيل، وأن ingress/global caps لازمة قبل الإنتاج. README يربط الدليل.
 - لا upstream dependencies ولا migrations أو أسرار. لا تشغيل worker/provider/engine أو deploy أو تعديل production.
 - لم تتوفر بيئة محلية repo-specific لتنفيذ pytest؛ CI على commit الجديد مطلوب. نتائج focused export السابقة (#1582) ليست إثباتًا لاختبارات limiter الجديدة.
+
+
+## تشخيص timeout في API suite — 2026-11-24
+
+- فحصت job API tests الفاشلة في Platform CI #1582. بعد 5 دقائق انتهى pytest بـexit 124؛ faulthandler كشف توقفًا داخل `WorkerRuntime.run` في اختبار `test_worker_runtime_runs_optional_reconciler_before_claiming_tasks`.
+- السبب: fake workers في اختبارات Reconciler وsafe-logging لم يقبلوا keyword `worker_stop_event` التي يمررها runtime الحالي. الـTypeError كان يُلتقط كفشل iteration، لكن event لم تُضبط، فتظل loop منتظرة؛ لذلك لم يصل pytest إلى summary.
+- حدّثت fake-worker signatures لتطابق عقد `TaskWorker.run_once` الحالية، مع assertion على event وتمرير stop event من runtime. التعديل test-only، لا يغيّر تشغيل worker production.
+- Platform CI #1584 على commit limiter: Chat export security job نجح، Client typecheck/web export نجح؛ API tests ما زالت in-progress أثناء هذا التوثيق. سيعاد تشغيل suite بعد هذا الإصلاح.
+- لا توجد نتائج traceback كاملة للفشل السابق؛ بقية assertions الفاشلة لا يمكن تحديدها دون إعادة CI بعد إصلاح hang.

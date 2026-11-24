@@ -909,8 +909,9 @@ def test_hermes_execution_is_routed_through_agent_manager(monkeypatch):
 
 def test_worker_runtime_runs_optional_reconciler_before_claiming_tasks():
     class NeverClaimWorker:
-        def run_once(self, _handler, *, cancel_aware_handler=None):
-            stop.set()
+        def run_once(self, _handler, *, cancel_aware_handler=None, worker_stop_event=None):
+            assert worker_stop_event is stop
+            worker_stop_event.set()
             return "idle"
 
     class Reconciler:
@@ -1104,8 +1105,9 @@ def test_runtime_does_not_log_exception_messages_or_tracebacks(caplog):
     secret_text = "sensitive-provider-payload-and-database-password"
 
     class FailingWorker:
-        def run_once(self, _handler, *, cancel_aware_handler=None):
-            stop.set()
+        def run_once(self, _handler, *, cancel_aware_handler=None, worker_stop_event=None):
+            assert worker_stop_event is stop
+            worker_stop_event.set()
             raise RuntimeError(secret_text)
 
     stop = Event()
