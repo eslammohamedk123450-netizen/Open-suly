@@ -999,3 +999,22 @@ undefined
 - Engine runtime build #476 على commit `7be18e4` فشل بدون jobs أو diagnostic logs؛ runtime image build ما زال blocker.
 - Railway status check ما زال failure خارجيًا؛ لا تم نشر أو تغيير الخدمة، ولا توجد logs متاحة هنا لتشخيص السبب.
 - هذه نتائج CI، لا تحقق runtime isolation/live database/provider. Worker وengines تظل disabled افتراضيًا؛ لا migrations أو secrets أو paid services.
+
+
+## تحسين ميزانية سياق Hermes — 2026-11-24
+
+- Verified latest `main` before edits: `7fe849bfc92c8e7d19998661141aed20334dff9e`; Platform CI #1587 and Repository baseline #1465 succeeded on this commit.
+- سبب اختيار الخطوة: worker يحقن سجل المحادثة (حتى 30 رسالة/8,000 حرف)، ذاكرة المستخدم (4,000 حرف)، ومهارات معتمدة (8,000 حرف) داخل طلب Hermes؛ هذه إضافات اختيارية قد يعيد harness استخدامها خلال دورات النموذج.
+- قللنا السقف المشترك للنص الأصلي + السياق إلى 12,000 حرف. سقف سجل المحادثة 4,000 حرف/12 رسالة/1,000 حرف لكل رسالة؛ ذاكرة المستخدم 2,000 حرف مع استرجاع 8 KiB؛ المهارات 4,000 حرف مع 12 حزمة كحد استرجاع.
+- اختيار المحادثة يفضل أحدث الرسائل قبل عرضها بالترتيب الزمني، حتى لا تستهلك الرسائل القديمة الميزانية.
+- لا يُقص الطلب الأصلي، ولا تُقص المهارات داخل الحزمة؛ عند نفاد الميزانية يُستبعد السياق الاختياري. الأرقام أحرف وليست token estimate.
+- الملفات: `services/api/app/worker_runtime.py`, `services/api/tests/test_worker_runtime.py`, `services/api/tests/test_agent_memory_context.py`, `docs/operations/HERMES_CONTEXT_BUDGET_AR.md`, roadmap، وسجل progress.
+- اختبارات جديدة تغطي shared budget، حد المحادثة، limit استرجاع المهارات، اختيار أحدث الرسائل وذاكرة المستخدم.
+- CI على commit الناتج pending عند تسجيل هذا checkpoint؛ لا توجد pytest محلية هنا. نتائج CI سابقة #1587/#1465 ليست إثباتًا لهذا التغيير.
+- قدرات/مرحلة: لا تغيير في تشغيل المحركات أو APIs أو DB. تحسين محدود لخفض context الإضافي؛ الجاهزية milestone لا تتغير.
+- المخاطر/المؤجل: token counts الحقيقية وprompt caching داخلي Hermes غير مقاسة؛ مراجعة runtime CI الفاشلة بلا jobs/logs؛ لا migrations/production/deploy/provider activation.
+
+### متابعة الجلسة التالية
+1. تحقق من Platform CI وRepository baseline على commit سياق Hermes.
+2. إذا نجحا، حدّث checkpoint بالنتائج؛ إن فشلا، أصلح أول regression في logs.
+3. بعد التحقق، ارجع للـroadmap: credits usage metering/idempotency أو runtime reconciliation حسب CI والأدلة.

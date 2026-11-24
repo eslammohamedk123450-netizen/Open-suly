@@ -52,6 +52,36 @@ def test_suly_memory_is_injected_as_bounded_untrusted_context(monkeypatch):
     assert "Current request" in result
     assert "غير موثوقة" in result
 
+def test_suly_memory_context_has_shared_character_budget(monkeypatch):
+    import app.worker_runtime as runtime_module
+
+    monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(agent_memory_enabled=True))
+    class Client:
+        def table(self, _name): return self
+    monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: Client())
+    requested = []
+    class MemoryStore:
+        def context_for_task(self, **kwargs):
+            requested.append(kwargs["max_bytes"])
+            return [
+                {"scope": "user", "memory_key": f"preference-{i}", "content": "m" * 1_500}
+                for i in range(5)
+            ]
+
+    prompt = "task request"
+    result = runtime_module._suly_user_memory_context(
+        step(), prompt,
+        task_scope={"project_id": None, "conversation_id": None},
+        store=MemoryStore(),
+    )
+
+    assert requested == [runtime_module._HERMES_MEMORY_FETCH_MAX_BYTES]
+    assert result.startswith("ملاحظات ذاكرة SULY")
+    assert result.endswith(prompt)
+    assert len(result) <= runtime_module._HERMES_CONTEXT_CHAR_BUDGET
+    assert len(result) - len(prompt) <= runtime_module._HERMES_MEMORY_CONTEXT_MAX_CHARS + 400
+
+
 
 def test_suly_memory_skips_secret_like_notes(monkeypatch):
     monkeypatch.setattr(worker, "get_settings", lambda: SimpleNamespace(agent_memory_enabled=True))

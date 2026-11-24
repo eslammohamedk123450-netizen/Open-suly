@@ -433,7 +433,9 @@ def test_hermes_prompt_loads_only_owner_scoped_prior_conversation_messages(monke
             calls.append((self.table_name, "lte", key, value))
             return self
         def order(self, *_args, **_kwargs): return self
-        def limit(self, *_args): return self
+        def limit(self, value):
+            calls.append(("limit", self.table_name, value))
+            return self
         def execute(self):
             if self.table_name == "tasks":
                 return SimpleNamespace(data=[{
@@ -464,6 +466,7 @@ def test_hermes_prompt_loads_only_owner_scoped_prior_conversation_messages(monke
     assert ("messages", "eq", "conversation_id", "conversation-1") in calls
     assert ("messages", "lte", "created_at", "2026-11-21T10:00:00Z") in calls
     assert ("messages", "in", "role", ["user", "assistant"]) in calls
+    assert ("limit", "messages", runtime_module._HERMES_CONVERSATION_MAX_MESSAGES) in calls
 
 
 def test_hermes_prompt_context_is_bounded_by_current_request_size(monkeypatch):
@@ -493,6 +496,84 @@ def test_hermes_prompt_context_is_bounded_by_current_request_size(monkeypatch):
     result = runtime_module._hermes_prompt_with_conversation_context(step, "x" * 19_900)
     assert len(result) <= 20_000
     assert result.endswith("x" * 19_900)
+
+
+def test_hermes_conversation_context_has_shared_budget_and_message_cap(monkeypatch):
+    import app.worker_runtime as runtime_module
+    from types import SimpleNamespace
+
+    prompt = "task:" + "p" * 3_000
+    step = make_step({"operation": "hermes.agent.turn", "prompt": prompt})
+    limits = []
+
+    class Query:
+        def __init__(self, table): self.table_name = table
+        def select(self, *_args): return self
+        def eq(self, *_args): return self
+        def in_(self, *_args): return self
+        def lte(self, *_args): return self
+        def order(self, *_args, **_kwargs): return self
+        def limit(self, value):
+            limits.append((self.table_name, value))
+            return self
+        def execute(self):
+            return SimpleNamespace(data=(
+                [{"conversation_id": "conversation-1", "created_at": "2026-11-21T10:00:00Z"}]
+                if self.table_name == "tasks"
+                else [{"role": "user", "content": f"message-{i}:" + ("h" * 1_500)} for i in reversed(range(12))]
+            ))
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def table(self, name): return Query(name)
+
+    monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: Client())
+    result = runtime_module._hermes_prompt_with_conversation_context(step, prompt)
+
+    assert result.endswith(prompt)
+    assert len(result) <= runtime_module._HERMES_CONTEXT_CHAR_BUDGET
+    assert ("messages", runtime_module._HERMES_CONVERSATION_MAX_MESSAGES) in limits
+    assert "message-11:" in result
+    assert "message-8:" not in result
+    assert "h" * runtime_module._HERMES_CONVERSATION_MAX_MESSAGE_CHARS in result
+
+
+def test_hermes_skill_context_respects_shared_budget_without_truncating_selected_skills():
+    import app.worker_runtime as runtime_module
+
+    prompt = "task:" + "p" * 7_000
+    skills = [
+        {"name": f"skill-{i}", "content_utf8": f"body-{i}:" + ("s" * 1_800)}
+        for i in range(6)
+    ]
+    result = runtime_module._hermes_approved_skill_context(prompt, skills)
+
+    assert result.endswith(prompt)
+    assert len(result) <= runtime_module._HERMES_CONTEXT_CHAR_BUDGET
+    selected = result.count("<APPROVED_SKILL name=")
+    assert 1 <= selected <= 2
+    for i in range(selected):
+        assert f"body-{i}:" + ("s" * 1_800) in result
+
+
+def test_hermes_skill_fetch_is_limited_to_recent_approvals(monkeypatch):
+    import app.worker_runtime as runtime_module
+
+    requested_limits = []
+    class ApprovalStore:
+        def __init__(self, _client): pass
+        def active_packages(self, *, user_id, limit):
+            requested_limits.append(limit)
+            return []
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def table(self, _name): return self
+
+    monkeypatch.setattr(runtime_module, "HermesSkillApprovalStore", ApprovalStore)
+    monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: Client())
+    assert runtime_module._hermes_approved_skills(make_step({"operation": "hermes.agent.turn"})) == []
+    assert requested_limits == [runtime_module._HERMES_SKILL_FETCH_MAX_PACKAGES]
 
 
 def test_hermes_project_workspace_is_materialized_in_its_task_runtime(monkeypatch):
