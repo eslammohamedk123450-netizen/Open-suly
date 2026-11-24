@@ -520,7 +520,7 @@ def test_hermes_conversation_context_has_shared_budget_and_message_cap(monkeypat
             return SimpleNamespace(data=(
                 [{"conversation_id": "conversation-1", "created_at": "2026-11-21T10:00:00Z"}]
                 if self.table_name == "tasks"
-                else [{"role": "user", "content": f"message-{i}:" + ("h" * 1_500)} for i in reversed(range(12))]
+                else [{"role": "user", "content": ("h" * 1_500) + f"message-{i}:"} for i in reversed(range(12))]
             ))
     class Client:
         def __enter__(self): return self
@@ -535,7 +535,7 @@ def test_hermes_conversation_context_has_shared_budget_and_message_cap(monkeypat
     assert ("messages", runtime_module._HERMES_CONVERSATION_MAX_MESSAGES) in limits
     assert "message-11:" in result
     assert "message-8:" not in result
-    assert "h" * runtime_module._HERMES_CONVERSATION_MAX_MESSAGE_CHARS in result
+    assert "h" * 900 in result
 
 
 def test_hermes_skill_context_respects_shared_budget_without_truncating_selected_skills():

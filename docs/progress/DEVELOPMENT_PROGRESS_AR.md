@@ -1010,7 +1010,8 @@ undefined
 - لا يُقص الطلب الأصلي، ولا تُقص المهارات داخل الحزمة؛ عند نفاد الميزانية يُستبعد السياق الاختياري. الأرقام أحرف وليست token estimate.
 - الملفات: `services/api/app/worker_runtime.py`, `services/api/tests/test_worker_runtime.py`, `services/api/tests/test_agent_memory_context.py`, `docs/operations/HERMES_CONTEXT_BUDGET_AR.md`, roadmap، وسجل progress.
 - اختبارات جديدة تغطي shared budget، حد المحادثة، limit استرجاع المهارات، اختيار أحدث الرسائل وذاكرة المستخدم.
-- CI على commit الناتج pending عند تسجيل هذا checkpoint؛ لا توجد pytest محلية هنا. نتائج CI سابقة #1587/#1465 ليست إثباتًا لهذا التغيير.
+- Platform CI #1588 (run `45417500786`) كشف failure واحد في test context الجديد، مع **837 passed, 5 skipped, 5 warnings** (3.95s). سبب failure: test marker كان في أول الرسالة بينما الكود يحتفظ بآخر 1,000 حرف؛ عدّلنا بيانات test لتضع marker في النهاية ونثبت أن أحدث الرسائل تُختار. Compile API نجح، وChat export job نجح، client job كان ما يزال in progress وقت التشخيص.
+- Commit الإصلاح test-only على main؛ CI جديد pending. لا توجد pytest محلية هنا.
 - قدرات/مرحلة: لا تغيير في تشغيل المحركات أو APIs أو DB. تحسين محدود لخفض context الإضافي؛ الجاهزية milestone لا تتغير.
 - المخاطر/المؤجل: token counts الحقيقية وprompt caching داخلي Hermes غير مقاسة؛ مراجعة runtime CI الفاشلة بلا jobs/logs؛ لا migrations/production/deploy/provider activation.
 
@@ -1018,3 +1019,5 @@ undefined
 1. تحقق من Platform CI وRepository baseline على commit سياق Hermes.
 2. إذا نجحا، حدّث checkpoint بالنتائج؛ إن فشلا، أصلح أول regression في logs.
 3. بعد التحقق، ارجع للـroadmap: credits usage metering/idempotency أو runtime reconciliation حسب CI والأدلة.
+
+- Test correction checkpoint: latest-message identifiers now sit in the retained suffix (the production trimming behavior remains unchanged); next run must confirm the test suite green.

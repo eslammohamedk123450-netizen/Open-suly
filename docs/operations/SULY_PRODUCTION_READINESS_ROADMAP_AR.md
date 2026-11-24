@@ -38,7 +38,7 @@
 - [x] update pin consistently in Compose + docs (verified same immutable SHA `2de9f51b8008a7d49a49221c184f2f11cbfc4af1`)
 - [x] integration client: POST run, idempotency key, lease-guarded persisted external ID (mocked unit tests; no live runtime)
 - [ ] status polling and bounded SSE parsing
-- [ ] Shared Hermes task-context character budget (12k total ceiling; tests added, CI pending)
+- [ ] Shared Hermes task-context character budget (12k total ceiling; tests added; CI correction run pending)
 - [x] cooperative stop + bounded terminal-state polling contract (mocked unit tests; remote process termination not live-verified)
 - [ ] per-task/tenant disposable runtime isolation (host-isolated Docker bridge implementation added; real-Docker CI and deployment-host verification still required)
 - [ ] CPU, memory, process, disk, timeout bounds
