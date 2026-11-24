@@ -1021,3 +1021,9 @@ undefined
 3. بعد التحقق، ارجع للـroadmap: credits usage metering/idempotency أو runtime reconciliation حسب CI والأدلة.
 
 - Test correction checkpoint: latest-message identifiers now sit in the retained suffix (the production trimming behavior remains unchanged); next run must confirm the test suite green.
+
+
+## CI correction follow-up — 2026-11-24
+
+- Main contains test-only correction commit `2394546d4aa886dff4841c77d4abce24c760a0b9`: message IDs moved to the retained suffix so the test validates the production 1,000-character trimming rule.
+- The Git Data ref update did not yet show a new workflow run for that correction when checked. This documentation-only Contents API commit is intended to provide a normal push event; tests remain pending and are not claimed green.
