@@ -136,3 +136,41 @@ def test_sliding_window_reconfigures_limit_without_resetting_events():
     limiter.set_limit(1)
     assert not limiter.allow("user-a", now=102.0)
     assert limiter.limit == 1
+
+
+def test_sliding_window_limiter_is_atomic_under_concurrent_requests():
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    count = 12
+    limiter = rate_limit_module.SlidingWindowLimiter(limit=1, window_seconds=60.0)
+    barrier = Barrier(count)
+
+    def attempt(_):
+        barrier.wait(timeout=5)
+        return limiter.allow("shared-principal", now=100.0)
+
+    with ThreadPoolExecutor(max_workers=count) as pool:
+        results = list(pool.map(attempt, range(count)))
+
+    assert sum(results) == 1
+
+
+def test_sliding_window_rejects_zero_key_capacity():
+    with pytest.raises(ValueError, match="rate_limit_max_keys_invalid"):
+        rate_limit_module.SlidingWindowLimiter(limit=1, max_keys=0)
+
+
+@pytest.mark.parametrize("invalid_time", [True, float("nan"), float("inf"), "100"])
+def test_sliding_window_rejects_invalid_explicit_time(invalid_time):
+    limiter = rate_limit_module.SlidingWindowLimiter(limit=1, window_seconds=60.0)
+    with pytest.raises(ValueError, match="rate_limit_time_invalid"):
+        limiter.allow("user-a", now=invalid_time)
+
+
+@pytest.mark.parametrize("invalid_clock", [True, float("nan"), float("inf")])
+def test_sliding_window_rejects_invalid_clock_at_construction(invalid_clock):
+    with pytest.raises(ValueError, match="rate_limit_time_invalid"):
+        rate_limit_module.SlidingWindowLimiter(
+            limit=1, clock=lambda: invalid_clock,
+        )

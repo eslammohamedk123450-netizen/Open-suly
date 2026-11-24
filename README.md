@@ -41,6 +41,7 @@ Arabic-first with correct RTL, English support, a chat-first home screen, a dedi
 - [AI provider setup (Ollama and OpenAI-compatible)](./docs/operations/AI_PROVIDER_SETUP.md)
 - [Chat data export (Arabic)](./docs/operations/CHAT_DATA_EXPORT_AR.md)
 - [Chat token usage summary (Arabic)](./docs/operations/CHAT_USAGE_AR.md)
+- [API rate limiting and safety limits (Arabic)](./docs/operations/API_RATE_LIMITING_AR.md)
 - [Hermes integration status](./docs/architecture/HERMES_CAPABILITY_INTEGRATION_STATUS.md)
 - [OpenCode upstream engine source and pin](./engines/opencode/README.md)
 

@@ -38,7 +38,7 @@ class SlidingWindowLimiter:
             or window_seconds <= 0
         ):
             raise ValueError("rate_limit_window_invalid")
-        if isinstance(max_keys, bool) or not isinstance(max_keys, int) or max_keys < 0:
+        if isinstance(max_keys, bool) or not isinstance(max_keys, int) or max_keys <= 0:
             raise ValueError("rate_limit_max_keys_invalid")
         if (
             not isinstance(prune_interval, (int, float))
@@ -53,7 +53,14 @@ class SlidingWindowLimiter:
         self._max_keys = max_keys
         self._prune_interval = float(prune_interval)
         self._clock = clock
-        self._last_prune = float(clock())
+        initial_time = clock()
+        if (
+            isinstance(initial_time, bool)
+            or not isinstance(initial_time, (int, float))
+            or not math.isfinite(initial_time)
+        ):
+            raise ValueError("rate_limit_time_invalid")
+        self._last_prune = float(initial_time)
         self._events: dict[str, deque[float]] = {}
         self._lock = threading.Lock()
 
@@ -90,7 +97,7 @@ class SlidingWindowLimiter:
         if not isinstance(key, str) or not key.strip() or len(key) > 512:
             raise ValueError("rate_limit_key_invalid")
         current = self._clock() if now is None else now
-        if not isinstance(current, (int, float)) or not math.isfinite(current):
+        if isinstance(current, bool) or not isinstance(current, (int, float)) or not math.isfinite(current):
             raise ValueError("rate_limit_time_invalid")
         current = float(current)
         with self._lock:

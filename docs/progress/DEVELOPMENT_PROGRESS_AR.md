@@ -958,3 +958,14 @@ undefined
 - Repository baseline checks #1460 نجحت على HEAD `2063fa1`.
 - Full API suite على #1582 ما زال in-progress؛ لا نحتسبه نجاحًا أو failure قبل اكتمال job. Engine runtime build #472 انتهى failure مع 0 jobs، ولا يوجد diagnostic log.
 - لا deploy أو live DB/migration أو runtime تشغيل؛ لا تغيير نسبة الجاهزية.
+
+
+## جلسة تطوير — 2026-11-24 (تقوية limiter من مدخلات الوقت وسعة المفاتيح)
+
+- نقطة البداية verified على `main`: `33fc67e855ccdfd8a638ecb31b906505a7630ced`; راجعت API limiter، tests، README، Product Delivery Plan، Platform CI workflow، والـcommit status قبل التعديل.
+- `SlidingWindowLimiter` أصبح يرفض `max_keys=0` بدل أن يتحول ضمنيًا إلى سجل غير محدود؛ cap لازم موجب لتبقى الذاكرة محدودة.
+- رفض bool كوقت (Python تعتبر bool عددًا) والتحقق من الساعة injected عند الإنشاء؛ NaN/Infinity/non-numeric timestamps لا تُقبل.
+- أضيفت regression tests للتزامن: 12 request متزامنة على principal واحد مع limit=1 يجب أن تسمح بواحدة فقط، مع اختبارات السعة والوقت invalid.
+- أضيف دليل تشغيل عربي للـAPI rate limiting مع توضيح أنه process-local وليس distributed، وأن limit=0 تعطيل، وأن ingress/global caps لازمة قبل الإنتاج. README يربط الدليل.
+- لا upstream dependencies ولا migrations أو أسرار. لا تشغيل worker/provider/engine أو deploy أو تعديل production.
+- لم تتوفر بيئة محلية repo-specific لتنفيذ pytest؛ CI على commit الجديد مطلوب. نتائج focused export السابقة (#1582) ليست إثباتًا لاختبارات limiter الجديدة.
