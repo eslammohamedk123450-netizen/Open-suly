@@ -15,15 +15,16 @@
 2. _safe_run_event يتحقق من run_id ويقبل أسماء أحداث محددة فقط.
 3. لا يُمرر النص أو reasoning أو tool arguments أو preview أو output.
 
+4. HermesAgentAdapter يرسل metadata إلى EngineRunStore.append_event.
+5. RPC باسم append_engine_run_event يتحقق مجددًا من أن worker ما زال يملك step lease وأن المحاولة ما زالت running.
+6. الحدث يُحفظ في engine_run_events، ثم يعرضه GET /v1/tasks/{task_id} للمالك فقط.
+7. شاشة تفاصيل المهمة تعرض اسم الحدث ووقت استلامه ورقم التسلسل، ولا تعرض payload من Hermes.
+
 ### حدود قراءة SSE
 
 - أقصى حجم مجمّع للـ data هو 256 KiB، والحد الأقصى لطول السطر 65,536 حرفًا.
 - لا يقبل parser أكثر من 64 سطر data في الحدث الواحد؛ يسقط الحدث حتى الفاصل التالي لتقييد كلفة الذاكرة، ثم يستأنف قراءة الأحداث التالية.
 - الحدث الزائد لا يُعرض أو يُحفظ. قناة التقدم best-effort ولا تؤثر على نجاح المهمة أو فشلها.
-4. HermesAgentAdapter يرسل metadata إلى EngineRunStore.append_event.
-5. RPC باسم append_engine_run_event يتحقق مجددًا من أن worker ما زال يملك step lease وأن المحاولة ما زالت running.
-6. الحدث يُحفظ في engine_run_events، ثم يعرضه GET /v1/tasks/{task_id} للمالك فقط.
-7. شاشة تفاصيل المهمة تعرض اسم الحدث ووقت استلامه ورقم التسلسل، ولا تعرض payload من Hermes.
 
 ## لماذا نعيد التحقق من lease في قاعدة البيانات؟
 

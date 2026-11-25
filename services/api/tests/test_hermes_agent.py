@@ -339,6 +339,7 @@ def test_hermes_sse_consumer_drops_excess_data_lines_and_resumes():
     ))
     assert received == [{"event": "run.completed", "seq": 2}]
 
+
 def test_hermes_native_runs_api_admits_polls_and_persists_run_id(monkeypatch):
     calls = []
     class Client:
