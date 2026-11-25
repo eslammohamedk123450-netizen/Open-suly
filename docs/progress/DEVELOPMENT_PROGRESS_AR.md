@@ -1038,7 +1038,7 @@ undefined
 - فحص Hermes SSE consumer: حجم الحدث مجمّع 256 KiB وطول السطر 65,536 كانا موجودين، لكن عدد خطوط data لم يكن محدودًا؛ آلاف الأسطر الصغيرة قد تضخم overhead للقائمة رغم سقف bytes.
 - أضفنا سقفًا قدره 64 data lines لكل حدث. الحدث الذي يتجاوزه يُسقط حتى الفاصل التالي، مع reset كامل للعداد ثم استئناف قراءة الأحداث التالية. لم نغير payload projection أو run status polling.
 - أضفنا اختبارًا يبني حدث JSON صالحًا متعدد الخطوط يتجاوز الحد، ويتحقق من إسقاطه واستمرار استقبال الحدث التالي. تحديث دليل أحداث المحركات، ووسم status polling/SSE كتنفيذ كود مكتمل باختبارات mocked؛ runtime لم يُتحقق منه.
-- التحقق بعد التغيير: CI جديد مطلوب؛ لم تُشغّل pytest محليًا لعدم توفر checkout/runtime محلي للمستودع. لا تغيير upstream أو migrations أو live DB أو provider/worker/engine أو deployment أو خدمات مدفوعة. الجاهزية لا تتغير.
+- التحقق: Platform CI #1591 على commit الكود `41af0269` اكتمل نجاحًا؛ API suite **839 passed, 5 skipped, 5 warnings**، وChat export security وClient typecheck/Expo compatibility/Web export وworker-image checks green. Repository baseline #1469 نجاح. على HEAD التوثيق `bac11809`، Platform CI #1592: API tests وworker image/default-disabled وChat export security وclient typecheck/Expo compatibility completed green؛ Web export كان in-progress آخر فحص، والـlogs التفصيلية غير متاحة (BlobNotFound)، لذا لا نكرر عدد الاختبارات على commit الأخير. Baseline #1470 نجاح. لا pytest محليًا لعدم توفر checkout.
 
 
 - مراجعة تنسيق بعد commit الحماية: نقل حدود SSE إلى ما بعد خطوات مسار الحدث للحفاظ على القائمة متسلسلة، وتصحيح مسافة الفصل بين اختبارات المستوى الأعلى.
