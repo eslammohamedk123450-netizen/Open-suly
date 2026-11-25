@@ -1066,3 +1066,20 @@ undefined
 - Platform CI #1596 green على commit 1ce22d94: API **860 passed, 5 skipped, 5 warnings (4.84s)**؛ Chat export security **8 passed, 5 warnings (0.60s)**؛ compile API، client typecheck، Expo compatibility، Web export، worker image build، وdisabled-by-default check green. Repository baseline #1474 green.
 - Engine runtime build #486 failure بدون jobs/logs تشخيصية؛ Railway external status failure. لا نعرف سببًا من البيانات المتاحة. لا pytest محليًا.
 - لم نفعّل engine/worker/provider، ولم نستخدم secrets، ولم نغيّر DB أو migrations أو production أو deployment. Runtime isolation وgateway/egrress/tenant live validation ما زالت blockers.
+
+
+## جلسة تطوير — 2026-11-25 (قياس أحجام سياق Hermes دون حفظ المحتوى)
+
+- نقطة البداية: أحدث main HEAD كان `c50f1f356718e15f268def431fcfc02469c3e9a1`. تم فحص roadmap، progress، أحدث commits، وثلاثة workflows؛ Platform CI #1597 وRepository baseline #1475 كانا ناجحين.
+- أضيفت دالة `_log_hermes_context_sizes` إلى worker_runtime؛ تسجل مرة واحدة لكل مهمة أعداد أحرف الطلب الأساسي والإضافة التراكمية للمحادثة والذاكرة والمهارات والطول النهائي. لا تسجل نص prompt أو محتوى الذاكرة/المهارات، ولا تدّعي تحويل الأحرف إلى tokens.
+- استبدلت تجميع prompt بمتغيرات مراحل واضحة لقياس delta بين كل طبقة، مع الحفاظ على ترتيب حقن السياق الحالي وحدوده. لا تغير طريقة Hermes الداخلية أو عدد طلبات النموذج.
+- الاختبارات: اختبار unit لقياس الفروق والتأكد من عدم تسجيل محتوى السياق؛ واختبار task runtime يثبت أن القياس يُسجّل عند إعداد المهمة. لا توجد pytest محلية لعدم وجود checkout محلي.
+- Commit الكود: `7cd79444844175c34b114eec76b9e5b4b99e64ab`. Platform CI #1598/run `45661482289` نجح: API **861 passed, 5 skipped, 5 warnings (4.54s)**؛ compile API، worker image build/import، worker remains disabled، Chat export security، client typecheck، Expo compatibility، وWeb export جميعها green. Chat export security job ناجح؛ Repository baseline #1476/run `45661482267` ناجح.
+- Engine runtime build #488/run `45661479096` فشل قبل إنشاء أي jobs (jobs list فارغة)؛ لا توجد logs تشخيصية، لذا لا يمكن تحديد السبب. لم نحاول نشر أو تشغيل runtime.
+- إعادة عد checkboxes الحالية في roadmap: **57 checked من 125 (46% خامًا)**؛ هذا قياس عناصر القائمة فقط، وليس جاهزية. تقدير milestone-weighted readiness يبقى نحو **20%** لأن staging/migrations، gateway/egress، isolation verification، billing/usage wiring، وlive runtime gates غير مكتملة.
+- لم نغيّر upstream/dependencies أو DB schema/migrations. لا secrets، ولا deployment، ولا provider/worker/engine activation، ولا اتصال live infrastructure.
+
+### متابعة الجلسة التالية
+1. مراجعة latest CI وengine-runtime build؛ لا تخمن failure بلا jobs/logs.
+2. استخدام سجل context chars مع provider usage الحقيقي (إن وُجد) لفصل حجم SULY injection عن التكرار الداخلي/Prompt caching، دون تشغيل Hermes live.
+3. استكمال roadmap الآمن: engine usage metering/idempotent credit wiring بعد سياسة cost/budget محددة؛ runtime gateway/isolated host gates تبقى blocker.
