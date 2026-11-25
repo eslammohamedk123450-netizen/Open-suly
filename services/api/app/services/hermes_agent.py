@@ -38,6 +38,7 @@ _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled", "interrupted
 _MAX_PROMPT_CHARS = 20_000
 _MAX_SSE_EVENT_BYTES = 256 * 1024
 _MAX_SSE_DATA_LINES = 64
+_MAX_SSE_FORWARD_EVENTS = 256
 _MAX_EVENT_SEQ = 9_223_372_036_854_775_807
 _MAX_EVENT_TIMESTAMP = 4_102_444_800
 _RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
@@ -157,7 +158,7 @@ async def _consume_run_events(
     base_url: str,
     run_id: str,
     headers: dict[str, str],
-    callback: Callable[[dict[str, object]], None],
+    callback: Callable[[dict[str, object]], bool | None],
 ) -> None:
     """Consume Hermes SSE as a best-effort metadata-only progress channel."""
     try:
@@ -172,6 +173,7 @@ async def _consume_run_events(
             data_size = 0
             data_line_count = 0
             dropping_event = False
+            forwarded_event_count = 0
             async for line in response.aiter_lines():
                 if len(line) > 65_536:
                     data_lines.clear()
@@ -204,11 +206,15 @@ async def _consume_run_events(
                             payload = json.loads("\n".join(data_lines))
                             summary = _safe_run_event(payload, run_id)
                             if summary is not None:
+                                # نحد RPC/events لكل تشغيل، ونتوقف فور رفض callback (مثل فقد lease).
+                                forwarded_event_count += 1
                                 try:
-                                    await asyncio.to_thread(callback, summary)
+                                    accepted = await asyncio.to_thread(callback, summary)
                                 except Exception:
                                     # Progress delivery must never change task execution outcome.
-                                    pass
+                                    accepted = None
+                                if accepted is False or forwarded_event_count >= _MAX_SSE_FORWARD_EVENTS:
+                                    return
                         except (ValueError, TypeError):
                             pass
                     data_lines.clear()

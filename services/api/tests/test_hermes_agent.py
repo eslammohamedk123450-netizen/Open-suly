@@ -252,6 +252,72 @@ def test_safe_run_event_keeps_only_exact_approval_request_metadata():
     }
 
 
+def test_hermes_sse_consumer_stops_when_event_callback_rejects_persistence():
+    import asyncio
+    import json
+
+    class StreamResponse:
+        closed = False
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            self.closed = True
+        def raise_for_status(self):
+            return None
+        async def aiter_lines(self):
+            for seq in range(3):
+                yield "data: " + json.dumps({
+                    "event": "run.queued", "run_id": "run_callback_stop", "seq": seq,
+                })
+                yield ""
+
+    stream = StreamResponse()
+    class Client:
+        def stream(self, *_args, **_kwargs):
+            return stream
+
+    received = []
+    def reject(event):
+        received.append(event)
+        return False
+    asyncio.run(hermes_agent._consume_run_events(
+        Client(), "https://hermes-runtime.internal:8443", "run_callback_stop",
+        {"Authorization": "Bearer test-token"}, reject,
+    ))
+    assert received == [{"event": "run.queued", "seq": 0}]
+    assert stream.closed is True
+
+
+def test_hermes_sse_consumer_caps_forwarded_events_per_run():
+    import asyncio
+    import json
+
+    class StreamResponse:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+        def raise_for_status(self):
+            return None
+        async def aiter_lines(self):
+            for seq in range(hermes_agent._MAX_SSE_FORWARD_EVENTS + 5):
+                yield "data: " + json.dumps({
+                    "event": "run.queued", "run_id": "run_event_cap", "seq": seq,
+                })
+                yield ""
+
+    class Client:
+        def stream(self, *_args, **_kwargs):
+            return StreamResponse()
+
+    received = []
+    asyncio.run(hermes_agent._consume_run_events(
+        Client(), "https://hermes-runtime.internal:8443", "run_event_cap",
+        {"Authorization": "Bearer test-token"}, lambda event: received.append(event) or True,
+    ))
+    assert len(received) == hermes_agent._MAX_SSE_FORWARD_EVENTS
+    assert received[-1]["seq"] == hermes_agent._MAX_SSE_FORWARD_EVENTS - 1
+
 def test_hermes_sse_consumer_parses_events_and_never_forwards_free_text():
     import asyncio
     import json
