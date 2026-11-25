@@ -1055,3 +1055,14 @@ undefined
 - Platform CI #1594 نجح بالكامل على commit 6f55601a: API **858 passed, 5 skipped, 5 warnings (4.03s)**؛ chat export security **8 passed, 5 warnings (0.77s)**؛ Compile API، Client typecheck، Expo compatibility، Web export، worker image build، والتحقق من disabled-by-default كلها green. Repository baseline #1472 green.
 - Engine runtime build #484 failure بلا jobs/logs تشخيصية، وRailway status check failure؛ لا نستنتج السبب ولا نصل للخدمات. الاختبارات لم تُشغّل محليًا لعدم وجود checkout/runtime محلي.
 - لم يتغير upstream أو dependencies أو migrations. لا staging، ولا تشغيل worker/provider/engine، ولا secrets أو deployment أو production changes. عزل runtime الحقيقي وegress gateway وtenant/staging verification ما زالت blockers.
+
+
+## جلسة تطوير — 2026-11-25 (إيقاف SSE عند رفض التخزين وتحديد forwarding)
+
+- نقطة البداية: HEAD 880b27cddd4c16bdda37b3f90aa2eccb28bda51e. تمت مراجعة Hermes callback في worker_runtime، parser، roadmap، الاختبارات وCI.
+- اكتشاف: callback الذي يكتب حدث progress يعيد bool؛ False يعني رفض/فقد lease (أو فشل معالجة approval). قارئ SSE كان يتجاهل القيمة، فيواصل إرسال RPC لكل حدث بعد رفض سابق. كما كان عدد الأحداث الصالحة المرسلة لكل run غير محدود.
+- أضفنا توقفًا فوريًا لقارئ SSE عند callback=False، وحدًا أقصى 256 حدث تقدم صالحًا لكل stream/run؛ status polling يظل المرجع الأساسي، والتقدم best-effort. أضيف اختبار لوقف stream بعد أول رفض، واختبار يثبت سقف 256 حدثًا. تحديث دليل الأحداث والـroadmap.
+- Commit: 1ce22d945d0e2089deb9846603a6c221c291c447.
+- Platform CI #1596 green على commit 1ce22d94: API **860 passed, 5 skipped, 5 warnings (4.84s)**؛ Chat export security **8 passed, 5 warnings (0.60s)**؛ compile API، client typecheck، Expo compatibility، Web export، worker image build، وdisabled-by-default check green. Repository baseline #1474 green.
+- Engine runtime build #486 failure بدون jobs/logs تشخيصية؛ Railway external status failure. لا نعرف سببًا من البيانات المتاحة. لا pytest محليًا.
+- لم نفعّل engine/worker/provider، ولم نستخدم secrets، ولم نغيّر DB أو migrations أو production أو deployment. Runtime isolation وgateway/egrress/tenant live validation ما زالت blockers.
