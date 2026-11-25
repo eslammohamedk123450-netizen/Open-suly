@@ -36,6 +36,7 @@ class HermesAgentCancelled(RuntimeError):
 _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled", "interrupted"})
 _MAX_PROMPT_CHARS = 20_000
 _MAX_SSE_EVENT_BYTES = 256 * 1024
+_MAX_SSE_DATA_LINES = 64
 _RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,180}$")
 _TOOL_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_.-]{0,79}$")
@@ -151,21 +152,31 @@ async def _consume_run_events(
             response.raise_for_status()
             data_lines: list[str] = []
             data_size = 0
+            data_line_count = 0
             dropping_event = False
             async for line in response.aiter_lines():
                 if len(line) > 65_536:
                     data_lines.clear()
                     data_size = 0
+                    data_line_count = 0
                     dropping_event = True
                     continue
                 if line.startswith("data:"):
                     if dropping_event:
                         continue
                     chunk = line[5:].strip()
+                    data_line_count += 1
+                    # سقف الخطوط يمنع كلفة الذاكرة من قائمة كبيرة حتى لو كانت الأسطر صغيرة.
+                    if data_line_count > _MAX_SSE_DATA_LINES:
+                        data_lines.clear()
+                        data_size = 0
+                        dropping_event = True
+                        continue
                     data_size += len(chunk.encode("utf-8"))
                     if data_size > _MAX_SSE_EVENT_BYTES:
                         data_lines.clear()
                         data_size = 0
+                        data_line_count = 0
                         dropping_event = True
                         continue
                     data_lines.append(chunk)
@@ -184,6 +195,7 @@ async def _consume_run_events(
                             pass
                     data_lines.clear()
                     data_size = 0
+                    data_line_count = 0
                     dropping_event = False
     except (httpx.HTTPError, ValueError, TypeError):
         # Status polling remains authoritative if the optional event stream is unavailable.

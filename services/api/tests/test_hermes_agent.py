@@ -300,6 +300,45 @@ def test_hermes_sse_consumer_drops_aggregate_oversized_event_and_resumes():
     assert received == [{"event": "run.completed", "seq": 2}]
 
 
+def test_hermes_sse_consumer_drops_excess_data_lines_and_resumes():
+    import asyncio
+    import json
+
+    class StreamResponse:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            return None
+        def raise_for_status(self):
+            return None
+        async def aiter_lines(self):
+            # هذا الحدث JSON صالح لكنه يستهلك عدد خطوط أكبر من المسموح.
+            yield "data: {"
+            for index in range(hermes_agent._MAX_SSE_DATA_LINES):
+                yield f'data: "ignored_{index}": null,'
+            yield 'data: "run_id": "run_sse_line_limit",'
+            yield 'data: "event": "run.queued"'
+            yield "data: }"
+            yield ""
+            # الحدث التالي يجب أن يظل قابلًا للقراءة بعد إسقاط الحدث السابق.
+            yield "data: " + json.dumps({
+                "event": "run.completed",
+                "run_id": "run_sse_line_limit",
+                "seq": 2,
+            })
+            yield ""
+
+    class Client:
+        def stream(self, *_args, **_kwargs):
+            return StreamResponse()
+
+    received = []
+    asyncio.run(hermes_agent._consume_run_events(
+        Client(), "https://hermes-runtime.internal:8443", "run_sse_line_limit",
+        {"Authorization": "Bearer test-token"}, received.append,
+    ))
+    assert received == [{"event": "run.completed", "seq": 2}]
+
 def test_hermes_native_runs_api_admits_polls_and_persists_run_id(monkeypatch):
     calls = []
     class Client:

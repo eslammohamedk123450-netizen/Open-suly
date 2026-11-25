@@ -1029,3 +1029,13 @@ undefined
 - At the first check after the Git Data update, the correction run had not appeared yet; the subsequent Contents API checkpoint triggered Platform CI #1589, which validated the corrected test suite.
 
 - Engine runtime build #479 (run `45418044944`) failed with zero jobs/no diagnostic logs; no runtime conclusion is inferred. External Railway status check on #1589 is failure; no service was accessed or changed.
+
+
+## جلسة تطوير — 2026-11-25 (تحديد عدد خطوط أحداث Hermes SSE)
+
+- نقطة البداية: تم التحقق من أحدث HEAD على main وهو 9dc8a67e6d2a779659f4532f74d1093270879f0d. Platform CI #1590 اكتمل بنجاح، وسجل API suite **838 passed, 5 skipped, 5 warnings (3.95s)**؛ Client typecheck/Expo compatibility/Web export وworker-image checks ناجحة. Repository baseline #1468 ناجح.
+- Engine runtime build #480 ما زال failure دون jobs أو logs تشخيصية، وstatus check الخارجي Railway failure؛ لا استنتاج بشأن سبب أي منهما ولا وصول إلى الخدمات.
+- فحص Hermes SSE consumer: حجم الحدث مجمّع 256 KiB وطول السطر 65,536 كانا موجودين، لكن عدد خطوط data لم يكن محدودًا؛ آلاف الأسطر الصغيرة قد تضخم overhead للقائمة رغم سقف bytes.
+- أضفنا سقفًا قدره 64 data lines لكل حدث. الحدث الذي يتجاوزه يُسقط حتى الفاصل التالي، مع reset كامل للعداد ثم استئناف قراءة الأحداث التالية. لم نغير payload projection أو run status polling.
+- أضفنا اختبارًا يبني حدث JSON صالحًا متعدد الخطوط يتجاوز الحد، ويتحقق من إسقاطه واستمرار استقبال الحدث التالي. تحديث دليل أحداث المحركات، ووسم status polling/SSE كتنفيذ كود مكتمل باختبارات mocked؛ runtime لم يُتحقق منه.
+- التحقق بعد التغيير: CI جديد مطلوب؛ لم تُشغّل pytest محليًا لعدم توفر checkout/runtime محلي للمستودع. لا تغيير upstream أو migrations أو live DB أو provider/worker/engine أو deployment أو خدمات مدفوعة. الجاهزية لا تتغير.
