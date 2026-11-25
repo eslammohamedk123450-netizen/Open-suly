@@ -576,7 +576,7 @@ def test_hermes_skill_fetch_is_limited_to_recent_approvals(monkeypatch):
     assert requested_limits == [runtime_module._HERMES_SKILL_FETCH_MAX_PACKAGES]
 
 
-def test_hermes_project_workspace_is_materialized_in_its_task_runtime(monkeypatch):
+def test_hermes_project_workspace_is_materialized_in_its_task_runtime(monkeypatch, caplog):
     import hashlib
     import app.worker_runtime as runtime_module
     monkeypatch.setattr(runtime_module, "_hermes_approved_skills", lambda _step: [])
@@ -614,6 +614,7 @@ def test_hermes_project_workspace_is_materialized_in_its_task_runtime(monkeypatc
     store = FakeEngineRunStore()
     broker = FakeRuntimeBroker()
     monkeypatch.setattr(runtime_module, "get_supabase_admin_client", lambda: Client())
+    caplog.set_level(logging.INFO, logger="suly.worker")
     monkeypatch.setattr(runtime_module, "get_settings", lambda: SimpleNamespace(
         worker_enabled=True,
         hermes_agent_enabled=True,
@@ -627,6 +628,9 @@ def test_hermes_project_workspace_is_materialized_in_its_task_runtime(monkeypatc
         ToolExecutionContext(engine_run_store=store, runtime_broker=broker),
     )
     assert result["content"] == "project inspected"
+    assert "Hermes context chars" in caplog.text
+    assert "base=20" in caplog.text and "final=20" in caplog.text
+    assert "Inspect this project" not in caplog.text
     assert broker.acquired_files == [[{
         "path": "README.md",
         "content": "# SULY Project",
@@ -1416,3 +1420,28 @@ def test_hermes_rejects_runtime_budget_above_native_runs_limit(monkeypatch):
                 cancel_event=None,
             ),
         )
+
+
+def test_hermes_context_size_log_reports_only_character_deltas(caplog):
+    import app.worker_runtime as runtime_module
+
+    step = make_step({"operation": "hermes.agent.turn", "prompt": "do not log this prompt"})
+    base = "private prompt text"
+    conversation = base + "[history]"
+    memory = conversation + "[memory]"
+    final = memory + "[skills]"
+    caplog.set_level(logging.INFO, logger="suly.worker")
+
+    runtime_module._log_hermes_context_sizes(step, base, conversation, memory, final)
+
+
+
+    assert f"base={len(base)}" in caplog.text
+    assert "history_added=9" in caplog.text
+    assert "memory_added=8" in caplog.text
+    assert "skills_added=8" in caplog.text
+    assert f"final={len(final)}" in caplog.text
+    assert base not in caplog.text
+    assert "[history]" not in caplog.text
+    assert "[memory]" not in caplog.text
+    assert "[skills]" not in caplog.text

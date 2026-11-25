@@ -39,6 +39,7 @@
 - [x] integration client: POST run, idempotency key, lease-guarded persisted external ID (mocked unit tests; no live runtime)
 - [x] status polling and bounded SSE parsing (mock tests; runtime not live-verified; bounded to 256 forwarded events and stops after persistence rejection; numeric metadata matches PostgreSQL bounds)
 - [x] Shared Hermes task-context character budget (12k prompt-plus-context ceiling when the original prompt fits; long prompts preserved; Platform CI #1589 green)
+- [x] Metadata-only context-size diagnostics per Hermes task (base prompt and incremental conversation/memory/skill additions; no prompt content or token estimate).
 - [x] cooperative stop + bounded terminal-state polling contract (mocked unit tests; remote process termination not live-verified)
 - [ ] per-task/tenant disposable runtime isolation (host-isolated Docker bridge implementation added; real-Docker CI and deployment-host verification still required)
 - [ ] CPU, memory, process, disk, timeout bounds

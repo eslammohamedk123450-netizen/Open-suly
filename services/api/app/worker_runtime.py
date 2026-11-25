@@ -54,6 +54,20 @@ _HERMES_SKILL_CONTEXT_MAX_CHARS = 4_000
 
 
 
+def _log_hermes_context_sizes(
+    step: ClaimedStep, base_prompt: str, conversation_prompt: str,
+    memory_prompt: str, final_prompt: str,
+) -> None:
+    """Log context lengths only; never include prompt text or token estimates."""
+    logger.info(
+        "Hermes context chars task=%s base=%d history_added=%d memory_added=%d skills_added=%d final=%d",
+        str(step.task_id), len(base_prompt),
+        max(0, len(conversation_prompt) - len(base_prompt)),
+        max(0, len(memory_prompt) - len(conversation_prompt)),
+        max(0, len(final_prompt) - len(memory_prompt)), len(final_prompt),
+    )
+
+
 def text_analyze(step: ClaimedStep) -> dict[str, Any]:
     text = step.input.get("text")
     if not isinstance(text, str):
@@ -415,10 +429,13 @@ def hermes_agent_turn(step: ClaimedStep, context: ToolExecutionContext | None = 
         raise RuntimeError("hermes_task_runtime_unavailable")
 
     task_scope = _hermes_task_scope(step)
-    prompt = _hermes_prompt_with_conversation_context(step, prompt)
-    prompt = _suly_user_memory_context(step, prompt, task_scope)
+    base_prompt = prompt
+    conversation_prompt = _hermes_prompt_with_conversation_context(step, base_prompt)
+    memory_prompt = _suly_user_memory_context(step, conversation_prompt, task_scope)
     approved_skills = _hermes_approved_skills(step)
-    prompt = _hermes_approved_skill_context(prompt, approved_skills)
+    prompt = _hermes_approved_skill_context(memory_prompt, approved_skills)
+    # نرصد حجم السياق فقط، دون حفظ محتواه أو ادعاء عدد Tokens.
+    _log_hermes_context_sizes(step, base_prompt, conversation_prompt, memory_prompt, prompt)
     state_client = get_supabase_admin_client()
     if state_client is None:
         raise RuntimeError("hermes_state_store_unavailable")
