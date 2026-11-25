@@ -250,6 +250,16 @@ def test_count_missing_upstream_identity_rejects_invalid_age(age):
 
 
 
+def test_append_engine_run_event_accepts_max_postgres_bigint_sequence():
+    client = FakeRpc(True)
+    maximum = 9_223_372_036_854_775_807
+    assert EngineRunStore(client).append_event(
+        RUN_ID, step(), {"event": "tool.started", "seq": maximum},
+    ) is True
+    assert client.calls[0][1]["p_event_seq"] == maximum
+
+
+
 def test_append_engine_run_event_persists_only_allowlisted_metadata():
     client = FakeRpc(True)
     event = {"event": "tool.started", "seq": 4, "timestamp": 1_800_000_000.5}
@@ -275,8 +285,11 @@ def test_append_engine_run_event_persists_only_allowlisted_metadata():
     {"event": "tool.started", "seq": 1, "command": "must not persist"},
     {"event": "tool.started", "seq": True},
     {"event": "tool.started", "seq": -1},
+    {"event": "tool.started", "seq": 9_223_372_036_854_775_808},
     {"event": "tool.started", "timestamp": True},
     {"event": "tool.started", "timestamp": 4_102_444_801},
+    {"event": "tool.started", "timestamp": float("nan")},
+    {"event": "tool.started", "timestamp": float("inf")},
     ["not", "an", "event"],
 ])
 def test_append_engine_run_event_rejects_untrusted_or_invalid_metadata(event):

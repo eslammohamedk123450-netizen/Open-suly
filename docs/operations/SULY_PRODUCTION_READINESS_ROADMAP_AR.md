@@ -37,7 +37,7 @@
 - [x] documented native Runs API and stop semantics
 - [x] update pin consistently in Compose + docs (verified same immutable SHA `2de9f51b8008a7d49a49221c184f2f11cbfc4af1`)
 - [x] integration client: POST run, idempotency key, lease-guarded persisted external ID (mocked unit tests; no live runtime)
-- [x] status polling and bounded SSE parsing (mock tests; runtime not live-verified)
+- [x] status polling and bounded SSE parsing (mock tests; runtime not live-verified; event sequence/timestamp values match PostgreSQL bigint and finite timestamp bounds)
 - [x] Shared Hermes task-context character budget (12k prompt-plus-context ceiling when the original prompt fits; long prompts preserved; Platform CI #1589 green)
 - [x] cooperative stop + bounded terminal-state polling contract (mocked unit tests; remote process termination not live-verified)
 - [ ] per-task/tenant disposable runtime isolation (host-isolated Docker bridge implementation added; real-Docker CI and deployment-host verification still required)

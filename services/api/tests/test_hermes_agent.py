@@ -125,6 +125,38 @@ def test_safe_run_event_only_exposes_bounded_metadata():
     }
 
 
+@pytest.mark.parametrize("seq", [
+    True, -1, 1.0, "1", 9_223_372_036_854_775_808,
+])
+def test_safe_run_event_drops_invalid_sequence_metadata(seq):
+    payload = {"event": "tool.started", "run_id": "run_safe_123", "seq": seq}
+    assert hermes_agent._safe_run_event(payload, "run_safe_123") is None
+
+
+@pytest.mark.parametrize("timestamp", [
+    True, -1, 4_102_444_801, float("nan"), float("inf"), "123", 10**100,
+])
+def test_safe_run_event_drops_invalid_timestamp_metadata(timestamp):
+    payload = {"event": "tool.started", "run_id": "run_safe_123", "timestamp": timestamp}
+    assert hermes_agent._safe_run_event(payload, "run_safe_123") is None
+
+
+def test_safe_run_event_drops_extremely_large_integer_timestamp_without_float_conversion():
+    payload = {"event": "tool.started", "run_id": "run_safe_123", "timestamp": 10**10000}
+    assert hermes_agent._safe_run_event(payload, "run_safe_123") is None
+
+
+@pytest.mark.parametrize("seq,timestamp", [
+    (0, 0), (9_223_372_036_854_775_807, 4_102_444_800),
+])
+def test_safe_run_event_keeps_numeric_boundaries(seq, timestamp):
+    assert hermes_agent._safe_run_event({
+        "event": "tool.started", "run_id": "run_safe_123",
+        "seq": seq, "timestamp": timestamp,
+    }, "run_safe_123") == {
+        "event": "tool.started", "seq": seq, "timestamp": float(timestamp),
+    }
+
 @pytest.mark.parametrize("payload", [
     {"event": "message.interim", "run_id": "run_safe_123", "text": "private"},
     {"event": "tool.started", "run_id": "another-run"},

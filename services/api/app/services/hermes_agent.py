@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import re
 import unicodedata
 from contextlib import suppress
@@ -37,6 +38,8 @@ _TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled", "interrupted
 _MAX_PROMPT_CHARS = 20_000
 _MAX_SSE_EVENT_BYTES = 256 * 1024
 _MAX_SSE_DATA_LINES = 64
+_MAX_EVENT_SEQ = 9_223_372_036_854_775_807
+_MAX_EVENT_TIMESTAMP = 4_102_444_800
 _RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,180}$")
 _TOOL_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_.-]{0,79}$")
@@ -126,10 +129,25 @@ def _safe_run_event(payload: object, expected_run_id: str) -> dict[str, object] 
                 return None
             summary["approval_choice"] = choice
     seq = payload.get("seq")
-    if isinstance(seq, int) and not isinstance(seq, bool) and seq >= 0:
+    if seq is not None:
+        # نطابق نوع وحدود PostgreSQL bigint قبل إرسال الحدث إلى التخزين.
+        if (
+            isinstance(seq, bool)
+            or not isinstance(seq, int)
+            or not 0 <= seq <= _MAX_EVENT_SEQ
+        ):
+            return None
         summary["seq"] = seq
     timestamp = payload.get("timestamp")
-    if isinstance(timestamp, (int, float)) and not isinstance(timestamp, bool):
+    if timestamp is not None:
+        # لا نمرر NaN/Infinity أو توقيتًا خارج المجال الذي تقبله قاعدة البيانات.
+        if (
+            isinstance(timestamp, bool)
+            or not isinstance(timestamp, (int, float))
+            or not 0 <= timestamp <= _MAX_EVENT_TIMESTAMP
+            or not math.isfinite(timestamp)
+        ):
+            return None
         summary["timestamp"] = float(timestamp)
     return summary
 

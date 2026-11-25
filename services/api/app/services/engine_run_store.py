@@ -9,6 +9,10 @@ from supabase import Client
 from app.services.task_worker import ClaimedStep
 
 
+# PostgreSQL bigint: الحد الأقصى الموجب لتسلسل حدث SSE.
+_MAX_EVENT_SEQ = 9_223_372_036_854_775_807
+
+
 @dataclass(frozen=True)
 class EngineStopClaim:
     """حجز محدود لإيقاف تشغيل خارجي فقد مالك المهمة lease الخاص به."""
@@ -122,7 +126,9 @@ class EngineRunStore:
             raise ValueError("invalid_engine_run_event_name")
         event_seq = event.get("seq")
         if event_seq is not None and (
-            isinstance(event_seq, bool) or not isinstance(event_seq, int) or event_seq < 0
+            isinstance(event_seq, bool)
+            or not isinstance(event_seq, int)
+            or not 0 <= event_seq <= _MAX_EVENT_SEQ
         ):
             raise ValueError("invalid_engine_run_event_sequence")
         event_timestamp = event.get("timestamp")
