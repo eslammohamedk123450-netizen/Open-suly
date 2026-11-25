@@ -1042,3 +1042,16 @@ undefined
 
 
 - مراجعة تنسيق بعد commit الحماية: نقل حدود SSE إلى ما بعد خطوات مسار الحدث للحفاظ على القائمة متسلسلة، وتصحيح مسافة الفصل بين اختبارات المستوى الأعلى.
+
+
+## جلسة تطوير — 2026-11-25 (حدود رقمية لأحداث Hermes SSE)
+
+- نقطة البداية: HEAD c375b43cce1789acc8197b7dec7325b006f15367 على main. راجعت roadmap وprogress وسورس Hermes وEngineRunStore والاختبارات وPlatform CI.
+- قبل التعديل، Platform CI #1593 نجح على HEAD: **839 passed, 5 skipped, 5 warnings (4.84s)**؛ compile API، client typecheck/Expo compatibility/Web export، chat-export security، worker image build/default-disabled كلها completed green. Repository baseline #1471 success.
+- Engine runtime build #483 فشل بدون jobs/logs تشخيصية؛ Railway status الخارجي failure. لا نستنتج سببًا، ولم نصل للخدمة.
+- وجدنا اختلافًا بين projection في _safe_run_event وعقد PostgreSQL: كان يقبل timestamps غير finite أو خارج المجال، وsequence أكبر من bigint يمكن أن يصل إلى RPC ويُرفض من قاعدة البيانات.
+- التغيير: _safe_run_event يرفض الحدث الذي يحمل seq/timestamp غير صالح، ويحصر seq في signed bigint وtimestamp في المجال 0–4,102,444,800. EngineRunStore يعيد التحقق من الحد الأعلى للـbigint قبل RPC. أضيفت 19 حالة اختبار/حدّية جديدة لقيم bool/string/float/negative/NaN/Infinity/overflow ولحدود القيم المقبولة.
+- Commit الكود والاختبارات والتوثيق: 6f55601a1593acee11ca6d977e0024830f4ed44c.
+- Platform CI #1594 نجح بالكامل على commit 6f55601a: API **858 passed, 5 skipped, 5 warnings (4.03s)**؛ chat export security **8 passed, 5 warnings (0.77s)**؛ Compile API، Client typecheck، Expo compatibility، Web export، worker image build، والتحقق من disabled-by-default كلها green. Repository baseline #1472 green.
+- Engine runtime build #484 failure بلا jobs/logs تشخيصية، وRailway status check failure؛ لا نستنتج السبب ولا نصل للخدمات. الاختبارات لم تُشغّل محليًا لعدم وجود checkout/runtime محلي.
+- لم يتغير upstream أو dependencies أو migrations. لا staging، ولا تشغيل worker/provider/engine، ولا secrets أو deployment أو production changes. عزل runtime الحقيقي وegress gateway وtenant/staging verification ما زالت blockers.
