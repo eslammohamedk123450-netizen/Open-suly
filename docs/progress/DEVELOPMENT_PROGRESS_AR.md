@@ -217,7 +217,6 @@ Commit تحديث هذا السجل: يتم ربطه بعد إنشائه.
 - أضيفت اختبارات لتحليل SSE وربط الحدث بمعرف التشغيل ومنع تسريب المحتوى.
 - Callback الأحداث غير مربوط بعد بمخزن أحداث دائم أو واجهة المستخدم؛ لذلك لم أعتبر البث للمستخدم مكتملاً.
 - Commits: `0ac9476135a1`, `18555cf1f90a`, `1280ca0bd3be`, `a3070805ec25`.
-undefined
 
 ## حالة التحقق بعد دمج كتالوج المحركات — 2026-11-20
 
@@ -1090,7 +1089,7 @@ undefined
 - نقطة البداية: HEAD `60cb598c1fcc0429ac03f7cb80bb31fd6efee32f`؛ راجعت roadmap، آخر progress checkpoint، ملفات rate limiter واختباراته، وCI على main. Platform CI #1599 وRepository baseline #1477 نجحا على HEAD (API tests، worker image مع disabled-by-default، client typecheck/Expo compatibility/Web export، وchat-export security). Engine runtime build #489 فشل دون jobs تشخيصية؛ status check خارجي Railway يظهر failure، ولا يوجد استنتاج أو وصول للخدمة.
 - اكتشاف: عند وصول limiter إلى `max_keys`، قد تبقى مفاتيح انتهت نوافذها في الذاكرة حتى التنظيف الدوري (600 ثانية افتراضيًا). خلال ذلك، هوية جديدة تُرفض رغم انتهاء أحداث كل المفاتيح القديمة.
 - إصلاح: فصل تنظيف المفاتيح المنتهية في helper؛ عند ضغط السعة يحدث sweep فوري قبل الرفض. لا يُطرد أي principal نشط، ويظل fail-closed إذا بقيت المفاتيح داخل النافذة.
-- الاختبارات: أضفنا حالة recovery عندما تنتهي كل المفاتيح قبل الدورة الدورية، وحالة تأكد أن المفتاح النشط لا يتم إخلاؤه. Platform CI #1600 كشف أن assertion في الحالة الثانية كان خاطئًا (كان يتوقع رفض المستخدم الجديد رغم وجود خانة بعد تنظيف المفتاح المنتهي)؛ صححناه ليؤكد قبول المستخدم الجديد وبقاء حد المستخدم النشط كما هو. لا توجد pytest محلية (لا checkout محلي متاح)؛ CI بعد التصحيح مطلوب.
+- الاختبارات: أضفنا حالة recovery عندما تنتهي كل المفاتيح قبل الدورة الدورية، وحالة تأكد أن المفتاح النشط لا يتم إخلاؤه. Platform CI #1600 كشف assertion غير صحيح في الاختبار الثاني (كان يتوقع رفض المستخدم الجديد رغم وجود خانة بعد تنظيف المفتاح المنتهي)؛ صححناه ليؤكد قبول المستخدم الجديد وبقاء حد المستخدم النشط كما هو. على Platform CI #1601 بعد التصحيح: **863 passed, 5 skipped, 5 warnings (4.44s)**. لا توجد pytest محلية (لا checkout محلي متاح).
 - الملفات: `services/api/app/core/rate_limit.py`, `services/api/tests/test_rate_limit.py`, `docs/operations/API_RATE_LIMITING_AR.md`, roadmap، progress.
 - الحالة: لا تُحسب هذه الخطوة كبند جديد مكتمل؛ rate limiting ما زال جزئيًا لأن حدود IP/distributed ingress غير منفذة. لا schema/migration/upstream/dependency تغييرات، ولا secrets أو deployment أو تشغيل services.
-- بعد CI: تسجيل نتيجة الاختبارات، ثم استكمال roadmap بمهمة مستقلة؛ النسبة الخام checklist **57/125 (46%)** وreadiness الموزونة حوالي **20%** تبقى تقديرات checkpoint السابقة وليست إعادة تقييم لهذه الدفعة.
+- التحقق بعد التصحيح: Platform CI #1601 نجح بالكامل؛ Chat export security **8 passed**، Compile API، Worker image build (دون نشر) والتحقق من disabled-by-default، Client typecheck، Expo compatibility، Web export جميعها green. Repository baseline #1479 نجح. Engine runtime build #491 فشل دون jobs/logs تشخيصية؛ Railway external status check failure، ولا يمكن تحديد السبب دون diagnostics. النسبة الخام checklist **57/125 (46%)** وreadiness الموزونة حوالي **20%** تبقى تقديرات checkpoint السابقة وليست إعادة تقييم لهذه الدفعة.
