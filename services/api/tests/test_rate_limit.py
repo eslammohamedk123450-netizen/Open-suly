@@ -145,7 +145,7 @@ def test_sliding_window_reclaims_expired_keys_on_capacity_pressure():
     assert list(limiter._events) == ["new-user"]
 
 
-def test_capacity_recovery_never_evicts_live_principal():
+def test_capacity_recovery_preserves_live_principal():
     now = [0.0]
     limiter = rate_limit_module.SlidingWindowLimiter(
         limit=1, window_seconds=10.0, max_keys=2, prune_interval=600.0,
@@ -155,8 +155,10 @@ def test_capacity_recovery_never_evicts_live_principal():
     now[0] = 10.0
     assert limiter.allow("active-user")
     now[0] = 11.0
-    assert not limiter.allow("new-user")
-    assert list(limiter._events) == ["active-user"]
+    # تنظيف المفتاح المنتهي يفتح خانة؛ يجب أن تبقى نافذة المستخدم النشط دون تغيير.
+    assert limiter.allow("new-user")
+    assert list(limiter._events) == ["active-user", "new-user"]
+    assert not limiter.allow("active-user")
 
 
 def test_sliding_window_reconfigures_limit_without_resetting_events():
