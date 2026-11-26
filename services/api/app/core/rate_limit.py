@@ -80,10 +80,8 @@ class SlidingWindowLimiter:
         while events and events[0] <= cutoff:
             events.popleft()
 
-    def _maybe_prune(self, now: float) -> None:
-        if now - self._last_prune < self._prune_interval:
-            return
-        cutoff = now - self._window_seconds
+    def _prune_expired_keys(self, cutoff: float) -> None:
+        """Remove principals whose sliding-window history is fully expired."""
         stale = []
         for key, events in self._events.items():
             self._expire(events, cutoff)
@@ -91,6 +89,11 @@ class SlidingWindowLimiter:
                 stale.append(key)
         for key in stale:
             del self._events[key]
+
+    def _maybe_prune(self, now: float) -> None:
+        if now - self._last_prune < self._prune_interval:
+            return
+        self._prune_expired_keys(now - self._window_seconds)
         self._last_prune = max(self._last_prune, now)
 
     def allow(self, key: str, *, now: float | None = None) -> bool:
@@ -108,8 +111,12 @@ class SlidingWindowLimiter:
             events = self._events.get(key)
             if events is None:
                 if self._max_keys and len(self._events) >= self._max_keys:
-                    # Do not evict a live principal to admit another identity.
-                    return False
+                    # عند امتلاء السعة، ننظف النوافذ المنتهية فورًا بدل انتظار دورة التنظيف.
+                    self._prune_expired_keys(cutoff)
+                    self._last_prune = max(self._last_prune, current)
+                    # لا نُخرج مستخدمًا لديه أحداث نشطة لإدخال هوية جديدة.
+                    if len(self._events) >= self._max_keys:
+                        return False
                 events = deque()
                 self._events[key] = events
             else:

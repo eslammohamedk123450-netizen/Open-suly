@@ -79,7 +79,7 @@ For every engine:
 - [ ] shared durable queue and bounded worker concurrency
 - [ ] pool limits for Postgres and connection lifecycle
 - [ ] idempotency for user requests, task admissions, billing and tool actions
-- [ ] rate limits by user/IP/capability
+- [ ] rate limits by user/IP/capability (جزئي: حدود per-user داخل process؛ IP/distributed ingress limits ما زالت مطلوبة)
 - [ ] quota/usage ledger exactness and partial billing
 - [x] Read-only credits summary API + client history view (user-token/RLS, disabled by default)
 - [x] Disposable PostgreSQL credit-ledger integration: grant/reserve/settle/release/expiry, concurrency, RLS

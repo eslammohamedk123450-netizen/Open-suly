@@ -131,6 +131,34 @@ def test_sliding_window_fails_closed_when_key_cap_is_full():
     assert not limiter.allow("second-user")
 
 
+def test_sliding_window_reclaims_expired_keys_on_capacity_pressure():
+    now = [0.0]
+    limiter = rate_limit_module.SlidingWindowLimiter(
+        limit=1, window_seconds=10.0, max_keys=2, prune_interval=600.0,
+        clock=lambda: now[0],
+    )
+    assert limiter.allow("old-a")
+    assert limiter.allow("old-b")
+    now[0] = 11.0
+    # لا ننتظر دورة 600 ثانية: السعة تتعافى بمجرد انتهاء نافذة المستخدمين.
+    assert limiter.allow("new-user")
+    assert list(limiter._events) == ["new-user"]
+
+
+def test_capacity_recovery_never_evicts_live_principal():
+    now = [0.0]
+    limiter = rate_limit_module.SlidingWindowLimiter(
+        limit=1, window_seconds=10.0, max_keys=2, prune_interval=600.0,
+        clock=lambda: now[0],
+    )
+    assert limiter.allow("expired-user")
+    now[0] = 10.0
+    assert limiter.allow("active-user")
+    now[0] = 11.0
+    assert not limiter.allow("new-user")
+    assert list(limiter._events) == ["active-user"]
+
+
 def test_sliding_window_reconfigures_limit_without_resetting_events():
     limiter = rate_limit_module.SlidingWindowLimiter(limit=3, window_seconds=60.0)
     assert limiter.allow("user-a", now=100.0)

@@ -1083,3 +1083,14 @@ undefined
 1. مراجعة latest CI وengine-runtime build؛ لا تخمن failure بلا jobs/logs.
 2. استخدام سجل context chars مع provider usage الحقيقي (إن وُجد) لفصل حجم SULY injection عن التكرار الداخلي/Prompt caching، دون تشغيل Hermes live.
 3. استكمال roadmap الآمن: engine usage metering/idempotent credit wiring بعد سياسة cost/budget محددة؛ runtime gateway/isolated host gates تبقى blocker.
+
+
+## جلسة تطوير — 2026-11-26 (تعافي rate limiter عند امتلاء سعة المفاتيح)
+
+- نقطة البداية: HEAD `60cb598c1fcc0429ac03f7cb80bb31fd6efee32f`؛ راجعت roadmap، آخر progress checkpoint، ملفات rate limiter واختباراته، وCI على main. Platform CI #1599 وRepository baseline #1477 نجحا على HEAD (API tests، worker image مع disabled-by-default، client typecheck/Expo compatibility/Web export، وchat-export security). Engine runtime build #489 فشل دون jobs تشخيصية؛ status check خارجي Railway يظهر failure، ولا يوجد استنتاج أو وصول للخدمة.
+- اكتشاف: عند وصول limiter إلى `max_keys`، قد تبقى مفاتيح انتهت نوافذها في الذاكرة حتى التنظيف الدوري (600 ثانية افتراضيًا). خلال ذلك، هوية جديدة تُرفض رغم انتهاء أحداث كل المفاتيح القديمة.
+- إصلاح: فصل تنظيف المفاتيح المنتهية في helper؛ عند ضغط السعة يحدث sweep فوري قبل الرفض. لا يُطرد أي principal نشط، ويظل fail-closed إذا بقيت المفاتيح داخل النافذة.
+- الاختبارات: أضفنا حالة recovery عندما تنتهي كل المفاتيح قبل الدورة الدورية، وحالة تأكد أن المفتاح النشط لا يتم إخلاؤه. لا توجد pytest محلية (لا checkout محلي متاح)؛ CI على commit التغيير مطلوب للتحقق.
+- الملفات: `services/api/app/core/rate_limit.py`, `services/api/tests/test_rate_limit.py`, `docs/operations/API_RATE_LIMITING_AR.md`, roadmap، progress.
+- الحالة: لا تُحسب هذه الخطوة كبند جديد مكتمل؛ rate limiting ما زال جزئيًا لأن حدود IP/distributed ingress غير منفذة. لا schema/migration/upstream/dependency تغييرات، ولا secrets أو deployment أو تشغيل services.
+- بعد CI: تسجيل نتيجة الاختبارات، ثم استكمال roadmap بمهمة مستقلة؛ النسبة الخام checklist **57/125 (46%)** وreadiness الموزونة حوالي **20%** تبقى تقديرات checkpoint السابقة وليست إعادة تقييم لهذه الدفعة.
